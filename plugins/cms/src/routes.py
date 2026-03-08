@@ -32,13 +32,18 @@ Admin endpoints (require_admin):
 """
 import logging
 import os
-from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from flask import Blueprint, jsonify, request, current_app, send_from_directory, Response
 from src.extensions import db
 from src.middleware.auth import require_auth, require_admin
 
 from plugins.cms.src.repositories.cms_page_repository import CmsPageRepository
 from plugins.cms.src.repositories.cms_category_repository import CmsCategoryRepository
 from plugins.cms.src.repositories.cms_image_repository import CmsImageRepository
+from plugins.cms.src.repositories.cms_layout_repository import CmsLayoutRepository
+from plugins.cms.src.repositories.cms_layout_widget_repository import CmsLayoutWidgetRepository
+from plugins.cms.src.repositories.cms_widget_repository import CmsWidgetRepository
+from plugins.cms.src.repositories.cms_menu_item_repository import CmsMenuItemRepository
+from plugins.cms.src.repositories.cms_style_repository import CmsStyleRepository
 from plugins.cms.src.services.cms_page_service import (
     CmsPageService, CmsPageNotFoundError, CmsPageSlugConflictError,
 )
@@ -46,6 +51,15 @@ from plugins.cms.src.services.cms_category_service import (
     CmsCategoryService, CmsCategoryConflictError,
 )
 from plugins.cms.src.services.cms_image_service import CmsImageService, CmsImageNotFoundError
+from plugins.cms.src.services.cms_layout_service import (
+    CmsLayoutService, CmsLayoutNotFoundError, CmsLayoutSlugConflictError,
+)
+from plugins.cms.src.services.cms_widget_service import (
+    CmsWidgetService, CmsWidgetNotFoundError, CmsWidgetSlugConflictError, CmsWidgetInUseError,
+)
+from plugins.cms.src.services.cms_style_service import (
+    CmsStyleService, CmsStyleNotFoundError, CmsStyleSlugConflictError,
+)
 from plugins.cms.src.services.file_storage import LocalFileStorage
 
 logger = logging.getLogger(__name__)
@@ -73,6 +87,28 @@ def _image_service() -> CmsImageService:
         base_url=config.get("uploads_base_url", "/uploads"),
     )
     return CmsImageService(CmsImageRepository(db.session), storage)
+
+
+def _layout_service() -> CmsLayoutService:
+    return CmsLayoutService(
+        CmsLayoutRepository(db.session),
+        CmsLayoutWidgetRepository(db.session),
+        CmsWidgetRepository(db.session),
+        CmsPageRepository(db.session),
+    )
+
+
+def _widget_service() -> CmsWidgetService:
+    return CmsWidgetService(
+        CmsWidgetRepository(db.session),
+        CmsMenuItemRepository(db.session),
+        CmsImageRepository(db.session),
+        CmsLayoutWidgetRepository(db.session),
+    )
+
+
+def _style_service() -> CmsStyleService:
+    return CmsStyleService(CmsStyleRepository(db.session))
 
 
 def _cms_config() -> dict:
@@ -113,7 +149,7 @@ def list_public_categories():
     return jsonify(_category_service().list_categories()), 200
 
 
-@cms_bp.route("/api/v1/cms/pages/<slug>", methods=["GET"])
+@cms_bp.route("/api/v1/cms/pages/<path:slug>", methods=["GET"])
 def get_published_page(slug: str):
     """GET /api/v1/cms/pages/<slug> — fetch a published page by slug."""
     try:
@@ -478,4 +514,435 @@ def admin_delete_image(image_id: str):
         _image_service().delete_image(image_id)
         return jsonify({"deleted": image_id}), 200
     except CmsImageNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PUBLIC — Layouts & Styles (no auth required)
+# ════════════════════════════════════════════════════════════════════════════
+
+@cms_bp.route("/api/v1/cms/layouts/<layout_id>", methods=["GET"])
+def get_layout_public(layout_id: str):
+    """GET /api/v1/cms/layouts/<id> — layout with embedded widget data for fe-user."""
+    try:
+        layout = _layout_service().get_layout(layout_id)
+        # Enrich assignments with full widget data (including menu_items)
+        assignments = layout.get("assignments") or []
+        if assignments:
+            widget_svc = _widget_service()
+            for a in assignments:
+                wid = a.get("widget_id")
+                if wid:
+                    try:
+                        a["widget"] = widget_svc.get_widget(wid)
+                    except Exception:
+                        a["widget"] = None
+        layout["assignments"] = assignments
+        return jsonify(layout), 200
+    except CmsLayoutNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@cms_bp.route("/api/v1/cms/styles/<style_id>/css", methods=["GET"])
+def get_style_css_public(style_id: str):
+    """GET /api/v1/cms/styles/<id>/css — serve CSS as text/css."""
+    try:
+        css = _style_service().get_style_css(style_id)
+        return Response(css, mimetype="text/css")
+    except CmsStyleNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADMIN — Layouts
+# ════════════════════════════════════════════════════════════════════════════
+
+@cms_bp.route("/api/v1/admin/cms/layouts", methods=["GET"])
+@require_auth
+@require_admin
+def admin_list_layouts():
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 20, type=int), 100)
+    result = _layout_service().list_layouts({
+        "page": page, "per_page": per_page,
+        "sort_by": request.args.get("sort_by", "sort_order"),
+        "sort_dir": request.args.get("sort_dir", "asc"),
+        "query": request.args.get("query"),
+    })
+    return jsonify(result), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts", methods=["POST"])
+@require_auth
+@require_admin
+def admin_create_layout():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        layout = _layout_service().create_layout(data)
+        return jsonify(layout), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except CmsLayoutSlugConflictError as e:
+        return jsonify({"error": str(e)}), 409
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts/bulk", methods=["POST"])
+@require_auth
+@require_admin
+def admin_bulk_layouts():
+    data = request.get_json()
+    if not data or "ids" not in data:
+        return jsonify({"error": "ids required"}), 400
+    result = _layout_service().bulk_delete(data["ids"])
+    return jsonify(result), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts/export", methods=["POST"])
+@require_auth
+@require_admin
+def admin_export_layouts():
+    data = request.get_json() or {}
+    ids = data.get("ids", [])
+    if len(ids) == 1:
+        payload = _layout_service().export_layout(ids[0])
+        import json as _json
+        return Response(
+            _json.dumps(payload, ensure_ascii=False),
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment; filename=cms-layout.json"},
+        )
+    payload = _layout_service().export_layouts_zip(ids)
+    return Response(
+        payload,
+        mimetype="application/zip",
+        headers={"Content-Disposition": "attachment; filename=cms-layouts.zip"},
+    )
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts/import", methods=["POST"])
+@require_auth
+@require_admin
+def admin_import_layouts():
+    import json as _json
+    raw = request.get_data()
+    if not raw:
+        return jsonify({"error": "Request body required"}), 400
+    try:
+        payload = _json.loads(raw)
+        result = _layout_service().import_layout(payload)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Import failed: {e}"}), 400
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts/<layout_id>", methods=["GET"])
+@require_auth
+@require_admin
+def admin_get_layout(layout_id: str):
+    try:
+        return jsonify(_layout_service().get_layout(layout_id)), 200
+    except CmsLayoutNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts/<layout_id>", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_update_layout(layout_id: str):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        return jsonify(_layout_service().update_layout(layout_id, data)), 200
+    except CmsLayoutNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except (ValueError, CmsLayoutSlugConflictError) as e:
+        return jsonify({"error": str(e)}), 409
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts/<layout_id>", methods=["DELETE"])
+@require_auth
+@require_admin
+def admin_delete_layout(layout_id: str):
+    try:
+        _layout_service().delete_layout(layout_id)
+        return jsonify({"deleted": layout_id}), 200
+    except CmsLayoutNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@cms_bp.route("/api/v1/admin/cms/layouts/<layout_id>/widgets", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_set_layout_widgets(layout_id: str):
+    data = request.get_json()
+    if not isinstance(data, list):
+        return jsonify({"error": "JSON array of assignments required"}), 400
+    try:
+        result = _layout_service().set_widget_assignments(layout_id, data)
+        return jsonify(result), 200
+    except CmsLayoutNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADMIN — Widgets
+# ════════════════════════════════════════════════════════════════════════════
+
+@cms_bp.route("/api/v1/admin/cms/widgets", methods=["GET"])
+@require_auth
+@require_admin
+def admin_list_widgets():
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 20, type=int), 100)
+    result = _widget_service().list_widgets({
+        "page": page, "per_page": per_page,
+        "sort_by": request.args.get("sort_by", "sort_order"),
+        "sort_dir": request.args.get("sort_dir", "asc"),
+        "query": request.args.get("query"),
+        "widget_type": request.args.get("type"),
+    })
+    return jsonify(result), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets", methods=["POST"])
+@require_auth
+@require_admin
+def admin_create_widget():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        widget = _widget_service().create_widget(data)
+        return jsonify(widget), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except CmsWidgetSlugConflictError as e:
+        return jsonify({"error": str(e)}), 409
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets/bulk", methods=["POST"])
+@require_auth
+@require_admin
+def admin_bulk_widgets():
+    data = request.get_json()
+    if not data or "ids" not in data:
+        return jsonify({"error": "ids required"}), 400
+    result = _widget_service().bulk_delete(data["ids"])
+    return jsonify(result), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets/export", methods=["POST"])
+@require_auth
+@require_admin
+def admin_export_widgets():
+    data = request.get_json() or {}
+    ids = data.get("ids", [])
+    if len(ids) == 1:
+        payload = _widget_service().export_widget(ids[0])
+        import json as _json
+        return Response(
+            _json.dumps(payload, ensure_ascii=False),
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment; filename=cms-widget.json"},
+        )
+    payload = _widget_service().export_widgets_zip(ids)
+    return Response(
+        payload,
+        mimetype="application/zip",
+        headers={"Content-Disposition": "attachment; filename=cms-widgets.zip"},
+    )
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets/import", methods=["POST"])
+@require_auth
+@require_admin
+def admin_import_widgets():
+    import json as _json
+    raw = request.get_data()
+    if not raw:
+        return jsonify({"error": "Request body required"}), 400
+    try:
+        payload = _json.loads(raw)
+        data = payload.get("data", payload)
+        result = _widget_service().import_widget(data)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Import failed: {e}"}), 400
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets/<widget_id>", methods=["GET"])
+@require_auth
+@require_admin
+def admin_get_widget(widget_id: str):
+    try:
+        return jsonify(_widget_service().get_widget(widget_id)), 200
+    except CmsWidgetNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets/<widget_id>", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_update_widget(widget_id: str):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        return jsonify(_widget_service().update_widget(widget_id, data)), 200
+    except CmsWidgetNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except (ValueError, CmsWidgetSlugConflictError) as e:
+        return jsonify({"error": str(e)}), 409
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets/<widget_id>", methods=["DELETE"])
+@require_auth
+@require_admin
+def admin_delete_widget(widget_id: str):
+    try:
+        _widget_service().delete_widget(widget_id)
+        return jsonify({"deleted": widget_id}), 200
+    except CmsWidgetNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except CmsWidgetInUseError as e:
+        return jsonify({"error": str(e)}), 409
+
+
+@cms_bp.route("/api/v1/admin/cms/widgets/<widget_id>/menu", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_replace_widget_menu(widget_id: str):
+    data = request.get_json()
+    if not isinstance(data, list):
+        return jsonify({"error": "JSON array of menu items required"}), 400
+    try:
+        result = _widget_service().replace_menu_tree(widget_id, data)
+        return jsonify(result), 200
+    except CmsWidgetNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADMIN — Styles
+# ════════════════════════════════════════════════════════════════════════════
+
+@cms_bp.route("/api/v1/admin/cms/styles", methods=["GET"])
+@require_auth
+@require_admin
+def admin_list_styles():
+    page = request.args.get("page", 1, type=int)
+    per_page = min(request.args.get("per_page", 20, type=int), 100)
+    result = _style_service().list_styles({
+        "page": page, "per_page": per_page,
+        "sort_by": request.args.get("sort_by", "sort_order"),
+        "sort_dir": request.args.get("sort_dir", "asc"),
+        "query": request.args.get("query"),
+    })
+    return jsonify(result), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/styles", methods=["POST"])
+@require_auth
+@require_admin
+def admin_create_style():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        style = _style_service().create_style(data)
+        return jsonify(style), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except CmsStyleSlugConflictError as e:
+        return jsonify({"error": str(e)}), 409
+
+
+@cms_bp.route("/api/v1/admin/cms/styles/bulk", methods=["POST"])
+@require_auth
+@require_admin
+def admin_bulk_styles():
+    data = request.get_json()
+    if not data or "ids" not in data:
+        return jsonify({"error": "ids required"}), 400
+    result = _style_service().bulk_delete(data["ids"])
+    return jsonify(result), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/styles/export", methods=["POST"])
+@require_auth
+@require_admin
+def admin_export_styles():
+    data = request.get_json() or {}
+    ids = data.get("ids", [])
+    if len(ids) == 1:
+        payload = _style_service().export_style(ids[0])
+        import json as _json
+        return Response(
+            _json.dumps(payload, ensure_ascii=False),
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment; filename=cms-style.json"},
+        )
+    payload = _style_service().export_styles_zip(ids)
+    return Response(
+        payload,
+        mimetype="application/zip",
+        headers={"Content-Disposition": "attachment; filename=cms-styles.zip"},
+    )
+
+
+@cms_bp.route("/api/v1/admin/cms/styles/import", methods=["POST"])
+@require_auth
+@require_admin
+def admin_import_styles():
+    import json as _json
+    raw = request.get_data()
+    if not raw:
+        return jsonify({"error": "Request body required"}), 400
+    try:
+        payload = _json.loads(raw)
+        data = payload.get("data", payload)
+        result = _style_service().import_style(data)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": f"Import failed: {e}"}), 400
+
+
+@cms_bp.route("/api/v1/admin/cms/styles/<style_id>", methods=["GET"])
+@require_auth
+@require_admin
+def admin_get_style(style_id: str):
+    try:
+        return jsonify(_style_service().get_style(style_id)), 200
+    except CmsStyleNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@cms_bp.route("/api/v1/admin/cms/styles/<style_id>", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_update_style(style_id: str):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        return jsonify(_style_service().update_style(style_id, data)), 200
+    except CmsStyleNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except (ValueError, CmsStyleSlugConflictError) as e:
+        return jsonify({"error": str(e)}), 409
+
+
+@cms_bp.route("/api/v1/admin/cms/styles/<style_id>", methods=["DELETE"])
+@require_auth
+@require_admin
+def admin_delete_style(style_id: str):
+    try:
+        _style_service().delete_style(style_id)
+        return jsonify({"deleted": style_id}), 200
+    except CmsStyleNotFoundError as e:
         return jsonify({"error": str(e)}), 404

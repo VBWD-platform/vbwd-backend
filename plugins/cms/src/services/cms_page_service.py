@@ -153,10 +153,11 @@ class CmsPageService:
 
     def _apply_data(self, page: CmsPage, data: Dict[str, Any]) -> None:
         for field in (
-            "name", "language", "content_json", "category_id", "is_published",
+            "name", "language", "content_json", "content_html", "source_css", "category_id", "is_published",
             "sort_order", "meta_title", "meta_description", "meta_keywords",
             "og_title", "og_description", "og_image_url", "canonical_url",
             "robots", "schema_json",
+            "layout_id", "style_id", "use_theme_switcher_styles",
         ):
             if field in data:
                 setattr(page, field, data[field])

@@ -8,10 +8,12 @@ class CmsPage(BaseModel):
 
     __tablename__ = "cms_page"
 
-    slug = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    slug = db.Column(db.String(512), unique=True, nullable=False, index=True)
     name = db.Column(db.String(255), nullable=False)
     language = db.Column(db.String(8), nullable=False, default="en")
     content_json = db.Column(db.JSON, nullable=False, default=dict)
+    content_html = db.Column(db.Text, nullable=True)
+    source_css = db.Column(db.Text, nullable=True)
     category_id = db.Column(
         db.UUID,
         db.ForeignKey("cms_category.id", ondelete="SET NULL"),
@@ -32,6 +34,20 @@ class CmsPage(BaseModel):
     robots = db.Column(db.String(64), nullable=False, default="index,follow")
     schema_json = db.Column(db.JSON, nullable=True)
 
+    layout_id = db.Column(
+        db.UUID,
+        db.ForeignKey("cms_layout.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    style_id = db.Column(
+        db.UUID,
+        db.ForeignKey("cms_style.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    use_theme_switcher_styles = db.Column(db.Boolean, nullable=False, default=True)
+
     category = db.relationship(
         "CmsCategory",
         backref="pages",
@@ -46,6 +62,8 @@ class CmsPage(BaseModel):
             "name": self.name,
             "language": self.language,
             "content_json": self.content_json,
+            "content_html": self.content_html,
+            "source_css": self.source_css,
             "category_id": str(self.category_id) if self.category_id else None,
             "is_published": self.is_published,
             "sort_order": self.sort_order,
@@ -58,6 +76,9 @@ class CmsPage(BaseModel):
             "canonical_url": self.canonical_url,
             "robots": self.robots,
             "schema_json": self.schema_json,
+            "layout_id": str(self.layout_id) if self.layout_id else None,
+            "style_id": str(self.style_id) if self.style_id else None,
+            "use_theme_switcher_styles": self.use_theme_switcher_styles,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
