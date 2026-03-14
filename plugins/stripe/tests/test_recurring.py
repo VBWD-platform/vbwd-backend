@@ -590,3 +590,31 @@ class TestWebhookRecurring:
         assert event.error_code == "payment_failed"
         assert event.error_message == "Card was declined"
         assert event.provider == "stripe"
+
+
+class TestBillingPeriodToStripeDaily:
+    """Tests that DAILY billing period maps to interval=day in Stripe."""
+
+    def test_daily_period_maps_to_day_interval(self):
+        from plugins.stripe.routes import BILLING_PERIOD_TO_STRIPE
+
+        assert "DAILY" in BILLING_PERIOD_TO_STRIPE
+        assert BILLING_PERIOD_TO_STRIPE["DAILY"]["interval"] == "day"
+
+    def test_build_subscription_items_daily(self, app, mocker):
+        from plugins.stripe.routes import _build_stripe_subscription_items
+        from src.models.enums import BillingPeriod
+
+        li = _make_subscription_line_item(BillingPeriod.DAILY)
+        invoice = MagicMock()
+        invoice.line_items = [li]
+        invoice.currency = "EUR"
+
+        mock_db = mocker.patch("plugins.stripe.routes.db")
+        mock_db.session.get.return_value = li._sub
+
+        with app.app_context():
+            items = _build_stripe_subscription_items(invoice)
+
+        assert len(items) == 1
+        assert items[0]["price_data"]["recurring"]["interval"] == "day"

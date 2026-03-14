@@ -48,6 +48,7 @@ class Subscription(BaseModel):
     trial_end_at = db.Column(db.DateTime, nullable=True)
     cancelled_at = db.Column(db.DateTime)
     paused_at = db.Column(db.DateTime, nullable=True)
+    payment_failed_at = db.Column(db.DateTime, nullable=True)
     provider_subscription_id = db.Column(
         db.String(255), unique=True, nullable=True, index=True
     )

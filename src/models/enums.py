@@ -47,6 +47,7 @@ class BillingPeriod(enum.Enum):
     YEARLY = "YEARLY"
     QUARTERLY = "QUARTERLY"
     WEEKLY = "WEEKLY"
+    DAILY = "DAILY"
     ONE_TIME = "ONE_TIME"
 
 

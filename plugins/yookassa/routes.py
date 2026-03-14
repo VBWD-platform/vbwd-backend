@@ -217,11 +217,46 @@ def _handle_payment_canceled(obj):
     if not invoice_id_str:
         return
 
+    container = current_app.container
+    invoice_repo = container.invoice_repository()
+
+    try:
+        invoice = invoice_repo.find_by_id(UUID(invoice_id_str))
+    except (ValueError, TypeError):
+        return
+
+    if not invoice:
+        return
+
+    invoice.status = InvoiceStatus.FAILED
+    invoice_repo.save(invoice)
+
     logger.warning(
         "YooKassa payment canceled for invoice %s, payment %s",
         invoice_id_str,
         obj.get("id", ""),
     )
+
+    sub_repo = container.subscription_repository()
+    subscription_id = None
+    user_id = None
+    for li in invoice.line_items:
+        if li.item_type == LineItemType.SUBSCRIPTION:
+            sub = sub_repo.find_by_id(li.item_id)
+            if sub:
+                subscription_id = sub.id
+                user_id = sub.user_id
+            break
+
+    if subscription_id is not None:
+        event = PaymentFailedEvent(
+            subscription_id=subscription_id,
+            user_id=user_id,
+            error_code="payment_canceled",
+            error_message="YooKassa payment was canceled",
+            provider="yookassa",
+        )
+        container.event_dispatcher().emit(event)
 
 
 def _handle_refund_succeeded(obj):

@@ -21,6 +21,7 @@ def _register_event_handlers(app: Flask, container) -> None:
     from src.handlers.refund_handler import PaymentRefundedHandler
     from src.handlers.restore_handler import RefundReversedHandler
     from src.handlers.subscription_cancel_handler import SubscriptionCancelledHandler
+    from src.handlers.payment_failed_handler import PaymentFailedHandler
 
     try:
         dispatcher = container.event_dispatcher()
@@ -71,6 +72,10 @@ def _register_event_handlers(app: Flask, container) -> None:
         # Create and register subscription cancel handler
         cancel_handler = SubscriptionCancelledHandler(container)
         dispatcher.register("subscription.cancelled", cancel_handler)
+
+        # Create and register payment failed handler
+        payment_failed_handler = PaymentFailedHandler(container)
+        dispatcher.register("payment.failed", payment_failed_handler)
 
         logger.info("Event handlers registered successfully")
 
@@ -318,5 +323,10 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(cleanup_test_data_command)
     app.cli.add_command(reset_demo_command)
     app.cli.add_command(plugins_cli)
+
+    if not app.config.get("TESTING"):
+        from src.scheduler import start_subscription_scheduler
+
+        start_subscription_scheduler(app)
 
     return app

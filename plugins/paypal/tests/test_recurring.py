@@ -348,3 +348,14 @@ class TestCaptureOrderEmitsEvent:
         event = emit_call.call_args[0][0]
         assert isinstance(event, PaymentCapturedEvent)
         assert str(event.invoice_id) == invoice_id
+
+
+class TestBillingPeriodToPaypalDaily:
+    """Tests that daily billing period maps to DAY interval in PayPal."""
+
+    def test_daily_period_in_mapping(self):
+        from plugins.paypal.routes import BILLING_PERIOD_TO_PAYPAL
+
+        assert "daily" in BILLING_PERIOD_TO_PAYPAL
+        assert BILLING_PERIOD_TO_PAYPAL["daily"]["interval_unit"] == "DAY"
+        assert BILLING_PERIOD_TO_PAYPAL["daily"]["interval_count"] == 1

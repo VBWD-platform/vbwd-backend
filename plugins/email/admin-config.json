@@ -1,0 +1,79 @@
+{
+  "tabs": [
+    {
+      "id": "sender",
+      "label": "Sender",
+      "fields": [
+        {
+          "key": "active_sender",
+          "label": "Active Sender",
+          "component": "input",
+          "inputType": "text",
+          "description": "Sender ID to use for outgoing email (smtp, mailchimp, …)"
+        },
+        {
+          "key": "smtp_from_email",
+          "label": "From Address",
+          "component": "input",
+          "inputType": "email",
+          "description": "Default From address for all outgoing emails"
+        },
+        {
+          "key": "smtp_from_name",
+          "label": "From Name",
+          "component": "input",
+          "inputType": "text",
+          "description": "Display name shown in the From field"
+        },
+        {
+          "key": "log_sends",
+          "label": "Log Email Sends",
+          "component": "checkbox",
+          "description": "Write a log entry for every email dispatched"
+        }
+      ]
+    },
+    {
+      "id": "smtp",
+      "label": "SMTP",
+      "fields": [
+        {
+          "key": "smtp_host",
+          "label": "SMTP Host",
+          "component": "input",
+          "inputType": "text",
+          "description": "SMTP server hostname (use 'mailpit' for local dev)"
+        },
+        {
+          "key": "smtp_port",
+          "label": "SMTP Port",
+          "component": "input",
+          "inputType": "number",
+          "min": 1,
+          "max": 65535,
+          "description": "587 (STARTTLS), 465 (SSL), 1025 (Mailpit)"
+        },
+        {
+          "key": "smtp_use_tls",
+          "label": "Use STARTTLS",
+          "component": "checkbox",
+          "description": "Upgrade connection with STARTTLS (disable for Mailpit)"
+        },
+        {
+          "key": "smtp_user",
+          "label": "Username",
+          "component": "input",
+          "inputType": "text",
+          "description": "SMTP auth username (leave blank if no auth required)"
+        },
+        {
+          "key": "smtp_password",
+          "label": "Password",
+          "component": "input",
+          "inputType": "password",
+          "description": "SMTP auth password"
+        }
+      ]
+    }
+  ]
+}

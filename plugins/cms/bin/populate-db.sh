@@ -59,7 +59,7 @@ fi
 echo -e "${YELLOW}Step 1/2 — Running Alembic migrations...${NC}"
 echo ""
 
-docker compose exec -T api python -m alembic upgrade head
+docker compose exec -T api python -m alembic upgrade heads
 
 if [ $? -ne 0 ]; then
     echo ""

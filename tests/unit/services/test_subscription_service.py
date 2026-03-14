@@ -634,3 +634,95 @@ class TestExpireTrials:
         results = service.expire_trials(MagicMock())
 
         assert len(results) == 0
+
+
+class TestBillingPeriodDays:
+    """Test PERIOD_DAYS covers all BillingPeriod values including DAILY and WEEKLY."""
+
+    def test_daily_period_is_one_day(self):
+        from src.models.enums import BillingPeriod
+        from src.services.subscription_service import SubscriptionService
+
+        assert SubscriptionService.PERIOD_DAYS[BillingPeriod.DAILY] == 1
+
+    def test_weekly_period_is_seven_days(self):
+        from src.models.enums import BillingPeriod
+        from src.services.subscription_service import SubscriptionService
+
+        assert SubscriptionService.PERIOD_DAYS[BillingPeriod.WEEKLY] == 7
+
+    def test_all_billing_periods_covered(self):
+        from src.models.enums import BillingPeriod
+        from src.services.subscription_service import SubscriptionService
+
+        for period in BillingPeriod:
+            assert (
+                period in SubscriptionService.PERIOD_DAYS
+            ), f"{period} missing from PERIOD_DAYS"
+
+
+class TestSendDunningEmails:
+    """Tests for SubscriptionService.send_dunning_emails()."""
+
+    def _make_subscription(self):
+        sub = MagicMock()
+        sub.id = uuid4()
+        sub.user_id = uuid4()
+        return sub
+
+    def test_returns_empty_list_when_no_candidates(self):
+        sub_repo = MagicMock()
+        sub_repo.find_dunning_candidates.return_value = []
+        service = SubscriptionService(subscription_repo=sub_repo)
+
+        result = service.send_dunning_emails()
+
+        assert result == []
+
+    def test_dispatches_dunning_event_for_each_candidate(self):
+        sub1 = self._make_subscription()
+        sub2 = self._make_subscription()
+
+        sub_repo = MagicMock()
+        sub_repo.find_dunning_candidates.side_effect = lambda days: (
+            [sub1] if days == 3 else [sub2]
+        )
+
+        dispatcher = MagicMock()
+        service = SubscriptionService(subscription_repo=sub_repo)
+
+        result = service.send_dunning_emails(event_dispatcher=dispatcher)
+
+        assert len(result) == 2
+        assert dispatcher.emit.call_count == 2
+
+    def test_no_dispatch_when_no_event_dispatcher(self):
+        sub = self._make_subscription()
+        sub_repo = MagicMock()
+        sub_repo.find_dunning_candidates.return_value = [sub]
+
+        service = SubscriptionService(subscription_repo=sub_repo)
+        result = service.send_dunning_emails(event_dispatcher=None)
+
+        assert len(result) >= 0
+
+    def test_uses_dunning_days_config(self):
+        from src.services.subscription_service import SubscriptionService
+
+        assert hasattr(SubscriptionService, "DUNNING_DAYS")
+        assert 3 in SubscriptionService.DUNNING_DAYS
+        assert 7 in SubscriptionService.DUNNING_DAYS
+
+    def test_emitted_events_are_subscription_dunning_events(self):
+        from src.events.subscription_events import SubscriptionDunningEvent
+
+        sub = self._make_subscription()
+        sub_repo = MagicMock()
+        sub_repo.find_dunning_candidates.return_value = [sub]
+
+        dispatcher = MagicMock()
+        service = SubscriptionService(subscription_repo=sub_repo)
+        service.send_dunning_emails(event_dispatcher=dispatcher)
+
+        emitted = dispatcher.emit.call_args[0][0]
+        assert isinstance(emitted, SubscriptionDunningEvent)

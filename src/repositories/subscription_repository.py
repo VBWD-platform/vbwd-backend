@@ -140,6 +140,21 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             .all()
         )
 
+    def find_dunning_candidates(self, days_since_failure: int) -> List[Subscription]:
+        """Find active subscriptions whose payment_failed_at was exactly N days ago."""
+        target_start = utcnow() - timedelta(days=days_since_failure + 1)
+        target_end = utcnow() - timedelta(days=days_since_failure)
+        return (
+            self._session.query(Subscription)
+            .filter(
+                Subscription.status == SubscriptionStatus.ACTIVE,
+                Subscription.payment_failed_at.isnot(None),
+                Subscription.payment_failed_at >= target_start,
+                Subscription.payment_failed_at < target_end,
+            )
+            .all()
+        )
+
     def find_all_paginated(
         self,
         limit: int = 20,

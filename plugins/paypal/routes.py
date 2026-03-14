@@ -27,10 +27,11 @@ paypal_plugin_bp = Blueprint("paypal_plugin", __name__)
 
 # Billing period to PayPal interval mapping
 BILLING_PERIOD_TO_PAYPAL = {
+    "daily": {"interval_unit": "DAY", "interval_count": 1},
+    "weekly": {"interval_unit": "WEEK", "interval_count": 1},
     "monthly": {"interval_unit": "MONTH", "interval_count": 1},
     "quarterly": {"interval_unit": "MONTH", "interval_count": 3},
     "yearly": {"interval_unit": "YEAR", "interval_count": 1},
-    "weekly": {"interval_unit": "WEEK", "interval_count": 1},
 }
 
 

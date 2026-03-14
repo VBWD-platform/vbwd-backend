@@ -241,3 +241,135 @@ class TestWebhookEventEmission:
         # No direct saves on invoice or subscription repos
         mock_container.invoice_repository.return_value.save.assert_not_called()
         mock_container.subscription_repository.return_value.save.assert_not_called()
+
+
+class TestPaymentCanceled:
+    """Tests for payment.canceled webhook handler (marks invoice FAILED, emits event)."""
+
+    def _setup_invoice_with_subscription(self, mock_container, invoice_id, sub_id):
+        """Helper to configure invoice + subscription line item in mock_container."""
+        mock_invoice = MagicMock()
+        mock_invoice.id = UUID(invoice_id)
+        mock_invoice.status = MagicMock()
+
+        mock_li = MagicMock()
+        from src.models.enums import LineItemType
+        mock_li.item_type = LineItemType.SUBSCRIPTION
+        mock_li.item_id = sub_id
+        mock_invoice.line_items = [mock_li]
+
+        mock_container.invoice_repository.return_value.find_by_id.return_value = (
+            mock_invoice
+        )
+
+        mock_subscription = MagicMock()
+        mock_subscription.id = sub_id
+        mock_subscription.user_id = uuid4()
+        mock_container.subscription_repository.return_value.find_by_id.return_value = (
+            mock_subscription
+        )
+
+        return mock_invoice, mock_subscription
+
+    def test_payment_canceled_marks_invoice_failed(
+        self, client, mock_container, yookassa_config
+    ):
+        """payment.canceled should mark invoice status as FAILED and call save."""
+        from src.models.enums import InvoiceStatus
+
+        invoice_id = str(uuid4())
+        sub_id = uuid4()
+        mock_invoice, _ = self._setup_invoice_with_subscription(
+            mock_container, invoice_id, sub_id
+        )
+
+        event_payload = {
+            "event": "payment.canceled",
+            "object": {
+                "id": "pay_canceled_1",
+                "metadata": {"invoice_id": invoice_id},
+                "amount": {"value": "100.00", "currency": "RUB"},
+            },
+        }
+        resp = _make_webhook_call(
+            client, event_payload, yookassa_config["test_webhook_secret"]
+        )
+        assert resp.status_code == 200
+
+        assert mock_invoice.status == InvoiceStatus.FAILED
+        mock_container.invoice_repository.return_value.save.assert_called_once_with(
+            mock_invoice
+        )
+
+    def test_payment_canceled_emits_payment_failed_event(
+        self, client, mock_container, yookassa_config
+    ):
+        """payment.canceled should emit PaymentFailedEvent with correct subscription_id."""
+        from src.events.payment_events import PaymentFailedEvent
+
+        invoice_id = str(uuid4())
+        sub_id = uuid4()
+        _, mock_subscription = self._setup_invoice_with_subscription(
+            mock_container, invoice_id, sub_id
+        )
+
+        event_payload = {
+            "event": "payment.canceled",
+            "object": {
+                "id": "pay_canceled_2",
+                "metadata": {"invoice_id": invoice_id},
+                "amount": {"value": "100.00", "currency": "RUB"},
+            },
+        }
+        resp = _make_webhook_call(
+            client, event_payload, yookassa_config["test_webhook_secret"]
+        )
+        assert resp.status_code == 200
+
+        emit_call = mock_container.event_dispatcher.return_value.emit
+        emit_call.assert_called_once()
+        event = emit_call.call_args[0][0]
+        assert isinstance(event, PaymentFailedEvent)
+        assert event.subscription_id == mock_subscription.id
+
+    def test_payment_canceled_unknown_invoice_no_op(
+        self, client, mock_container, yookassa_config
+    ):
+        """payment.canceled with unknown invoice_id should be a no-op (no save, no emit)."""
+        mock_container.invoice_repository.return_value.find_by_id.return_value = None
+
+        event_payload = {
+            "event": "payment.canceled",
+            "object": {
+                "id": "pay_canceled_unk",
+                "metadata": {"invoice_id": str(uuid4())},
+                "amount": {"value": "100.00", "currency": "RUB"},
+            },
+        }
+        resp = _make_webhook_call(
+            client, event_payload, yookassa_config["test_webhook_secret"]
+        )
+        assert resp.status_code == 200
+
+        mock_container.invoice_repository.return_value.save.assert_not_called()
+        mock_container.event_dispatcher.return_value.emit.assert_not_called()
+
+    def test_payment_canceled_no_invoice_id_no_op(
+        self, client, mock_container, yookassa_config
+    ):
+        """payment.canceled with no invoice_id in metadata should be a no-op."""
+        event_payload = {
+            "event": "payment.canceled",
+            "object": {
+                "id": "pay_canceled_nometa",
+                "metadata": {},
+                "amount": {"value": "100.00", "currency": "RUB"},
+            },
+        }
+        resp = _make_webhook_call(
+            client, event_payload, yookassa_config["test_webhook_secret"]
+        )
+        assert resp.status_code == 200
+
+        mock_container.invoice_repository.return_value.save.assert_not_called()
+        mock_container.event_dispatcher.return_value.emit.assert_not_called()

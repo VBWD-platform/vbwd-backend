@@ -32,10 +32,11 @@ stripe_plugin_bp = Blueprint("stripe_plugin", __name__)
 
 # Billing period to Stripe recurring interval mapping
 BILLING_PERIOD_TO_STRIPE = {
+    "DAILY": {"interval": "day"},
+    "WEEKLY": {"interval": "week"},
     "MONTHLY": {"interval": "month"},
     "QUARTERLY": {"interval": "month", "interval_count": 3},
     "YEARLY": {"interval": "year"},
-    "WEEKLY": {"interval": "week"},
 }
 
 

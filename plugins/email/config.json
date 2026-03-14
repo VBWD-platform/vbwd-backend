@@ -1,0 +1,47 @@
+{
+  "smtp_host": {
+    "type": "string",
+    "default": "localhost",
+    "description": "SMTP server hostname"
+  },
+  "smtp_port": {
+    "type": "number",
+    "default": 587,
+    "description": "SMTP server port (587 for STARTTLS, 465 for SSL, 1025 for Mailpit)"
+  },
+  "smtp_user": {
+    "type": "string",
+    "default": "",
+    "description": "SMTP authentication username (leave blank if no auth)"
+  },
+  "smtp_password": {
+    "type": "string",
+    "default": "",
+    "description": "SMTP authentication password"
+  },
+  "smtp_use_tls": {
+    "type": "boolean",
+    "default": true,
+    "description": "Use STARTTLS when connecting to SMTP server"
+  },
+  "smtp_from_email": {
+    "type": "string",
+    "default": "noreply@example.com",
+    "description": "From address used for all outgoing emails"
+  },
+  "smtp_from_name": {
+    "type": "string",
+    "default": "VBWD",
+    "description": "From display name used for all outgoing emails"
+  },
+  "active_sender": {
+    "type": "string",
+    "default": "smtp",
+    "description": "Active email sender ID (e.g. smtp, mailchimp)"
+  },
+  "log_sends": {
+    "type": "boolean",
+    "default": false,
+    "description": "Write a log entry for every email sent"
+  }
+}

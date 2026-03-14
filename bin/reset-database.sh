@@ -181,7 +181,7 @@ echo "Step 3/5: Running database migrations"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Run migrations in a one-off container so there is no race with the api CMD startup
-docker compose run --rm api alembic upgrade head
+docker compose run --rm api alembic upgrade heads
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Migrations completed successfully${NC}"

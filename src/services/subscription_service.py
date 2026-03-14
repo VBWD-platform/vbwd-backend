@@ -64,11 +64,15 @@ class SubscriptionService:
 
     # Duration in days for each billing period
     PERIOD_DAYS = {
+        BillingPeriod.DAILY: 1,
+        BillingPeriod.WEEKLY: 7,
         BillingPeriod.MONTHLY: 30,
         BillingPeriod.QUARTERLY: 90,
         BillingPeriod.YEARLY: 365,
         BillingPeriod.ONE_TIME: 36500,  # ~100 years for lifetime
     }
+
+    DUNNING_DAYS = [3, 7]
 
     def __init__(
         self,
@@ -365,6 +369,37 @@ class SubscriptionService:
                 }
             )
 
+        return results
+
+    def send_dunning_emails(self, event_dispatcher=None) -> list:
+        """
+        Send dunning emails for subscriptions with failed payments.
+
+        Args:
+            event_dispatcher: Optional event dispatcher to emit dunning events
+
+        Returns:
+            List of dicts with subscription_id and days_overdue
+        """
+        from src.events.subscription_events import SubscriptionDunningEvent
+
+        results = []
+        for days in self.DUNNING_DAYS:
+            candidates = self._subscription_repo.find_dunning_candidates(days)
+            for subscription in candidates:
+                if event_dispatcher is not None:
+                    event = SubscriptionDunningEvent(
+                        subscription_id=subscription.id,  # type: ignore[arg-type]
+                        user_id=subscription.user_id,  # type: ignore[arg-type]
+                        days_overdue=days,
+                    )
+                    event_dispatcher.emit(event)
+                results.append(
+                    {
+                        "subscription_id": str(subscription.id),
+                        "days_overdue": days,
+                    }
+                )
         return results
 
     def pause_subscription(self, subscription_id: UUID) -> SubscriptionResult:

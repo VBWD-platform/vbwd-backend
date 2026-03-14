@@ -8,6 +8,23 @@ from src.events.domain import DomainEvent
 
 
 @dataclass
+class SubscriptionDunningEvent(DomainEvent):
+    """Event: Dunning email should be sent for failed subscription payment."""
+
+    subscription_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
+    days_overdue: int = 0
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.name = "subscription.dunning"
+        if not hasattr(self, "data"):
+            self.data = {}
+        if not hasattr(self, "propagation_stopped"):
+            self.propagation_stopped = False
+
+
+@dataclass
 class SubscriptionCreatedEvent(DomainEvent):
     """Event: New subscription was created."""
 

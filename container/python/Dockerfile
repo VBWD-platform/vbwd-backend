@@ -18,4 +18,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "alembic upgrade head && gunicorn --config gunicorn.conf.py 'src.app:create_app()'"]
+CMD ["sh", "-c", "alembic upgrade heads && gunicorn --config gunicorn.conf.py 'src.app:create_app()'"]
