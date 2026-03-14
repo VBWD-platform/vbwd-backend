@@ -25,6 +25,8 @@ Admin (require_admin):
     DELETE /api/v1/admin/ghrm/packages/<id>
     POST   /api/v1/admin/ghrm/packages/<id>/rotate-key
     POST   /api/v1/admin/ghrm/packages/<id>/sync
+    GET    /api/v1/admin/ghrm/packages/<id>/preview/<field>   (readme|changelog|screenshots)
+    POST   /api/v1/admin/ghrm/packages/<id>/sync/<field>      (readme|changelog|screenshots)
     GET    /api/v1/admin/ghrm/access-log
     POST   /api/v1/admin/ghrm/access/sync/<user_id>
 """
@@ -45,7 +47,7 @@ from plugins.ghrm.src.services.software_package_service import (
 from plugins.ghrm.src.services.github_access_service import (
     GithubAccessService, GhrmOAuthError, GhrmGithubNotConnectedError,
 )
-from plugins.ghrm.src.services.github_app_client import MockGithubAppClient
+from plugins.ghrm.src.services.github_app_client import IGithubAppClient
 from plugins.ghrm.src.models.ghrm_software_package import GhrmSoftwarePackage
 
 logger = logging.getLogger(__name__)
@@ -54,23 +56,54 @@ ghrm_bp = Blueprint("ghrm", __name__)
 
 # ─── Dependency factories ────────────────────────────────────────────────────
 
+class GithubNotConfiguredError(Exception):
+    """Raised when GitHub App credentials are absent or incomplete."""
+
+
+def _make_github_client(cfg: dict) -> IGithubAppClient:
+    """Return a real GithubAppClient, or raise GithubNotConfiguredError if credentials are missing."""
+    import os
+    app_id = cfg.get("github_app_id", "")
+    installation_id = cfg.get("github_installation_id", "")
+    pem_path = cfg.get("github_app_private_key_path", "")
+    if not (app_id and installation_id and pem_path and os.path.isfile(pem_path)):
+        raise GithubNotConfiguredError(
+            "GitHub App credentials not configured — set github_app_id, github_installation_id, "
+            "and a valid github_app_private_key_path in the GHRM plugin config."
+        )
+    from plugins.ghrm.src.services.github_app_client_real import GithubAppClient
+    with open(pem_path, "r") as f:
+        private_key = f.read()
+    return GithubAppClient(
+        app_id=str(app_id),
+        private_key=private_key,
+        installation_id=str(installation_id),
+    )
+
+
 def _pkg_svc() -> SoftwarePackageService:
     cfg = _cfg()
+    try:
+        github = _make_github_client(cfg)
+    except GithubNotConfiguredError:
+        github = None
     return SoftwarePackageService(
         package_repo=GhrmSoftwarePackageRepository(db.session),
         sync_repo=GhrmSoftwareSyncRepository(db.session),
-        github=MockGithubAppClient(),
+        github=github,
         software_category_slugs=cfg.get("software_category_slugs", []),
     )
 
 
 def _access_svc() -> GithubAccessService:
     cfg = _cfg()
+    # Raises GithubNotConfiguredError if credentials absent — callers return 503
+    github = _make_github_client(cfg)
     return GithubAccessService(
         access_repo=GhrmUserGithubAccessRepository(db.session),
         log_repo=GhrmAccessLogRepository(db.session),
         package_repo=GhrmSoftwarePackageRepository(db.session),
-        github=MockGithubAppClient(),
+        github=github,
         oauth_client_id=cfg.get("github_oauth_client_id", ""),
         oauth_client_secret=cfg.get("github_oauth_client_secret", ""),
         oauth_redirect_uri=cfg.get("github_oauth_redirect_uri", ""),
@@ -80,9 +113,12 @@ def _access_svc() -> GithubAccessService:
 
 def _cfg() -> dict:
     try:
-        from src.plugins.manager import plugin_manager
-        plugin = plugin_manager.get_plugin("ghrm")
-        return plugin.config or {} if plugin else {}
+        from flask import current_app
+        pm = getattr(current_app, "plugin_manager", None)
+        if pm is None:
+            return {}
+        plugin = pm.get_plugin("ghrm")
+        return plugin._config if plugin else {}
     except Exception:
         return {}
 
@@ -204,6 +240,9 @@ def sync_package():
         return jsonify({"ok": True, "sync": result})
     except GhrmSyncAuthError as e:
         return jsonify({"error": str(e)}), 403
+    except GithubNotConfiguredError as e:
+        logger.error(f"[GHRM] sync skipped — {e}")
+        return jsonify({"error": "GitHub App not configured"}), 503
     except Exception as e:
         logger.error(f"[GHRM] sync error: {e}", exc_info=True)
         return jsonify({"error": "Sync failed"}), 500
@@ -230,7 +269,10 @@ def github_oauth_start():
         current_app.config.get("JWT_SECRET_KEY", "dev"),
         algorithm="HS256",
     )
-    url = _access_svc().get_oauth_url(user_id, state)
+    try:
+        url = _access_svc().get_oauth_url(user_id, state)
+    except GithubNotConfiguredError:
+        return jsonify({"error": "GitHub App not configured"}), 503
     return jsonify({"url": url})
 
 
@@ -265,6 +307,8 @@ def github_oauth_callback():
     try:
         result = _access_svc().handle_oauth_callback(user_id, code)
         return jsonify(result)
+    except GithubNotConfiguredError:
+        return jsonify({"error": "GitHub App not configured"}), 503
     except GhrmOAuthError as e:
         return jsonify({"error": str(e)}), 502
 
@@ -273,7 +317,10 @@ def github_oauth_callback():
 @require_auth
 def github_disconnect():
     """Disconnect GitHub — revoke token and remove collaborator."""
-    _access_svc().disconnect_github(g.user_id)
+    try:
+        _access_svc().disconnect_github(g.user_id)
+    except GithubNotConfiguredError:
+        return jsonify({"error": "GitHub App not configured"}), 503
     return jsonify({"ok": True})
 
 
@@ -282,7 +329,10 @@ def github_disconnect():
 @ghrm_bp.route("/api/v1/ghrm/access", methods=["GET"])
 @require_auth
 def get_access_status():
-    result = _access_svc().get_access_status(g.user_id)
+    try:
+        result = _access_svc().get_access_status(g.user_id)
+    except GithubNotConfiguredError:
+        return jsonify({"connected": False}), 200
     if not result:
         return jsonify({"connected": False}), 200
     return jsonify({**result, "connected": True})
@@ -397,9 +447,53 @@ def admin_sync_package(pkg_id):
     try:
         result = _pkg_svc().sync_package(pkg.sync_api_key)
         return jsonify({"ok": True, "sync": result})
+    except GhrmSyncAuthError as e:
+        return jsonify({"error": str(e)}), 503
     except Exception as e:
         logger.error(f"[GHRM] admin sync error: {e}", exc_info=True)
         return jsonify({"error": "Sync failed"}), 500
+
+
+_VALID_PREVIEW_FIELDS = {"readme", "changelog", "screenshots"}
+
+
+@ghrm_bp.route("/api/v1/admin/ghrm/packages/<pkg_id>/preview/<field>", methods=["GET"])
+@require_auth
+@require_admin
+def admin_preview_field(pkg_id, field):
+    if field not in _VALID_PREVIEW_FIELDS:
+        return jsonify({"error": f"Invalid field '{field}'. Must be one of: readme, changelog, screenshots"}), 400
+    svc = _pkg_svc()
+    try:
+        if field == "readme":
+            content = svc.preview_readme(pkg_id)
+            return jsonify({"content": content})
+        elif field == "changelog":
+            content = svc.preview_changelog(pkg_id)
+            return jsonify({"content": content})
+        else:
+            urls = svc.preview_screenshots(pkg_id)
+            return jsonify({"urls": urls})
+    except GhrmPackageNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except GhrmSyncAuthError as e:
+        return jsonify({"error": str(e)}), 503
+
+
+@ghrm_bp.route("/api/v1/admin/ghrm/packages/<pkg_id>/sync/<field>", methods=["POST"])
+@require_auth
+@require_admin
+def admin_sync_field(pkg_id, field):
+    if field not in _VALID_PREVIEW_FIELDS:
+        return jsonify({"error": f"Invalid field '{field}'. Must be one of: readme, changelog, screenshots"}), 400
+    svc = _pkg_svc()
+    try:
+        result = svc.sync_field(pkg_id, field)
+        return jsonify({"ok": True, "sync": result})
+    except GhrmPackageNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except GhrmSyncAuthError as e:
+        return jsonify({"error": str(e)}), 503
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/access-log", methods=["GET"])

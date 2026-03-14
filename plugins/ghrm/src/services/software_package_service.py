@@ -30,7 +30,7 @@ class SoftwarePackageService:
         self,
         package_repo: GhrmSoftwarePackageRepository,
         sync_repo: GhrmSoftwareSyncRepository,
-        github: IGithubAppClient,
+        github: Optional[IGithubAppClient],
         software_category_slugs: Optional[List[str]] = None,
     ) -> None:
         self._package_repo = package_repo
@@ -114,6 +114,8 @@ class SoftwarePackageService:
 
     def sync_package(self, api_key: str) -> Dict[str, Any]:
         """Verify API key, pull data from GitHub, update sync record. Returns sync dict."""
+        if self._github is None:
+            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
         pkg = self._package_repo.find_by_sync_key(api_key)
         if not pkg:
             raise GhrmSyncAuthError("Invalid sync API key")
@@ -148,6 +150,56 @@ class SoftwarePackageService:
         sync.last_synced_at = utcnow()
         self._sync_repo.save(sync)
 
+        return sync.to_dict()
+
+    def preview_readme(self, package_id: str) -> str:
+        if self._github is None:
+            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+        pkg = self._package_repo.find_by_id(package_id)
+        if not pkg:
+            raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")
+        return self._github.fetch_readme(pkg.github_owner, pkg.github_repo)
+
+    def preview_changelog(self, package_id: str) -> Optional[str]:
+        if self._github is None:
+            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+        pkg = self._package_repo.find_by_id(package_id)
+        if not pkg:
+            raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")
+        return self._github.fetch_changelog(pkg.github_owner, pkg.github_repo)
+
+    def preview_screenshots(self, package_id: str) -> List[str]:
+        if self._github is None:
+            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+        pkg = self._package_repo.find_by_id(package_id)
+        if not pkg:
+            raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")
+        return self._github.fetch_screenshot_urls(pkg.github_owner, pkg.github_repo)
+
+    def sync_field(self, package_id: str, field: str) -> Dict[str, Any]:
+        valid_fields = {"readme", "changelog", "screenshots"}
+        if field not in valid_fields:
+            raise ValueError(f"Unknown field '{field}'. Must be one of: {', '.join(sorted(valid_fields))}")
+        if self._github is None:
+            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+        pkg = self._package_repo.find_by_id(package_id)
+        if not pkg:
+            raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")
+
+        sync = self._sync_repo.find_by_package_id(package_id)
+        if not sync:
+            sync = GhrmSoftwareSync(software_package_id=package_id)
+
+        if field == "readme":
+            sync.cached_readme = self._github.fetch_readme(pkg.github_owner, pkg.github_repo)
+        elif field == "changelog":
+            sync.cached_changelog = self._github.fetch_changelog(pkg.github_owner, pkg.github_repo)
+        elif field == "screenshots":
+            urls = self._github.fetch_screenshot_urls(pkg.github_owner, pkg.github_repo)
+            sync.cached_screenshots = [{"url": u, "caption": ""} for u in urls]
+
+        sync.last_synced_at = utcnow()
+        self._sync_repo.save(sync)
         return sync.to_dict()
 
     def rotate_api_key(self, pkg_id: str) -> str:

@@ -290,6 +290,8 @@ class PluginManager:
 
             if plugin.status == PluginStatus.INITIALIZED:
                 try:
+                    if config.config:
+                        plugin.initialize(config.config)
                     plugin.enable()
                     logger.info(
                         f"Restored enabled state for plugin '{config.plugin_name}'"

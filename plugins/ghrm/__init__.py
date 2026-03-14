@@ -55,12 +55,11 @@ class GhrmPlugin(BasePlugin):
             from plugins.ghrm.src.repositories.user_github_access_repository import GhrmUserGithubAccessRepository
             from plugins.ghrm.src.repositories.access_log_repository import GhrmAccessLogRepository
             from plugins.ghrm.src.repositories.software_package_repository import GhrmSoftwarePackageRepository
-            from plugins.ghrm.src.services.github_app_client import MockGithubAppClient
             from plugins.ghrm.src.services.github_access_service import GithubAccessService
+            from plugins.ghrm.src.routes import _make_github_client, GithubNotConfiguredError
 
-            cfg = self.config or {}
-            # Use mock client if app credentials not configured
-            github = MockGithubAppClient()
+            cfg = self._config or {}
+            github = _make_github_client(cfg)
 
             def _make_access_service():
                 return GithubAccessService(
@@ -102,6 +101,11 @@ class GhrmPlugin(BasePlugin):
             event_dispatcher.subscribe("subscription.cancelled", on_cancelled)
             event_dispatcher.subscribe("subscription.payment_failed", on_payment_failed)
             event_dispatcher.subscribe("subscription.renewed", on_renewed)
+        except GithubNotConfiguredError as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"[GHRM] Subscription event handlers not registered — {exc}"
+            )
         except Exception:
             pass  # Plugin disabled or dependencies not ready
 

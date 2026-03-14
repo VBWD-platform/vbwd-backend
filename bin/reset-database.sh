@@ -121,6 +121,10 @@ if ! docker compose ps | grep -q "postgres.*Up"; then
     exit 1
 fi
 
+# Stop the API now — its CMD runs alembic on startup and would race with our migration step
+echo "Stopping api service before reset..."
+docker compose stop api
+
 # Get database credentials from environment or defaults
 DB_USER="${POSTGRES_USER:-vbwd}"
 DB_PASSWORD="${POSTGRES_PASSWORD:-vbwd}"
@@ -176,7 +180,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Step 3/5: Running database migrations"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-docker compose exec -T api alembic upgrade head
+# Run migrations in a one-off container so there is no race with the api CMD startup
+docker compose run --rm api alembic upgrade head
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Migrations completed successfully${NC}"
@@ -184,6 +189,26 @@ else
     echo -e "${RED}✗ Migrations failed${NC}"
     exit 1
 fi
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Step 3b: Starting API service"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+docker compose start api
+
+echo "Waiting for api to be ready..."
+RETRIES=30
+until docker compose exec -T api echo "ok" > /dev/null 2>&1; do
+    RETRIES=$((RETRIES - 1))
+    if [ $RETRIES -eq 0 ]; then
+        echo -e "${RED}✗ API did not come back up in time${NC}"
+        docker compose logs --tail=20 api
+        exit 1
+    fi
+    sleep 2
+done
+echo -e "${GREEN}✓ API is ready${NC}"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

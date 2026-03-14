@@ -240,6 +240,17 @@ class TestSyncPackage:
         assert saved_sync.cached_releases[0]["tag"] == "v2.0.0"
         assert saved_sync.cached_releases[0]["assets"][0]["name"] == "dist.zip"
 
+    def test_raises_sync_auth_error_when_github_not_configured(self):
+        """sync_package raises GhrmSyncAuthError when github is None."""
+        package_repo = MagicMock()
+        svc = SoftwarePackageService(
+            package_repo=package_repo,
+            sync_repo=MagicMock(),
+            github=None,
+        )
+        with pytest.raises(GhrmSyncAuthError):
+            svc.sync_package("any-key")
+
     def test_does_not_overwrite_admin_overrides(self):
         """sync_package preserves existing override_readme and override_changelog."""
         github = MockGithubAppClient()
@@ -276,3 +287,171 @@ class TestSyncPackage:
         # override_readme was NOT touched by sync
         assert saved_sync.override_readme == "# Admin Override — keep me"
         assert saved_sync.override_changelog == "# Admin Changelog Override"
+
+
+class TestPreviewReadme:
+    def test_returns_readme_from_github(self):
+        github = MockGithubAppClient()
+        github.readme_content = "# Live README"
+
+        pkg = _make_package()
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = pkg
+
+        svc = _make_service(package_repo=package_repo, github=github)
+        result = svc.preview_readme("pkg-1")
+
+        assert result == "# Live README"
+
+    def test_raises_not_found_when_package_missing(self):
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = None
+
+        svc = _make_service(package_repo=package_repo)
+
+        with pytest.raises(GhrmPackageNotFoundError):
+            svc.preview_readme("missing-id")
+
+    def test_raises_sync_auth_error_when_github_not_configured(self):
+        pkg = _make_package()
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = pkg
+
+        svc = SoftwarePackageService(
+            package_repo=package_repo,
+            sync_repo=MagicMock(),
+            github=None,
+        )
+
+        with pytest.raises(GhrmSyncAuthError):
+            svc.preview_readme("pkg-1")
+
+
+class TestPreviewChangelog:
+    def test_returns_changelog_from_github(self):
+        github = MockGithubAppClient()
+        github.changelog_content = "## Changes"
+
+        pkg = _make_package()
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = pkg
+
+        svc = _make_service(package_repo=package_repo, github=github)
+        result = svc.preview_changelog("pkg-1")
+
+        assert result == "## Changes"
+
+    def test_returns_none_when_changelog_absent(self):
+        github = MockGithubAppClient()
+        github.changelog_content = None
+
+        pkg = _make_package()
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = pkg
+
+        svc = _make_service(package_repo=package_repo, github=github)
+        result = svc.preview_changelog("pkg-1")
+
+        assert result is None
+
+
+class TestPreviewScreenshots:
+    def test_returns_url_list(self):
+        github = MockGithubAppClient()
+        github.screenshot_urls = ["https://example.com/a.png", "https://example.com/b.png"]
+
+        pkg = _make_package()
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = pkg
+
+        svc = _make_service(package_repo=package_repo, github=github)
+        result = svc.preview_screenshots("pkg-1")
+
+        assert result == ["https://example.com/a.png", "https://example.com/b.png"]
+
+
+class TestSyncField:
+    def _make_captured_sync_svc(self, github, pkg, existing_sync=None):
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = pkg
+
+        captured = {}
+
+        def capture_save(s):
+            captured["sync"] = s
+            s.to_dict.return_value = {"software_package_id": pkg.id}
+            return s
+
+        sync_repo = MagicMock()
+        sync_repo.find_by_package_id.return_value = existing_sync
+        sync_repo.save.side_effect = capture_save
+
+        svc = _make_service(package_repo=package_repo, sync_repo=sync_repo, github=github)
+        return svc, captured
+
+    def test_syncs_readme(self):
+        github = MockGithubAppClient()
+        github.readme_content = "# New README"
+
+        pkg = _make_package()
+        existing_sync = _make_sync()
+        svc, captured = self._make_captured_sync_svc(github, pkg, existing_sync)
+
+        svc.sync_field("pkg-1", "readme")
+
+        assert captured["sync"].cached_readme == "# New README"
+
+    def test_syncs_changelog(self):
+        github = MockGithubAppClient()
+        github.changelog_content = "## v1.1"
+
+        pkg = _make_package()
+        existing_sync = _make_sync()
+        svc, captured = self._make_captured_sync_svc(github, pkg, existing_sync)
+
+        svc.sync_field("pkg-1", "changelog")
+
+        assert captured["sync"].cached_changelog == "## v1.1"
+
+    def test_syncs_screenshots(self):
+        github = MockGithubAppClient()
+        github.screenshot_urls = ["https://example.com/s1.png"]
+
+        pkg = _make_package()
+        existing_sync = _make_sync()
+        svc, captured = self._make_captured_sync_svc(github, pkg, existing_sync)
+
+        svc.sync_field("pkg-1", "screenshots")
+
+        assert captured["sync"].cached_screenshots == [{"url": "https://example.com/s1.png", "caption": ""}]
+
+    def test_raises_value_error_for_unknown_field(self):
+        pkg = _make_package()
+        svc, _ = self._make_captured_sync_svc(MockGithubAppClient(), pkg)
+
+        with pytest.raises(ValueError):
+            svc.sync_field("pkg-1", "unknown_field")
+
+    def test_creates_sync_record_when_none_exists(self):
+        github = MockGithubAppClient()
+        github.readme_content = "# Fresh"
+
+        pkg = _make_package()
+        package_repo = MagicMock()
+        package_repo.find_by_id.return_value = pkg
+
+        captured = {}
+
+        def capture_save(s):
+            captured["sync"] = s
+            return s
+
+        sync_repo = MagicMock()
+        sync_repo.find_by_package_id.return_value = None
+        sync_repo.save.side_effect = capture_save
+
+        svc = _make_service(package_repo=package_repo, sync_repo=sync_repo, github=github)
+        svc.sync_field("pkg-1", "readme")
+
+        assert captured["sync"] is not None
+        assert captured["sync"].cached_readme == "# Fresh"

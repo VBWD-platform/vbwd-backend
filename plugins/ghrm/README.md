@@ -125,6 +125,91 @@ The layout slugs and category slugs are read directly from `config.json`, so if 
 
 ---
 
+## Repository structure requirements
+
+For vbwd to display a complete software detail page, the linked GitHub repository must follow this layout:
+
+```
+your-repo/
+├── README.md            ← required — shown as the Overview tab
+├── CHANGELOG.md         ← optional — shown as the Changelog tab
+├── docs/
+│   ├── README.md        ← optional — shown as the Documentation tab
+│   └── screenshots/     ← optional — images shown in the Screenshots section
+│       ├── 01-dashboard.png
+│       ├── 02-settings.png
+│       └── ...
+```
+
+### What vbwd reads and where it appears
+
+| File / Path | Tab / Section | Required |
+|-------------|---------------|----------|
+| `README.md` | **Overview** tab | Yes — must exist or sync fails |
+| `CHANGELOG.md` | **Changelog** tab | No — tab hidden if absent |
+| `docs/README.md` | **Documentation** tab | No — tab hidden if absent |
+| `docs/screenshots/*.{png,jpg,gif,webp}` | **Screenshots** carousel | No — section hidden if absent |
+| GitHub Releases | **Releases** section + `latest_version` badge | No — section hidden if absent |
+
+### File content conventions
+
+**`README.md`** — standard Markdown. The full content is stored and rendered as-is. Keep the top-level `# Heading` as the package title for best results.
+
+**`CHANGELOG.md`** — use [Keep a Changelog](https://keepachangelog.com/) format for best readability:
+```markdown
+## [1.2.0] - 2026-03-10
+### Added
+- New feature X
+
+## [1.1.0] - 2026-02-20
+### Fixed
+- Bug Y
+```
+
+**`docs/README.md`** — detailed documentation separate from the marketing README. Use headings, code blocks, and tables freely — rendered as Markdown.
+
+**`docs/screenshots/`** — image files only (no subdirectories). Files are listed alphabetically, so prefix with a number (`01-`, `02-`) to control order. Supported extensions: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`.
+
+### GitHub Releases
+
+Create releases via **GitHub → Releases → Draft a new release**. Each release tag becomes an entry in the Releases section. The most recent release tag populates the `latest_version` badge on the package card.
+
+Release notes (the body text of the GitHub Release) are stored and displayed per-version.
+
+### Triggering a sync
+
+Content is **not** fetched on every push. You must trigger a sync explicitly — either manually from the admin panel or automatically via a GitHub Action:
+
+```yaml
+# .github/workflows/vbwd-sync.yml
+name: Sync to vbwd
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify vbwd
+        run: |
+          curl -f -X POST \
+            "${{ secrets.VBWD_API_URL }}/api/v1/ghrm/sync?package=${{ secrets.VBWD_PACKAGE_SLUG }}&key=${{ secrets.VBWD_SYNC_KEY }}"
+```
+
+Required secrets in your GitHub repo:
+
+| Secret | Value |
+|--------|-------|
+| `VBWD_API_URL` | Your platform URL, e.g. `https://myplatform.com` |
+| `VBWD_PACKAGE_SLUG` | The slug shown in the admin Software tab |
+| `VBWD_SYNC_KEY` | The Sync API Key from the admin Software tab |
+
+---
+
 ## Setting up software packages
 
 After configuring the plugin, create a package for each private GitHub repo:
@@ -133,12 +218,8 @@ After configuring the plugin, create a package for each private GitHub repo:
 2. Open the **Software** tab
 3. Fill in **GitHub Owner** (your org or username) and **GitHub Repo** (repo name)
 4. Click **Create Software Package**
-5. Copy the generated **Sync API Key** and add it as a secret named `VBWD_SYNC_KEY` in the GitHub repo
-6. Add a GitHub Action that calls:
-   ```
-   curl "$VBWD_API_URL/api/v1/ghrm/sync?package=<slug>&key=$VBWD_SYNC_KEY"
-   ```
-   on push to your release branch — this syncs the README, changelog, and release data to the platform
+5. Copy the generated **Sync API Key** and add it as secrets `VBWD_SYNC_KEY`, `VBWD_API_URL`, and `VBWD_PACKAGE_SLUG` in the GitHub repo
+6. Add the GitHub Action from the **Repository structure requirements** section above — it syncs README, CHANGELOG, docs, screenshots, and releases to the platform on every push to `main` and on every published release
 
 ---
 

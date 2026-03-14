@@ -1,5 +1,7 @@
 """GithubAppClient — real implementation using PyGithub and httpx."""
+import time
 import httpx
+import jwt as pyjwt
 from typing import List, Optional
 from plugins.ghrm.src.services.github_app_client import (
     IGithubAppClient, ReleaseDTO, ReleaseAsset,
@@ -20,19 +22,35 @@ class GithubAppClient(IGithubAppClient):
     GITHUB_API = "https://api.github.com"
     GITHUB_OAUTH_TOKEN_URL = "https://github.com/login/oauth/access_token"
 
-    def __init__(self, installation_token: str = "") -> None:
+    def __init__(self, app_id: str, private_key: str, installation_id: str) -> None:
         """
         Args:
-            installation_token: GitHub App installation token (for repo operations).
-                                 Can be set later via set_installation_token().
+            app_id: GitHub App numeric ID.
+            private_key: PEM-encoded RSA private key content (not a file path).
+            installation_id: GitHub App installation ID for this org/account.
         """
-        self._installation_token = installation_token
+        self._app_id = app_id
+        self._private_key = private_key
+        self._installation_id = installation_id
+        self._installation_token: str = ""
+
+    def _make_jwt(self) -> str:
+        """Generate a short-lived JWT signed with the GitHub App private key."""
+        now = int(time.time())
+        payload = {"iat": now - 60, "exp": now + 540, "iss": self._app_id}
+        return pyjwt.encode(payload, self._private_key, algorithm="RS256")
+
+    def _ensure_installation_token(self) -> None:
+        """Fetch a fresh installation token if not already set."""
+        if not self._installation_token:
+            self._installation_token = self.get_installation_token(self._installation_id)
 
     def set_installation_token(self, token: str) -> None:
         """Update the installation token (e.g. after refresh)."""
         self._installation_token = token
 
     def _repo_headers(self) -> dict:
+        self._ensure_installation_token()
         return {
             "Authorization": f"Bearer {self._installation_token}",
             "Accept": "application/vnd.github+json",
@@ -75,10 +93,15 @@ class GithubAppClient(IGithubAppClient):
         pass  # Fine-grained token revocation requires GitHub API call with app credentials.
 
     def get_installation_token(self, installation_id: str) -> str:
-        """Get a fresh installation token from GitHub App."""
+        """Get a fresh installation token from GitHub App using a signed JWT."""
         url = f"{self.GITHUB_API}/app/installations/{installation_id}/access_tokens"
+        jwt_headers = {
+            "Authorization": f"Bearer {self._make_jwt()}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
         with httpx.Client(timeout=10) as client:
-            resp = client.post(url, headers=self._repo_headers())
+            resp = client.post(url, headers=jwt_headers)
         if resp.status_code != 201:
             raise GithubAppClientError(f"get_installation_token failed: {resp.status_code}")
         return resp.json()["token"]
