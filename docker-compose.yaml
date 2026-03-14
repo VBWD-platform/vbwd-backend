@@ -17,6 +17,8 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-noreply@example.com}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-VBWD}
+      # Enable mock GitHub client for local dev/test — never set this in production
+      - GHRM_USE_MOCK_GITHUB=${GHRM_USE_MOCK_GITHUB:-true}
     volumes:
       - .:/app
     depends_on:
@@ -59,6 +61,15 @@ services:
       ADMINER_DEFAULT_SERVER: postgres
     depends_on:
       - postgres
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
 
   test:
     build:

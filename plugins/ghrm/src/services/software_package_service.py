@@ -19,6 +19,10 @@ class GhrmSyncAuthError(Exception):
     """Raised when sync API key is invalid."""
 
 
+class GhrmNotConfiguredError(Exception):
+    """Raised when the GitHub App client is absent (credentials not configured)."""
+
+
 class GhrmSubscriptionRequiredError(Exception):
     """Raised when install instructions are requested without active subscription."""
 
@@ -115,7 +119,7 @@ class SoftwarePackageService:
     def sync_package(self, api_key: str) -> Dict[str, Any]:
         """Verify API key, pull data from GitHub, update sync record. Returns sync dict."""
         if self._github is None:
-            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+            raise GhrmNotConfiguredError("GitHub App not configured — sync unavailable")
         pkg = self._package_repo.find_by_sync_key(api_key)
         if not pkg:
             raise GhrmSyncAuthError("Invalid sync API key")
@@ -154,7 +158,7 @@ class SoftwarePackageService:
 
     def preview_readme(self, package_id: str) -> str:
         if self._github is None:
-            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+            raise GhrmNotConfiguredError("GitHub App not configured — sync unavailable")
         pkg = self._package_repo.find_by_id(package_id)
         if not pkg:
             raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")
@@ -162,7 +166,7 @@ class SoftwarePackageService:
 
     def preview_changelog(self, package_id: str) -> Optional[str]:
         if self._github is None:
-            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+            raise GhrmNotConfiguredError("GitHub App not configured — sync unavailable")
         pkg = self._package_repo.find_by_id(package_id)
         if not pkg:
             raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")
@@ -170,7 +174,7 @@ class SoftwarePackageService:
 
     def preview_screenshots(self, package_id: str) -> List[str]:
         if self._github is None:
-            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+            raise GhrmNotConfiguredError("GitHub App not configured — sync unavailable")
         pkg = self._package_repo.find_by_id(package_id)
         if not pkg:
             raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")
@@ -181,7 +185,7 @@ class SoftwarePackageService:
         if field not in valid_fields:
             raise ValueError(f"Unknown field '{field}'. Must be one of: {', '.join(sorted(valid_fields))}")
         if self._github is None:
-            raise GhrmSyncAuthError("GitHub App not configured — sync unavailable")
+            raise GhrmNotConfiguredError("GitHub App not configured — sync unavailable")
         pkg = self._package_repo.find_by_id(package_id)
         if not pkg:
             raise GhrmPackageNotFoundError(f"Package '{package_id}' not found")

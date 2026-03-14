@@ -42,7 +42,8 @@ from plugins.ghrm.src.repositories.software_sync_repository import GhrmSoftwareS
 from plugins.ghrm.src.repositories.user_github_access_repository import GhrmUserGithubAccessRepository
 from plugins.ghrm.src.repositories.access_log_repository import GhrmAccessLogRepository
 from plugins.ghrm.src.services.software_package_service import (
-    SoftwarePackageService, GhrmPackageNotFoundError, GhrmSyncAuthError, GhrmSubscriptionRequiredError,
+    SoftwarePackageService, GhrmPackageNotFoundError, GhrmSyncAuthError,
+    GhrmNotConfiguredError, GhrmSubscriptionRequiredError,
 )
 from plugins.ghrm.src.services.github_access_service import (
     GithubAccessService, GhrmOAuthError, GhrmGithubNotConnectedError,
@@ -61,8 +62,17 @@ class GithubNotConfiguredError(Exception):
 
 
 def _make_github_client(cfg: dict) -> IGithubAppClient:
-    """Return a real GithubAppClient, or raise GithubNotConfiguredError if credentials are missing."""
+    """Return a configured GitHub App client.
+
+    In non-production environments (GHRM_USE_MOCK_GITHUB=true) a MockGithubAppClient
+    is returned so that integration tests and local development work without real
+    GitHub App credentials.  The mock is NEVER used when this env var is absent or
+    set to any value other than "true".
+    """
     import os
+    if os.environ.get("GHRM_USE_MOCK_GITHUB", "").lower() == "true":
+        from plugins.ghrm.src.services.github_app_client import MockGithubAppClient
+        return MockGithubAppClient()
     app_id = cfg.get("github_app_id", "")
     installation_id = cfg.get("github_installation_id", "")
     pem_path = cfg.get("github_app_private_key_path", "")
@@ -238,11 +248,14 @@ def sync_package():
     try:
         result = _pkg_svc().sync_package(api_key)
         return jsonify({"ok": True, "sync": result})
+    except GhrmNotConfiguredError as e:
+        logger.warning(f"[GHRM] sync skipped — {e}")
+        return jsonify({"error": "GitHub App not configured — sync unavailable"}), 503
+    except GithubNotConfiguredError as e:
+        logger.warning(f"[GHRM] sync skipped — {e}")
+        return jsonify({"error": "GitHub App not configured — sync unavailable"}), 503
     except GhrmSyncAuthError as e:
         return jsonify({"error": str(e)}), 403
-    except GithubNotConfiguredError as e:
-        logger.error(f"[GHRM] sync skipped — {e}")
-        return jsonify({"error": "GitHub App not configured"}), 503
     except Exception as e:
         logger.error(f"[GHRM] sync error: {e}", exc_info=True)
         return jsonify({"error": "Sync failed"}), 500
@@ -447,6 +460,8 @@ def admin_sync_package(pkg_id):
     try:
         result = _pkg_svc().sync_package(pkg.sync_api_key)
         return jsonify({"ok": True, "sync": result})
+    except (GhrmNotConfiguredError, GithubNotConfiguredError) as e:
+        return jsonify({"error": str(e)}), 503
     except GhrmSyncAuthError as e:
         return jsonify({"error": str(e)}), 503
     except Exception as e:
@@ -463,8 +478,8 @@ _VALID_PREVIEW_FIELDS = {"readme", "changelog", "screenshots"}
 def admin_preview_field(pkg_id, field):
     if field not in _VALID_PREVIEW_FIELDS:
         return jsonify({"error": f"Invalid field '{field}'. Must be one of: readme, changelog, screenshots"}), 400
-    svc = _pkg_svc()
     try:
+        svc = _pkg_svc()
         if field == "readme":
             content = svc.preview_readme(pkg_id)
             return jsonify({"content": content})
@@ -476,8 +491,11 @@ def admin_preview_field(pkg_id, field):
             return jsonify({"urls": urls})
     except GhrmPackageNotFoundError as e:
         return jsonify({"error": str(e)}), 404
-    except GhrmSyncAuthError as e:
+    except (GhrmNotConfiguredError, GithubNotConfiguredError, GhrmSyncAuthError) as e:
         return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        logger.error(f"[GHRM] preview error: {e}", exc_info=True)
+        return jsonify({"error": "Preview failed"}), 500
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/packages/<pkg_id>/sync/<field>", methods=["POST"])
@@ -486,14 +504,17 @@ def admin_preview_field(pkg_id, field):
 def admin_sync_field(pkg_id, field):
     if field not in _VALID_PREVIEW_FIELDS:
         return jsonify({"error": f"Invalid field '{field}'. Must be one of: readme, changelog, screenshots"}), 400
-    svc = _pkg_svc()
     try:
+        svc = _pkg_svc()
         result = svc.sync_field(pkg_id, field)
         return jsonify({"ok": True, "sync": result})
     except GhrmPackageNotFoundError as e:
         return jsonify({"error": str(e)}), 404
-    except GhrmSyncAuthError as e:
+    except (GhrmNotConfiguredError, GithubNotConfiguredError, GhrmSyncAuthError) as e:
         return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        logger.error(f"[GHRM] sync_field error: {e}", exc_info=True)
+        return jsonify({"error": "Sync failed"}), 500
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/access-log", methods=["GET"])

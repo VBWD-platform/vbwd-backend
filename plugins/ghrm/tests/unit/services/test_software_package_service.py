@@ -7,6 +7,7 @@ from plugins.ghrm.src.services.software_package_service import (
     SoftwarePackageService,
     GhrmPackageNotFoundError,
     GhrmSyncAuthError,
+    GhrmNotConfiguredError,
     GhrmSubscriptionRequiredError,
 )
 from plugins.ghrm.src.services.github_app_client import MockGithubAppClient, ReleaseDTO, ReleaseAsset
@@ -240,15 +241,15 @@ class TestSyncPackage:
         assert saved_sync.cached_releases[0]["tag"] == "v2.0.0"
         assert saved_sync.cached_releases[0]["assets"][0]["name"] == "dist.zip"
 
-    def test_raises_sync_auth_error_when_github_not_configured(self):
-        """sync_package raises GhrmSyncAuthError when github is None."""
+    def test_raises_not_configured_error_when_github_not_configured(self):
+        """sync_package raises GhrmNotConfiguredError when github is None."""
         package_repo = MagicMock()
         svc = SoftwarePackageService(
             package_repo=package_repo,
             sync_repo=MagicMock(),
             github=None,
         )
-        with pytest.raises(GhrmSyncAuthError):
+        with pytest.raises(GhrmNotConfiguredError):
             svc.sync_package("any-key")
 
     def test_does_not_overwrite_admin_overrides(self):
@@ -323,7 +324,7 @@ class TestPreviewReadme:
             github=None,
         )
 
-        with pytest.raises(GhrmSyncAuthError):
+        with pytest.raises(GhrmNotConfiguredError):
             svc.preview_readme("pkg-1")
 
 

@@ -1,0 +1,181 @@
+"""Email plugin admin routes.
+
+All routes require admin authentication via @require_auth + @require_admin
+(same pattern as src/routes/admin/).
+
+Endpoints
+---------
+GET  /api/v1/admin/email/templates         — list all templates
+GET  /api/v1/admin/email/templates/:id     — get one template
+PUT  /api/v1/admin/email/templates/:id     — update template
+POST /api/v1/admin/email/templates/preview — render preview (no delivery)
+GET  /api/v1/admin/email/event-types       — list supported event types + variable schemas
+POST /api/v1/admin/email/test-send         — send test email to given address
+"""
+from __future__ import annotations
+
+from flask import Blueprint, jsonify, request
+
+from src.middleware.auth import require_auth, require_admin
+from src.utils.validation import parse_uuid_or_none
+
+email_bp = Blueprint("email", __name__)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _template_svc():
+    from src.extensions import db
+    from plugins.email.src.services.email_service import EmailService
+    from plugins.email.src.services.sender_registry import EmailSenderRegistry
+    from plugins.email.src.services.smtp_sender import SmtpEmailSender
+    import os
+
+    registry = EmailSenderRegistry()
+    smtp = SmtpEmailSender(
+        host=os.getenv("SMTP_HOST", "localhost"),
+        port=int(os.getenv("SMTP_PORT", "587")),
+        username=os.getenv("SMTP_USER") or None,
+        password=os.getenv("SMTP_PASSWORD") or None,
+        use_tls=os.getenv("SMTP_USE_TLS", "true").lower() != "false",
+        from_address=os.getenv("SMTP_FROM_EMAIL", "noreply@example.com"),
+        from_name=os.getenv("SMTP_FROM_NAME", "VBWD"),
+    )
+    registry.register(smtp)
+    registry.set_active("smtp")
+    return EmailService(registry=registry, db_session=db.session)
+
+
+# ---------------------------------------------------------------------------
+# List templates
+# ---------------------------------------------------------------------------
+
+
+@email_bp.route("/api/v1/admin/email/templates", methods=["GET"])
+@require_auth
+@require_admin
+def list_templates():
+    from src.extensions import db
+    from plugins.email.src.models.email_template import EmailTemplate
+    templates = db.session.query(EmailTemplate).order_by(EmailTemplate.event_type).all()
+    return jsonify([t.to_dict() for t in templates]), 200
+
+
+# ---------------------------------------------------------------------------
+# Preview (must be before /<template_id> so Flask doesn't swallow "preview")
+# ---------------------------------------------------------------------------
+
+
+@email_bp.route("/api/v1/admin/email/templates/preview", methods=["POST"])
+@require_auth
+@require_admin
+def preview_template():
+    data = request.get_json(silent=True) or {}
+    event_type = data.get("event_type", "")
+    context = data.get("context", {})
+
+    if not event_type:
+        return jsonify({"error": "event_type required"}), 400
+
+    svc = _template_svc()
+    try:
+        rendered = svc.render_preview(event_type, context)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 422
+
+    return jsonify(rendered), 200
+
+
+# ---------------------------------------------------------------------------
+# Get / update by ID
+# ---------------------------------------------------------------------------
+
+
+@email_bp.route("/api/v1/admin/email/templates/<template_id>", methods=["GET"])
+@require_auth
+@require_admin
+def get_template(template_id: str):
+    if parse_uuid_or_none(template_id) is None:
+        return jsonify({"error": "invalid id"}), 400
+    from src.extensions import db
+    from plugins.email.src.models.email_template import EmailTemplate
+    tpl = db.session.get(EmailTemplate, template_id)
+    if tpl is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(tpl.to_dict()), 200
+
+
+@email_bp.route("/api/v1/admin/email/templates/<template_id>", methods=["PUT"])
+@require_auth
+@require_admin
+def update_template(template_id: str):
+    if parse_uuid_or_none(template_id) is None:
+        return jsonify({"error": "invalid id"}), 400
+    from src.extensions import db
+    from plugins.email.src.models.email_template import EmailTemplate
+
+    tpl = db.session.get(EmailTemplate, template_id)
+    if tpl is None:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    allowed = {"subject", "html_body", "text_body", "is_active"}
+    for field in allowed:
+        if field in data:
+            setattr(tpl, field, data[field])
+
+    db.session.commit()
+    return jsonify(tpl.to_dict()), 200
+
+
+# ---------------------------------------------------------------------------
+# Event-type catalogue
+# ---------------------------------------------------------------------------
+
+
+@email_bp.route("/api/v1/admin/email/event-types", methods=["GET"])
+@require_auth
+@require_admin
+def list_event_types():
+    from plugins.email.src.services.event_contexts import EVENT_CONTEXTS
+    result = [
+        {"event_type": k, **v}
+        for k, v in EVENT_CONTEXTS.items()
+    ]
+    return jsonify(result), 200
+
+
+# ---------------------------------------------------------------------------
+# Test send
+# ---------------------------------------------------------------------------
+
+
+@email_bp.route("/api/v1/admin/email/test-send", methods=["POST"])
+@require_auth
+@require_admin
+def test_send():
+    data = request.get_json(silent=True) or {}
+    event_type = data.get("event_type")
+    to_address = data.get("to_address")
+
+    if not event_type or not to_address:
+        return jsonify({"error": "event_type and to_address required"}), 400
+
+    from plugins.email.src.services.event_contexts import EVENT_CONTEXTS
+    ctx_schema = EVENT_CONTEXTS.get(event_type, {})
+    preview_ctx = {
+        k: v.get("example", "") for k, v in ctx_schema.get("variables", {}).items()
+    }
+
+    svc = _template_svc()
+    try:
+        sent = svc.send_event(event_type, to_address, preview_ctx)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    if not sent:
+        return jsonify({"message": "template inactive or not found, email not sent"}), 200
+
+    return jsonify({"message": f"test email sent to {to_address}"}), 200

@@ -4,12 +4,16 @@ Populate the CMS database with demo data.
 
 Creates:
   - 5 light themes + 5 dark themes (CmsStyle)
-  - Navigation widgets: header-nav (menu), footer-nav (menu)
-  - Content widgets: hero-home1, hero-home2, cta-primary, features-3col (html)
-  - 4 layouts: home-v1, home-v2, landing, content-page
-  - 5 demo pages: home1, home2, landing2, landing3, about (standard content)
+  - Navigation widgets: header-nav (menu with Pricing submenu), footer-nav (menu)
+  - Content widgets: hero-home1, hero-home2, cta-primary, features-3col, features-slideshow,
+                     pricing-embed-demo, pricing-native-plans (vue-component) (html)
+  - 5 layouts: home-v1, home-v2, landing, content-page, native-pricing-page
+  - 11 pages: home1, home2, landing2, landing3, about, privacy, terms, contact,
+               features, pricing-embedded, pricing-native
 
-All inserts are idempotent — existing slugs are skipped.
+Header nav: Home | Features | Pricing (submenu: Embedded / Native / All Plans) | About | Software
+
+All inserts are idempotent — existing slugs are updated, menu items are always replaced.
 
 Usage:
     python /app/plugins/cms/src/bin/populate_cms.py
@@ -469,6 +473,239 @@ TARIF_PLANS_BACKEND_HTML = """
 ></script>
 """
 
+# ─── Features slideshow ────────────────────────────────────────────────────────
+
+FEATURES_SLIDESHOW_HTML = """
+<section class="features-hero">
+  <div class="container">
+    <h1>VBWD Platform Features</h1>
+    <p class="features-hero__sub">Everything you need to build, launch, and scale a SaaS product — without months of boilerplate.</p>
+  </div>
+</section>
+
+<section class="features-slideshow">
+  <div class="container">
+    <div class="slideshow" id="vbwd-slideshow">
+      <div class="slide slide--active">
+        <div class="slide__icon">💳</div>
+        <h2>Subscription Billing</h2>
+        <p>Stripe, PayPal, and YooKassa out of the box. Monthly, annual, and usage-based plans. Automated invoicing and dunning sequences.</p>
+      </div>
+      <div class="slide">
+        <div class="slide__icon">👥</div>
+        <h2>User Management</h2>
+        <p>Registration, login, roles, profiles, and invitations. JWT-based authentication with refresh tokens and session management.</p>
+      </div>
+      <div class="slide">
+        <div class="slide__icon">🧩</div>
+        <h2>Plugin System</h2>
+        <p>Extend without touching core. Frontend and backend plugins with lifecycle hooks, dependency resolution, and hot registration.</p>
+      </div>
+      <div class="slide">
+        <div class="slide__icon">📄</div>
+        <h2>CMS &amp; Pages</h2>
+        <p>Manage layouts, widgets, menus, styles, and content pages from the admin panel. No code changes required for content updates.</p>
+      </div>
+      <div class="slide">
+        <div class="slide__icon">📦</div>
+        <h2>Software Catalogue (GHRM)</h2>
+        <p>Subscription-gated access to GitHub repositories. Deploy tokens, collaborator management, and automatic version tracking.</p>
+      </div>
+      <div class="slide">
+        <div class="slide__icon">🔌</div>
+        <h2>Embeddable Pricing</h2>
+        <p>Drop a &lt;script&gt; tag on any page. A responsive pricing table renders inside a sandboxed iframe. Zero framework dependency.</p>
+      </div>
+    </div>
+
+    <div class="slideshow-controls">
+      <button class="slide-btn slide-btn--prev" onclick="vbwdSlidePrev()">&#8249;</button>
+      <div class="slide-dots" id="vbwd-slide-dots"></div>
+      <button class="slide-btn slide-btn--next" onclick="vbwdSlideNext()">&#8250;</button>
+    </div>
+  </div>
+</section>
+
+<section class="features-docs-link">
+  <div class="container">
+    <p>
+      Full documentation &rarr;
+      <a href="https://github.com/dantweb/vbwd-sdk/blob/main/docs/features.md" target="_blank" rel="noopener">
+        docs/features.md on GitHub &#8599;
+      </a>
+    </p>
+  </div>
+</section>
+
+<script>
+(function () {
+  var current = 0;
+  var slides = document.querySelectorAll('#vbwd-slideshow .slide');
+  var dotsContainer = document.getElementById('vbwd-slide-dots');
+  slides.forEach(function (_, i) {
+    var dot = document.createElement('button');
+    dot.className = 'slide-dot' + (i === 0 ? ' slide-dot--active' : '');
+    dot.setAttribute('aria-label', 'Slide ' + (i + 1));
+    dot.onclick = function () { goTo(i); };
+    dotsContainer.appendChild(dot);
+  });
+  function goTo(n) {
+    slides[current].classList.remove('slide--active');
+    dotsContainer.children[current].classList.remove('slide-dot--active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('slide--active');
+    dotsContainer.children[current].classList.add('slide-dot--active');
+  }
+  window.vbwdSlidePrev = function () { goTo(current - 1); };
+  window.vbwdSlideNext = function () { goTo(current + 1); };
+  setInterval(function () { goTo(current + 1); }, 5000);
+}());
+</script>
+
+<style>
+.features-hero { padding: 4rem 0 2rem; text-align: center; }
+.features-hero h1 { font-size: clamp(1.75rem, 4vw, 2.75rem); margin-bottom: 0.75rem; }
+.features-hero__sub { font-size: 1.1rem; opacity: 0.75; max-width: 540px; margin: 0 auto; }
+.features-slideshow { padding: 3rem 0 4rem; }
+.slideshow { position: relative; }
+.slide { display: none; text-align: center; padding: 2.5rem 2rem; background: var(--color-surface, #f8fafc); border-radius: 16px; border: 1px solid var(--color-border, #e2e8f0); animation: vbwdFadeIn 0.4s ease; }
+.slide--active { display: block; }
+@keyframes vbwdFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.slide__icon { font-size: 3rem; margin-bottom: 1rem; }
+.slide h2 { font-size: 1.5rem; margin-bottom: 0.75rem; }
+.slide p { opacity: 0.8; font-size: 1rem; max-width: 520px; margin: 0 auto; }
+.slideshow-controls { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.5rem; }
+.slide-btn { background: none; border: 2px solid var(--color-border, #e2e8f0); border-radius: 50%; width: 40px; height: 40px; font-size: 1.4rem; cursor: pointer; color: var(--color-text, #1e293b); transition: all 0.15s; line-height: 1; }
+.slide-btn:hover { border-color: var(--color-primary, #2563eb); color: var(--color-primary, #2563eb); }
+.slide-dots { display: flex; gap: 6px; }
+.slide-dot { width: 8px; height: 8px; border-radius: 50%; border: none; background: var(--color-border, #e2e8f0); cursor: pointer; padding: 0; transition: background 0.2s; }
+.slide-dot--active { background: var(--color-primary, #2563eb); }
+.features-docs-link { text-align: center; padding: 1rem 0 3rem; }
+.features-docs-link p { opacity: 0.75; }
+.features-docs-link a { color: var(--color-primary, #2563eb); font-weight: 600; }
+</style>
+"""
+
+# ─── Embedded pricing guide ────────────────────────────────────────────────────
+
+PRICING_EMBED_GUIDE_HTML = """
+<section class="embed-hero">
+  <div class="container">
+    <h1>Embedded Pricing</h1>
+    <p class="embed-hero__sub">Add a fully hosted, responsive pricing table to any page with a single &lt;script&gt; tag. No React, no Vue, no build step required.</p>
+  </div>
+</section>
+
+<section class="embed-guide">
+  <div class="container">
+
+    <h2>Live Example</h2>
+    <p class="embed-live-label">This is the embedded widget running live on this page:</p>
+    <div id="embed-live-preview" class="embed-live-wrap"></div>
+    <script
+      src="/embed/widget.js"
+      data-embed="landing1"
+      data-category="root"
+      data-container="embed-live-preview"
+      data-locale="en"
+      data-theme="light"
+      data-height="650"
+    ></script>
+
+    <h2>How It Works</h2>
+    <ol class="embed-steps">
+      <li>
+        <strong>1 — Add a container div</strong>
+        <pre><code>&lt;div id="pricing-root"&gt;&lt;/div&gt;</code></pre>
+      </li>
+      <li>
+        <strong>2 — Load the widget script</strong>
+        <pre><code>&lt;script
+  src="https://your-vbwd-instance.com/embed/widget.js"
+  data-embed="landing1"
+  data-category="root"
+  data-container="pricing-root"
+  data-locale="en"
+  data-theme="light"
+  data-height="700"
+&gt;&lt;/script&gt;</code></pre>
+      </li>
+      <li>
+        <strong>3 — Done.</strong> The widget renders inside a sandboxed iframe. Billing, checkout, and plan management are fully handled by your VBWD backend.
+      </li>
+    </ol>
+
+    <h2>Configuration Attributes</h2>
+    <table class="embed-table">
+      <thead>
+        <tr><th>Attribute</th><th>Required</th><th>Default</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>data-embed</code></td><td>Yes</td><td>—</td><td>Widget preset. Use <code>landing1</code> for the standard pricing table.</td></tr>
+        <tr><td><code>data-category</code></td><td>No</td><td><code>root</code></td><td>Tariff plan category slug. <code>root</code> shows all plans.</td></tr>
+        <tr><td><code>data-container</code></td><td>Yes</td><td>—</td><td>ID of the host <code>&lt;div&gt;</code>.</td></tr>
+        <tr><td><code>data-locale</code></td><td>No</td><td><code>en</code></td><td>UI language: <code>en</code>, <code>ru</code>, <code>fr</code>, <code>de</code>, …</td></tr>
+        <tr><td><code>data-theme</code></td><td>No</td><td><code>light</code></td><td><code>light</code> or <code>dark</code>.</td></tr>
+        <tr><td><code>data-height</code></td><td>No</td><td><code>700</code></td><td>iframe height in pixels.</td></tr>
+        <tr><td><code>data-plans</code></td><td>No</td><td>all</td><td>Comma-separated plan slugs to display (e.g. <code>starter,pro</code>).</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Show a Specific Category</h2>
+    <pre><code>&lt;script
+  src="/embed/widget.js"
+  data-embed="landing1"
+  data-category="backend"
+  data-container="pricing-root"
+  data-theme="dark"
+&gt;&lt;/script&gt;</code></pre>
+
+    <h2>Filter to 3 Featured Plans</h2>
+    <pre><code>&lt;script
+  src="/embed/widget.js"
+  data-embed="landing1"
+  data-category="backend"
+  data-plans="starter,pro,enterprise"
+  data-container="pricing-root"
+&gt;&lt;/script&gt;</code></pre>
+
+  </div>
+</section>
+
+<style>
+.embed-hero { padding: 4rem 0 2rem; text-align: center; }
+.embed-hero h1 { font-size: clamp(1.75rem, 4vw, 2.75rem); margin-bottom: 0.75rem; }
+.embed-hero__sub { font-size: 1.1rem; opacity: 0.75; max-width: 600px; margin: 0 auto; }
+.embed-guide { padding: 3rem 0 5rem; }
+.embed-guide h2 { font-size: 1.4rem; margin: 2.5rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--color-border, #e2e8f0); }
+.embed-steps { padding-left: 0; list-style: none; }
+.embed-steps li { margin-bottom: 2rem; }
+.embed-steps strong { display: block; margin-bottom: 0.5rem; font-size: 1rem; }
+pre { background: var(--color-surface, #f8fafc); border: 1px solid var(--color-border, #e2e8f0); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; margin: 0.5rem 0 1rem; }
+code { font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; font-size: 0.875rem; }
+.embed-table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.875rem; }
+.embed-table th { background: var(--color-surface, #f8fafc); padding: 0.6rem 0.875rem; text-align: left; border: 1px solid var(--color-border, #e2e8f0); font-weight: 600; }
+.embed-table td { padding: 0.6rem 0.875rem; border: 1px solid var(--color-border, #e2e8f0); vertical-align: top; }
+.embed-table td code, .embed-table th code { background: var(--color-surface, #f8fafc); padding: 2px 5px; border-radius: 3px; font-size: 0.8rem; border: 1px solid var(--color-border, #e2e8f0); }
+.embed-live-label { color: var(--color-muted, #64748b); font-size: 0.9rem; margin-bottom: 1rem; }
+.embed-live-wrap { border: 2px dashed var(--color-border, #e2e8f0); border-radius: 12px; padding: 1rem; margin-bottom: 2.5rem; min-height: 100px; }
+</style>
+"""
+
+# ─── Native pricing Vue component widget config ────────────────────────────────
+# Stored in CmsWidget.config; the frontend "vue-component" widget type reads this
+# to determine which Vue component to render and with which props.
+
+NATIVE_PRICING_CONFIG = {
+    "component": "NativePricingPlans",
+    "props": {
+        "category": "root",
+        "plan_count": 3,
+        "show_billing_toggle": True,
+        "default_billing_period": "monthly",
+    },
+}
+
 TESTIMONIALS_HTML = """
 <section class="testimonials">
   <div class="container">
@@ -634,6 +871,22 @@ LAYOUTS = [
             ("footer", "footer-nav"),
         ],
     },
+    {
+        "slug": "native-pricing-page",
+        "name": "Native Pricing Page (Header + Vue Component + Footer)",
+        "description": "Page layout that renders a configurable Vue pricing component in the main area.",
+        "sort_order": 14,
+        "areas": [
+            {"name": "header", "type": "header", "label": "Header"},
+            {"name": "main", "type": "vue-component", "label": "Pricing Component"},
+            {"name": "footer", "type": "footer", "label": "Footer"},
+        ],
+        "widget_assignments": [
+            ("header", "header-nav"),
+            ("main", "pricing-native-plans"),
+            ("footer", "footer-nav"),
+        ],
+    },
 ]
 
 
@@ -664,7 +917,8 @@ def _get_or_create_style(slug: str, data: dict) -> "CmsStyle":
 def _get_or_create_widget(slug: str, name: str, widget_type: str,
                            content_html: str = None,
                            content_json: dict = None,
-                           source_css: str = None) -> "CmsWidget":
+                           source_css: str = None,
+                           config: dict = None) -> "CmsWidget":
     if widget_type == "html" and content_html is not None:
         content_json, extracted_css = _split_widget_content(content_html)
         source_css = source_css or extracted_css
@@ -675,6 +929,8 @@ def _get_or_create_widget(slug: str, name: str, widget_type: str,
             existing.content_json = content_json
         if source_css is not None:
             existing.source_css = source_css
+        if config is not None:
+            existing.config = config
         db.session.flush()
         print(f"  ~ widget '{slug}' (updated)")
         return existing
@@ -684,6 +940,7 @@ def _get_or_create_widget(slug: str, name: str, widget_type: str,
         widget_type=widget_type,
         content_json=content_json,
         source_css=source_css,
+        config=config,
         sort_order=0,
         is_active=True,
     )
@@ -693,7 +950,14 @@ def _get_or_create_widget(slug: str, name: str, widget_type: str,
     return obj
 
 
+def _clear_menu_items(widget: "CmsWidget") -> None:
+    """Delete all menu items for a widget (including nested children)."""
+    db.session.query(CmsMenuItem).filter_by(widget_id=widget.id).delete()
+    db.session.flush()
+
+
 def _add_menu_items(widget: "CmsWidget", items: list) -> None:
+    """Add menu items to a widget. Items may include a 'children' key for submenus."""
     for i, item in enumerate(items):
         mi = CmsMenuItem(
             widget_id=widget.id,
@@ -705,6 +969,18 @@ def _add_menu_items(widget: "CmsWidget", items: list) -> None:
             sort_order=i,
         )
         db.session.add(mi)
+        db.session.flush()  # get mi.id before creating children
+        for j, child in enumerate(item.get("children", [])):
+            child_mi = CmsMenuItem(
+                widget_id=widget.id,
+                parent_id=mi.id,
+                label=child["label"],
+                url=child.get("url"),
+                page_slug=child.get("page_slug"),
+                target=child.get("target", "_self"),
+                sort_order=j,
+            )
+            db.session.add(child_mi)
 
 
 def _get_or_create_layout(data: dict, widget_map: dict) -> "CmsLayout":
@@ -818,14 +1094,25 @@ def populate_cms() -> None:
 
     header_nav = _get_or_create_widget("header-nav", "Header Navigation", "menu")
     widget_map["header-nav"] = header_nav
-    if db.session.query(CmsMenuItem).filter_by(widget_id=header_nav.id).count() == 0:
-        _add_menu_items(header_nav, [
-            {"label": "Home", "page_slug": "home1"},
-            {"label": "Features", "url": "/#features"},
-            {"label": "Pricing", "url": "/#pricing"},
-            {"label": "About", "page_slug": "about"},
-            {"label": "Software", "url": "/category"},
-        ])
+    _clear_menu_items(header_nav)
+    _add_menu_items(header_nav, [
+        {"label": "Home", "page_slug": "home1"},
+        {
+            "label": "Features",
+            "page_slug": "features",
+        },
+        {
+            "label": "Pricing",
+            "url": None,
+            "children": [
+                {"label": "Embedded Pricing", "page_slug": "pricing-embedded"},
+                {"label": "Native CMS Pricing", "page_slug": "pricing-native"},
+                {"label": "All Plans", "url": "/#pricing"},
+            ],
+        },
+        {"label": "About", "page_slug": "about"},
+        {"label": "Software", "url": "/category"},
+    ])
 
     footer_nav = _get_or_create_widget("footer-nav", "Footer Navigation", "menu",
                                         source_css=FOOTER_NAV_CSS)
@@ -864,6 +1151,18 @@ def populate_cms() -> None:
     widget_map["tarif-plans-backend"] = _get_or_create_widget(
         "tarif-plans-backend", "Tarif Plans — Backend plugins", "html",
         content_html=TARIF_PLANS_BACKEND_HTML,
+    )
+    widget_map["features-slideshow"] = _get_or_create_widget(
+        "features-slideshow", "Features — Slideshow", "html",
+        content_html=FEATURES_SLIDESHOW_HTML,
+    )
+    widget_map["pricing-embed-demo"] = _get_or_create_widget(
+        "pricing-embed-demo", "Pricing — Embedded Widget Guide", "html",
+        content_html=PRICING_EMBED_GUIDE_HTML,
+    )
+    widget_map["pricing-native-plans"] = _get_or_create_widget(
+        "pricing-native-plans", "Pricing — Native CMS Plans", "vue-component",
+        config=NATIVE_PRICING_CONFIG,
     )
 
     db.session.commit()
@@ -930,6 +1229,25 @@ def populate_cms() -> None:
         sort_order=32,
     )
 
+    native_pricing_layout = layout_map.get("native-pricing-page")
+    _get_or_create_page(
+        "features", "Features", content_page, default_light,
+        content_html=FEATURES_SLIDESHOW_HTML,
+        meta_description="Explore the key features of the VBWD platform: billing, user management, plugins, CMS, and more.",
+        sort_order=40,
+    )
+    _get_or_create_page(
+        "pricing-embedded", "Embedded Pricing Guide", content_page, default_light,
+        content_html=PRICING_EMBED_GUIDE_HTML,
+        meta_description="Learn how to embed the VBWD pricing widget in any website with a single script tag.",
+        sort_order=41,
+    )
+    _get_or_create_page(
+        "pricing-native", "Native CMS Pricing", native_pricing_layout, default_light,
+        meta_description="View our subscription plans rendered natively within the VBWD CMS.",
+        sort_order=42,
+    )
+
     db.session.commit()
 
     print("\n" + "=" * 55)
@@ -937,8 +1255,11 @@ def populate_cms() -> None:
     print(f"  Styles  : {len(STYLES)} (5 light + 5 dark)")
     print(f"  Widgets : {len(widget_map)}")
     print(f"  Layouts : {len(LAYOUTS)}")
-    print("  Pages   : 8 (home1, home2, landing2, landing3, about, privacy, terms, contact)")
-    print("  Embed widgets: tarif-plans-root (all), tarif-plans-backend (backend category)")
+    print("  Pages   : 11 (home1, home2, landing2, landing3, about, privacy, terms, contact,")
+    print("               features, pricing-embedded, pricing-native)")
+    print("  Embed widgets: tarif-plans-root, tarif-plans-backend, features-slideshow,")
+    print("                 pricing-embed-demo, pricing-native-plans (vue-component)")
+    print("  Header nav: Home | Features | Pricing (submenu) | About | Software")
     print("=" * 55)
 
 

@@ -53,6 +53,18 @@
       "version": "1.0.0",
       "installedAt": "",
       "source": "local"
+    },
+    "email": {
+      "enabled": true,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
+    },
+    "mailchimp": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
     }
   }
 }
