@@ -2,7 +2,8 @@
 import re
 import bcrypt
 import jwt
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from typing import Optional
 from uuid import UUID
 from src.interfaces.auth import IAuthService, AuthResult, UserData
@@ -170,8 +171,8 @@ class AuthService(IAuthService):
         payload = {
             "user_id": str(user_id),
             "email": email,
-            "exp": datetime.utcnow() + timedelta(hours=expiration_hours),
-            "iat": datetime.utcnow(),
+            "exp": utcnow() + timedelta(hours=expiration_hours),
+            "iat": utcnow(),
         }
         token = jwt.encode(payload, self._config.SECRET_KEY, algorithm="HS256")
         return token

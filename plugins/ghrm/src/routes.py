@@ -89,6 +89,57 @@ def _cfg() -> dict:
 
 # ─── Public catalogue ────────────────────────────────────────────────────────
 
+@ghrm_bp.route("/api/v1/ghrm/config", methods=["GET"])
+def get_public_config():
+    """Return public GHRM config needed by the frontend (layout slugs, etc.)."""
+    import json as _json, os as _os
+    cfg = _cfg()
+
+    def _fallback_cfg():
+        path = _os.path.join(_os.path.dirname(__file__), "..", "config.json")
+        try:
+            with open(path) as f:
+                return _json.load(f)
+        except Exception:
+            return {}
+
+    fb = _fallback_cfg()
+    catalogue_slug = cfg.get("software_catalogue_cms_page_slug") or fb.get("software_catalogue_cms_page_slug", "ghrm-software-catalogue")
+    detail_slug = cfg.get("software_detail_cms_page_slug") or fb.get("software_detail_cms_page_slug", "ghrm-software-detail")
+    return jsonify({
+        "catalogue_page_slug": catalogue_slug,
+        "detail_page_slug": detail_slug,
+    })
+
+
+@ghrm_bp.route("/api/v1/ghrm/categories", methods=["GET"])
+def list_categories():
+    """Return the configured software category slugs and their DB names as labels."""
+    import json as _json, os as _os
+    from src.extensions import db
+    from src.models.tarif_plan_category import TarifPlanCategory
+    cfg = _cfg()
+    slugs = cfg.get("software_category_slugs") or []
+    # Fall back to config.json defaults when DB config is empty
+    if not slugs:
+        _cfg_path = _os.path.join(_os.path.dirname(__file__), "..", "config.json")
+        try:
+            with open(_cfg_path) as _f:
+                slugs = _json.load(_f).get("software_category_slugs", [])
+        except Exception:
+            slugs = []
+    # Look up real names from DB; fall back to slug-derived title if not found
+    db_cats = {
+        c.slug: c.name
+        for c in db.session.query(TarifPlanCategory).filter(TarifPlanCategory.slug.in_(slugs)).all()
+    }
+    categories = [
+        {"slug": s, "label": db_cats.get(s, s.replace("-", " ").title())}
+        for s in slugs
+    ]
+    return jsonify({"categories": categories})
+
+
 @ghrm_bp.route("/api/v1/ghrm/packages", methods=["GET"])
 def list_packages():
     """List active software packages."""
@@ -240,18 +291,25 @@ def get_access_status():
 # ─── Admin endpoints ─────────────────────────────────────────────────────────
 
 @ghrm_bp.route("/api/v1/admin/ghrm/packages", methods=["GET"])
+@require_auth
 @require_admin
 def admin_list_packages():
     page = int(request.args.get("page", 1))
     per_page = min(int(request.args.get("per_page", 20)), 100)
     query = request.args.get("q") or None
+    tariff_plan_id = request.args.get("tariff_plan_id") or None
     repo = GhrmSoftwarePackageRepository(db.session)
+    if tariff_plan_id:
+        pkg = repo.find_by_tariff_plan_id(tariff_plan_id)
+        items = [pkg.to_dict()] if pkg else []
+        return jsonify({"items": items, "total": len(items), "page": 1, "per_page": per_page, "pages": 1})
     result = repo.find_all(page=page, per_page=per_page, query=query)
     result["items"] = [p.to_dict() for p in result["items"]]
     return jsonify(result)
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/packages", methods=["POST"])
+@require_auth
 @require_admin
 def admin_create_package():
     body = request.json or {}
@@ -266,6 +324,7 @@ def admin_create_package():
         tariff_plan_id=body["tariff_plan_id"],
         name=body["name"],
         slug=body["slug"],
+        description=body.get("description"),
         author_name=body.get("author_name"),
         icon_url=body.get("icon_url"),
         github_owner=body["github_owner"],
@@ -280,6 +339,7 @@ def admin_create_package():
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/packages/<pkg_id>", methods=["PUT"])
+@require_auth
 @require_admin
 def admin_update_package(pkg_id):
     repo = GhrmSoftwarePackageRepository(db.session)
@@ -287,7 +347,7 @@ def admin_update_package(pkg_id):
     if not pkg:
         return jsonify({"error": "Not found"}), 404
     body = request.json or {}
-    updatable = ("name", "author_name", "icon_url", "github_owner", "github_repo",
+    updatable = ("name", "description", "author_name", "icon_url", "github_owner", "github_repo",
                  "github_protected_branch", "tech_specs", "related_slugs", "sort_order", "is_active")
     for field in updatable:
         if field in body:
@@ -306,6 +366,7 @@ def admin_update_package(pkg_id):
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/packages/<pkg_id>", methods=["DELETE"])
+@require_auth
 @require_admin
 def admin_delete_package(pkg_id):
     repo = GhrmSoftwarePackageRepository(db.session)
@@ -315,6 +376,7 @@ def admin_delete_package(pkg_id):
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/packages/<pkg_id>/rotate-key", methods=["POST"])
+@require_auth
 @require_admin
 def admin_rotate_key(pkg_id):
     try:
@@ -325,6 +387,7 @@ def admin_rotate_key(pkg_id):
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/packages/<pkg_id>/sync", methods=["POST"])
+@require_auth
 @require_admin
 def admin_sync_package(pkg_id):
     repo = GhrmSoftwarePackageRepository(db.session)
@@ -340,6 +403,7 @@ def admin_sync_package(pkg_id):
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/access-log", methods=["GET"])
+@require_auth
 @require_admin
 def admin_access_log():
     page = int(request.args.get("page", 1))
@@ -359,6 +423,7 @@ def admin_access_log():
 
 
 @ghrm_bp.route("/api/v1/admin/ghrm/access/sync/<user_id>", methods=["POST"])
+@require_auth
 @require_admin
 def admin_sync_user_access(user_id):
     _access_svc().on_subscription_activated(user_id, "")

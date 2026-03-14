@@ -673,6 +673,7 @@ def _get_or_create_widget(slug: str, name: str, widget_type: str,
         existing.name = name
         if widget_type == "html":
             existing.content_json = content_json
+        if source_css is not None:
             existing.source_css = source_css
         db.session.flush()
         print(f"  ~ widget '{slug}' (updated)")
@@ -795,6 +796,26 @@ def populate_cms() -> None:
     widget_map: dict[str, "CmsWidget"] = {}
 
     # Menu widgets
+    FOOTER_NAV_CSS = """\
+/* Footer nav — always horizontal, never burger */
+.cms-widget--footer-nav .cms-burger { display: none !important; }
+.cms-widget--footer-nav .cms-menu {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap;
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  right: auto !important;
+}
+.cms-widget--footer-nav .cms-menu__item { border-bottom: none !important; position: static !important; }
+.cms-widget--footer-nav .cms-menu__link { padding: 0.25rem 0.75rem; font-size: 0.875rem; opacity: 0.8; }
+.cms-widget--footer-nav .cms-menu__link:hover { opacity: 1; }
+"""
+
     header_nav = _get_or_create_widget("header-nav", "Header Navigation", "menu")
     widget_map["header-nav"] = header_nav
     if db.session.query(CmsMenuItem).filter_by(widget_id=header_nav.id).count() == 0:
@@ -803,15 +824,18 @@ def populate_cms() -> None:
             {"label": "Features", "url": "/#features"},
             {"label": "Pricing", "url": "/#pricing"},
             {"label": "About", "page_slug": "about"},
+            {"label": "Software", "url": "/category"},
         ])
 
-    footer_nav = _get_or_create_widget("footer-nav", "Footer Navigation", "menu")
+    footer_nav = _get_or_create_widget("footer-nav", "Footer Navigation", "menu",
+                                        source_css=FOOTER_NAV_CSS)
     widget_map["footer-nav"] = footer_nav
     if db.session.query(CmsMenuItem).filter_by(widget_id=footer_nav.id).count() == 0:
         _add_menu_items(footer_nav, [
-            {"label": "Privacy Policy", "url": "/privacy"},
-            {"label": "Terms of Service", "url": "/terms"},
-            {"label": "Contact", "url": "/contact"},
+            {"label": "Privacy Policy", "page_slug": "privacy"},
+            {"label": "Terms of Service", "page_slug": "terms"},
+            {"label": "Contact", "page_slug": "contact"},
+            {"label": "Software", "url": "/category"},
         ])
 
     # HTML widgets
@@ -887,6 +911,24 @@ def populate_cms() -> None:
         meta_description="Learn about our team, our story, and our values.",
         sort_order=20,
     )
+    _get_or_create_page(
+        "privacy", "Privacy Policy", content_page, default_light,
+        content_html="<h1>Privacy Policy</h1><p>Your privacy policy content goes here.</p>",
+        meta_description="Read our privacy policy.",
+        sort_order=30,
+    )
+    _get_or_create_page(
+        "terms", "Terms of Service", content_page, default_light,
+        content_html="<h1>Terms of Service</h1><p>Your terms of service content goes here.</p>",
+        meta_description="Read our terms of service.",
+        sort_order=31,
+    )
+    _get_or_create_page(
+        "contact", "Contact", content_page, default_light,
+        content_html="<h1>Contact Us</h1><p>Get in touch with our team.</p>",
+        meta_description="Contact our team.",
+        sort_order=32,
+    )
 
     db.session.commit()
 
@@ -895,7 +937,7 @@ def populate_cms() -> None:
     print(f"  Styles  : {len(STYLES)} (5 light + 5 dark)")
     print(f"  Widgets : {len(widget_map)}")
     print(f"  Layouts : {len(LAYOUTS)}")
-    print("  Pages   : 5 (home1, home2, landing2, landing3, about)")
+    print("  Pages   : 8 (home1, home2, landing2, landing3, about, privacy, terms, contact)")
     print("  Embed widgets: tarif-plans-root (all), tarif-plans-backend (backend category)")
     print("=" * 55)
 

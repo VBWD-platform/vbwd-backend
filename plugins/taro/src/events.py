@@ -1,6 +1,7 @@
 """Events for Taro plugin - event-driven architecture."""
 from dataclasses import dataclass
 from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from typing import List, Optional
 from src.events.domain import DomainEvent
 
@@ -79,7 +80,7 @@ class TaroFollowUpGeneratedEvent(DomainEvent):
         super().__post_init__()
         self.name = "taro.followup.generated"
         if not self.created_at:
-            self.created_at = datetime.utcnow()
+            self.created_at = utcnow()
 
 
 @dataclass

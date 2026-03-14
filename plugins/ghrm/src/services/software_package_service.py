@@ -1,6 +1,8 @@
 """SoftwarePackageService — catalogue listing, detail, sync, and install instructions."""
+import logging
 import secrets
 from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from typing import List, Dict, Any, Optional
 from plugins.ghrm.src.models.ghrm_software_package import GhrmSoftwarePackage
 from plugins.ghrm.src.models.ghrm_software_sync import GhrmSoftwareSync
@@ -139,9 +141,11 @@ class SoftwarePackageService:
             sync.latest_version = releases[0].tag
             try:
                 sync.latest_released_at = datetime.fromisoformat(releases[0].date)
-            except Exception:
-                pass
-        sync.last_synced_at = datetime.utcnow()
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Could not parse release date '%s': %s", releases[0].date, exc
+                )
+        sync.last_synced_at = utcnow()
         self._sync_repo.save(sync)
 
         return sync.to_dict()

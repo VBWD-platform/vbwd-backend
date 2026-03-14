@@ -73,6 +73,12 @@ class CmsLayoutService:
             raise CmsLayoutNotFoundError(f"Layout {layout_id} not found")
         return self._to_dto(obj, include_assignments=True)
 
+    def get_layout_by_slug(self, slug: str) -> Dict[str, Any]:
+        obj = self._repo.find_by_slug(slug)
+        if not obj:
+            raise CmsLayoutNotFoundError(f"Layout '{slug}' not found")
+        return self._to_dto(obj, include_assignments=True)
+
     def create_layout(self, data: Dict[str, Any]) -> Dict[str, Any]:
         name = data.get("name", "").strip()
         if not name:

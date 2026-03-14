@@ -1,5 +1,6 @@
 """AddOnSubscription domain model."""
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from sqlalchemy.dialects.postgresql import UUID
 from src.extensions import db
 from src.models.base import BaseModel
@@ -68,13 +69,13 @@ class AddOnSubscription(BaseModel):
         """Check if add-on subscription is currently valid."""
         if self.status != SubscriptionStatus.ACTIVE:
             return False
-        if self.expires_at and self.expires_at < datetime.utcnow():
+        if self.expires_at and self.expires_at < utcnow():
             return False
         return True
 
     def activate(self, duration_days: int) -> None:
         """Activate add-on subscription."""
-        now = datetime.utcnow()
+        now = utcnow()
         self.status = SubscriptionStatus.ACTIVE
         self.starts_at = now
         self.expires_at = now + timedelta(days=duration_days)
@@ -82,7 +83,7 @@ class AddOnSubscription(BaseModel):
     def cancel(self) -> None:
         """Cancel add-on subscription."""
         self.status = SubscriptionStatus.CANCELLED
-        self.cancelled_at = datetime.utcnow()
+        self.cancelled_at = utcnow()
 
     def expire(self) -> None:
         """Mark add-on subscription as expired."""

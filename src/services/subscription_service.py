@@ -1,5 +1,6 @@
 """Subscription service implementation."""
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from decimal import Decimal
 from typing import Optional, List
 from uuid import UUID
@@ -353,8 +354,8 @@ class SubscriptionService:
             invoice.amount = plan.price or plan.price_float or 0
             invoice.currency = plan.currency or "EUR"
             invoice.status = InvoiceStatus.PENDING
-            invoice.invoiced_at = datetime.utcnow()
-            invoice.expires_at = datetime.utcnow() + timedelta(days=30)
+            invoice.invoiced_at = utcnow()
+            invoice.expires_at = utcnow() + timedelta(days=30)
             invoice_repo.save(invoice)
 
             results.append(
@@ -419,7 +420,7 @@ class SubscriptionService:
 
         # Calculate pause duration and extend expiration
         if subscription.paused_at and subscription.expires_at:
-            paused_duration = datetime.utcnow() - subscription.paused_at
+            paused_duration = utcnow() - subscription.paused_at
             subscription.expires_at = subscription.expires_at + paused_duration
 
         subscription.resume()
@@ -459,7 +460,7 @@ class SubscriptionService:
         if not subscription.expires_at:
             return None
 
-        days_remaining = max(0, (subscription.expires_at - datetime.utcnow()).days)
+        days_remaining = max(0, (subscription.expires_at - utcnow()).days)
         total_days = self.PERIOD_DAYS.get(current_plan.billing_period, 30)
 
         # Credit for unused time

@@ -21,7 +21,7 @@ Usage:
 """
 import os
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 import bcrypt
 
@@ -233,8 +233,8 @@ class TestDataSeeder:
             user_id=user.id,
             tarif_plan_id=plan.id,
             status=SubscriptionStatus.ACTIVE,
-            started_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(days=30),
+            started_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
         )
         self.session.add(subscription)
         self.session.flush()

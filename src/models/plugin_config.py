@@ -1,6 +1,6 @@
 """Plugin configuration model for persisting plugin state."""
 import uuid
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from src.extensions import db
@@ -17,10 +17,8 @@ class PluginConfig(db.Model):  # type: ignore[name-defined]
     config = Column(JSONB, default=dict)
     enabled_at = Column(DateTime, nullable=True)
     disabled_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
     def __repr__(self):
         return f"<PluginConfig {self.plugin_name} ({self.status})>"

@@ -5,6 +5,7 @@ from src.models.base import BaseModel
 AREA_TYPES = frozenset({
     "header", "footer", "hero", "slideshow",
     "content", "three-column", "two-column", "cta-bar",
+    "vue",
 })
 
 

@@ -2,6 +2,7 @@
 from sqlalchemy.dialects.postgresql import UUID
 from src.extensions import db
 from src.models.base import BaseModel
+from src.utils.datetime_utils import utcnow
 
 
 class PasswordResetToken(BaseModel):
@@ -32,9 +33,7 @@ class PasswordResetToken(BaseModel):
     @property
     def is_expired(self) -> bool:
         """Check if token has expired."""
-        from datetime import datetime
-
-        return self.expires_at < datetime.utcnow()
+        return self.expires_at < utcnow()
 
     @property
     def is_used(self) -> bool:

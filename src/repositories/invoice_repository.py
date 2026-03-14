@@ -1,7 +1,7 @@
 """Invoice repository implementation."""
 from typing import Optional, List, Union, Tuple
 from uuid import UUID
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from src.repositories.base import BaseRepository
 from src.models import UserInvoice, InvoiceStatus
 
@@ -76,7 +76,7 @@ class InvoiceRepository(BaseRepository[UserInvoice]):
             self._session.query(UserInvoice)
             .filter(
                 UserInvoice.status == InvoiceStatus.PENDING,
-                UserInvoice.expires_at < datetime.utcnow(),
+                UserInvoice.expires_at < utcnow(),
             )
             .order_by(UserInvoice.expires_at.asc())
             .all()

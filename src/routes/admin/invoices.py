@@ -1,5 +1,6 @@
 """Admin invoice management routes."""
 import logging
+from datetime import timedelta
 from uuid import UUID
 
 from flask import Blueprint, current_app, jsonify, request
@@ -8,6 +9,7 @@ from src.repositories.invoice_repository import InvoiceRepository
 from src.repositories.user_repository import UserRepository
 from src.services.invoice_service import InvoiceService
 from src.events.payment_events import PaymentCapturedEvent, PaymentRefundedEvent
+from src.utils.datetime_utils import utcnow
 from src.extensions import db
 
 logger = logging.getLogger(__name__)
@@ -165,7 +167,6 @@ def duplicate_invoice(invoice_id):
         404: Source invoice not found
     """
     from src.models.invoice import UserInvoice
-    from datetime import datetime, timedelta
 
     invoice_repo = InvoiceRepository(db.session)
     source_invoice = invoice_repo.find_by_id(invoice_id)
@@ -181,8 +182,8 @@ def duplicate_invoice(invoice_id):
         invoice_number=UserInvoice.generate_invoice_number(),
         amount=source_invoice.amount,
         currency=source_invoice.currency,
-        invoiced_at=datetime.utcnow(),
-        expires_at=datetime.utcnow() + timedelta(days=30),
+        invoiced_at=utcnow(),
+        expires_at=utcnow() + timedelta(days=30),
     )
 
     db.session.add(new_invoice)

@@ -1,5 +1,5 @@
 """Token balance and transaction service."""
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from typing import List, Optional
 from uuid import UUID, uuid4
 from src.models.user_token_balance import UserTokenBalance, TokenTransaction
@@ -142,7 +142,7 @@ class TokenService:
 
         # Mark as completed
         purchase.status = PurchaseStatus.COMPLETED
-        purchase.completed_at = datetime.utcnow()
+        purchase.completed_at = utcnow()
         purchase.tokens_credited = True
         self._purchase_repo.save(purchase)
 

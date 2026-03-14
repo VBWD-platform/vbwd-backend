@@ -1,6 +1,7 @@
 """Password reset service implementation."""
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from src.utils.datetime_utils import utcnow
 from typing import Optional
 import secrets
 
@@ -79,7 +80,7 @@ class PasswordResetService:
 
         # Generate secure token
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.utcnow() + timedelta(hours=self.TOKEN_EXPIRY_HOURS)
+        expires_at = utcnow() + timedelta(hours=self.TOKEN_EXPIRY_HOURS)
 
         # Store token
         self._reset_repo.create_token(
@@ -112,7 +113,7 @@ class PasswordResetService:
                 success=False, error="Invalid token", failure_reason="invalid"
             )
 
-        if reset_token.expires_at < datetime.utcnow():
+        if reset_token.expires_at < utcnow():
             return ResetResult(
                 success=False, error="Token expired", failure_reason="expired"
             )

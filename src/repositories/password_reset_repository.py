@@ -1,5 +1,6 @@
 """Password reset token repository."""
 from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from typing import Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -70,7 +71,7 @@ class PasswordResetRepository(BaseRepository[PasswordResetToken]):
                 PasswordResetToken.user_id == user_id,
                 PasswordResetToken.used_at.is_(None),
             )
-            .update({"used_at": datetime.utcnow()}, synchronize_session=False)
+            .update({"used_at": utcnow()}, synchronize_session=False)
         )
         self._session.commit()
         return count
@@ -87,7 +88,7 @@ class PasswordResetRepository(BaseRepository[PasswordResetToken]):
         """
         token = self.find_by_id(token_id)
         if token:
-            token.used_at = datetime.utcnow()
+            token.used_at = utcnow()
             self._session.commit()
             return True
         return False
@@ -104,7 +105,7 @@ class PasswordResetRepository(BaseRepository[PasswordResetToken]):
         """
         from datetime import timedelta
 
-        cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff = utcnow() - timedelta(days=older_than_days)
 
         count = (
             self._session.query(PasswordResetToken)

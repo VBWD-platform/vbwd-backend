@@ -300,7 +300,7 @@ def update_user(user_id):
             token_value = int(data["token_balance"])
             if token_value < 0:
                 return jsonify({"error": "Token balance cannot be negative"}), 400
-            tb = UserTokenBalance.query.filter_by(user_id=user.id).first()
+            tb = db.session.query(UserTokenBalance).filter_by(user_id=user.id).first()
             if tb:
                 tb.balance = token_value
             else:

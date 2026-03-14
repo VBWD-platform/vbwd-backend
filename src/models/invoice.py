@@ -1,5 +1,5 @@
 """UserInvoice domain model."""
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from src.extensions import db
@@ -59,7 +59,7 @@ class UserInvoice(BaseModel):
     invoiced_at = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=utcnow,
     )
     paid_at = db.Column(db.DateTime)
     expires_at = db.Column(db.DateTime)
@@ -80,7 +80,7 @@ class UserInvoice(BaseModel):
         """Check if invoice can still be paid."""
         if self.status not in [InvoiceStatus.PENDING]:
             return False
-        if self.expires_at and self.expires_at < datetime.utcnow():
+        if self.expires_at and self.expires_at < utcnow():
             return False
         return True
 
@@ -99,7 +99,7 @@ class UserInvoice(BaseModel):
         self.status = InvoiceStatus.PAID
         self.payment_ref = payment_ref
         self.payment_method = payment_method
-        self.paid_at = datetime.utcnow()
+        self.paid_at = utcnow()
 
     def mark_failed(self) -> None:
         """Mark invoice payment as failed."""
@@ -116,7 +116,7 @@ class UserInvoice(BaseModel):
     @staticmethod
     def generate_invoice_number() -> str:
         """Generate unique invoice number."""
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        timestamp = utcnow().strftime("%Y%m%d%H%M%S")
         unique = uuid.uuid4().hex[:6].upper()
         return f"INV-{timestamp}-{unique}"
 

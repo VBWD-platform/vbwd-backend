@@ -14,6 +14,7 @@ class GhrmSoftwarePackage(BaseModel):
     icon_url = db.Column(db.String(512), nullable=True)
     github_owner = db.Column(db.String(128), nullable=False)
     github_repo = db.Column(db.String(128), nullable=False)
+    description = db.Column(db.Text, nullable=True)
     github_protected_branch = db.Column(db.String(64), nullable=False, default="release")
     github_installation_id = db.Column(db.String(64), nullable=True)
     sync_api_key = db.Column(db.String(128), nullable=False, default=lambda: secrets.token_urlsafe(32))
@@ -31,6 +32,7 @@ class GhrmSoftwarePackage(BaseModel):
             "tariff_plan_id": str(self.tariff_plan_id),
             "name": self.name,
             "slug": self.slug,
+            "description": self.description,
             "author_name": self.author_name,
             "icon_url": self.icon_url,
             "github_owner": self.github_owner,

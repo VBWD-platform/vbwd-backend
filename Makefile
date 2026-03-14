@@ -1,4 +1,4 @@
-.PHONY: up down build test test-unit test-integration test-integration-keep-data test-coverage seed-test-data cleanup-test-data reset-demo logs shell clean lint pre-commit pre-commit-quick
+.PHONY: up down build test test-unit test-integration test-integration-keep-data test-coverage seed-test-data cleanup-test-data reset-demo populate-ghrm logs shell clean lint pre-commit pre-commit-quick
 
 # Start all services
 up:
@@ -44,6 +44,10 @@ cleanup-test-data:
 # Reset database to clean demo state (3 plans, 2 addons, 3 token bundles)
 reset-demo:
 	docker compose exec api flask --app "src:create_app()" reset-demo --yes
+
+# Populate GHRM CMS data (layouts, widgets, pages) — idempotent, safe to re-run
+populate-ghrm:
+	./plugins/ghrm/bin/populate-db.sh
 
 # Run tests with coverage
 test-coverage:

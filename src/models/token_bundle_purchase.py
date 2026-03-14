@@ -1,5 +1,5 @@
 """TokenBundlePurchase domain model."""
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from sqlalchemy.dialects.postgresql import UUID
 from src.extensions import db
 from src.models.base import BaseModel
@@ -60,7 +60,7 @@ class TokenBundlePurchase(BaseModel):
     def complete(self) -> None:
         """Mark purchase as completed."""
         self.status = PurchaseStatus.COMPLETED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utcnow()
 
     def credit_tokens(self) -> None:
         """Mark tokens as credited to user."""

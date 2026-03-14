@@ -1,7 +1,7 @@
 """Activity logging service for audit trail."""
 import logging
 from typing import Any, Dict, Optional
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class ActivityLogger:
             metadata: Optional additional data to log
         """
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
             "action": action,
             "user_id": user_id,
             "metadata": metadata or {},

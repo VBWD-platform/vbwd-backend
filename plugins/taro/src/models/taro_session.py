@@ -1,5 +1,5 @@
 """TaroSession domain model - user Tarot reading session."""
-from datetime import datetime, timedelta
+from src.utils.datetime_utils import utcnow
 from src.extensions import db
 from src.models.base import BaseModel
 from plugins.taro.src.enums import TaroSessionStatus
@@ -39,7 +39,7 @@ class TaroSession(BaseModel):
     started_at = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=utcnow,
     )
     expires_at = db.Column(db.DateTime, nullable=False, index=True)  # started_at + 30 minutes
     ended_at = db.Column(db.DateTime, nullable=True)  # When user closed or session expired

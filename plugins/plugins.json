@@ -49,7 +49,7 @@
       "source": "local"
     },
     "ghrm": {
-      "enabled": false,
+      "enabled": true,
       "version": "1.0.0",
       "installedAt": "",
       "source": "local"

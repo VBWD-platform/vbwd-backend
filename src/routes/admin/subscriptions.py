@@ -1,6 +1,7 @@
 """Admin subscription management routes."""
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
+from src.utils.datetime_utils import utcnow
 from dateutil.relativedelta import relativedelta  # type: ignore[import-untyped]
 from src.middleware.auth import require_auth, require_admin
 from src.repositories.subscription_repository import SubscriptionRepository
@@ -72,7 +73,7 @@ def create_subscription():
         except (ValueError, AttributeError):
             return jsonify({"error": "Invalid started_at format. Use ISO 8601."}), 400
     else:
-        started_at = datetime.utcnow()
+        started_at = utcnow()
 
     requested_status = data.get("status", "active")
 
@@ -141,7 +142,7 @@ def create_subscription():
         plan.billing_period
     )
     expires_at = started_at + relativedelta(months=billing_months)
-    now = datetime.utcnow()
+    now = utcnow()
     status = (
         SubscriptionStatus.ACTIVE if started_at <= now else SubscriptionStatus.PENDING
     )
@@ -168,8 +169,8 @@ def create_subscription():
     invoice.amount = plan.price or plan.price_float or 0
     invoice.currency = plan.currency or "EUR"
     invoice.status = InvoiceStatus.PENDING
-    invoice.invoiced_at = datetime.utcnow()
-    invoice.expires_at = datetime.utcnow() + timedelta(days=30)
+    invoice.invoiced_at = utcnow()
+    invoice.expires_at = utcnow() + timedelta(days=30)
     db.session.add(invoice)
 
     db.session.commit()

@@ -543,6 +543,27 @@ def get_layout_public(layout_id: str):
         return jsonify({"error": str(e)}), 404
 
 
+@cms_bp.route("/api/v1/cms/layouts/by-slug/<slug>", methods=["GET"])
+def get_layout_by_slug_public(slug: str):
+    """GET /api/v1/cms/layouts/by-slug/<slug> — layout looked up by slug, widget data embedded."""
+    try:
+        layout = _layout_service().get_layout_by_slug(slug)
+        assignments = layout.get("assignments") or []
+        if assignments:
+            widget_svc = _widget_service()
+            for a in assignments:
+                wid = a.get("widget_id")
+                if wid:
+                    try:
+                        a["widget"] = widget_svc.get_widget(wid)
+                    except Exception:
+                        a["widget"] = None
+        layout["assignments"] = assignments
+        return jsonify(layout), 200
+    except CmsLayoutNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+
+
 @cms_bp.route("/api/v1/cms/styles/<style_id>/css", methods=["GET"])
 def get_style_css_public(style_id: str):
     """GET /api/v1/cms/styles/<id>/css — serve CSS as text/css."""

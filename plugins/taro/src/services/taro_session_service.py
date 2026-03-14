@@ -1,6 +1,7 @@
 """TaroSessionService - business logic for Taro sessions."""
 from typing import Optional, Tuple, List
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from uuid import uuid4
 from random import randint
 import os
@@ -182,7 +183,7 @@ class TaroSessionService:
             return None
 
         # Create session
-        now = datetime.utcnow()
+        now = utcnow()
         session = self.session_repo.create(
             user_id=user_id,
             status=TaroSessionStatus.ACTIVE.value,
@@ -327,7 +328,7 @@ class TaroSessionService:
         """
         sessions = self.session_repo.get_user_sessions(user_id)
 
-        today = datetime.utcnow().date()
+        today = utcnow().date()
         today_count = sum(
             1 for s in sessions
             if s.started_at.date() == today and s.status == TaroSessionStatus.ACTIVE.value
@@ -359,14 +360,14 @@ class TaroSessionService:
         if session.status != TaroSessionStatus.ACTIVE.value:
             return False
 
-        return datetime.utcnow() > session.expires_at
+        return utcnow() > session.expires_at
 
     def has_expiry_warning(self, session: TaroSession) -> bool:
         """Check if session should show 3-minute expiry warning."""
         if session.status != TaroSessionStatus.ACTIVE.value:
             return False
 
-        now = datetime.utcnow()
+        now = utcnow()
         time_until_expiry = (session.expires_at - now).total_seconds()
 
         # Warning when 3 minutes or less remain
@@ -429,7 +430,7 @@ class TaroSessionService:
         return self.session_repo.update_status(
             session_id,
             TaroSessionStatus.CLOSED,
-            ended_at=datetime.utcnow(),
+            ended_at=utcnow(),
         )
 
     def cleanup_expired_sessions(self) -> int:
@@ -438,7 +439,7 @@ class TaroSessionService:
         Returns:
             Count of sessions updated
         """
-        now = datetime.utcnow()
+        now = utcnow()
         expired_sessions = self.session_repo.get_expired_sessions(before=now)
 
         count = 0
@@ -510,7 +511,7 @@ class TaroSessionService:
             Count of sessions that were closed
         """
         sessions = self.session_repo.get_user_sessions(user_id)
-        today = datetime.utcnow().date()
+        today = utcnow().date()
 
         closed_count = 0
         for session in sessions:
@@ -520,7 +521,7 @@ class TaroSessionService:
                 self.session_repo.update_status(
                     session.id,
                     TaroSessionStatus.CLOSED,
-                    ended_at=datetime.utcnow(),
+                    ended_at=utcnow(),
                 )
                 closed_count += 1
 

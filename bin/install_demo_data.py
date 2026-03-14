@@ -88,7 +88,7 @@ try:
     categories_data = [
         {'name': 'Root',     'slug': 'root',     'description': 'Core subscription plans.',       'sort_order': 0},
         {'name': 'Backend',  'slug': 'backend',  'description': 'Backend server plugins.',        'sort_order': 1},
-        {'name': 'FE Admin', 'slug': 'fe-admin', 'description': 'Admin frontend plugins.',        'sort_order': 2},
+        {'name': 'Admin',    'slug': 'fe-admin', 'description': 'Admin frontend plugins.',        'sort_order': 2},
         {'name': 'FE User',  'slug': 'fe-user',  'description': 'User-facing frontend plugins.',  'sort_order': 3},
         {'name': 'Payments', 'slug': 'payments', 'description': 'Payment gateway integrations.',  'sort_order': 4},
     ]

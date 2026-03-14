@@ -1,6 +1,7 @@
 """Invoice service for managing user invoices."""
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from typing import Optional, List
 from uuid import UUID
 
@@ -79,8 +80,8 @@ class InvoiceService:
                 amount=amount,
                 currency=currency,
                 status=InvoiceStatus.PENDING,
-                invoiced_at=datetime.utcnow(),
-                expires_at=datetime.utcnow() + timedelta(days=due_days),
+                invoiced_at=utcnow(),
+                expires_at=utcnow() + timedelta(days=due_days),
             )
 
             saved_invoice = self._repo.save(invoice)

@@ -1,11 +1,11 @@
 """User subscription routes."""
 from flask import Blueprint, jsonify, g, request
-from uuid import UUID
 from src.extensions import db
 from src.middleware.auth import require_auth
 from src.repositories.subscription_repository import SubscriptionRepository
 from src.repositories.tarif_plan_repository import TarifPlanRepository
 from src.services.subscription_service import SubscriptionService
+from src.utils.validation import parse_uuid
 
 subscriptions_bp = Blueprint("subscriptions", __name__)
 
@@ -193,11 +193,7 @@ def cancel_subscription(subscription_id: str):
         200: Cancelled subscription
         404: Subscription not found or not owned by user
     """
-    # Validate UUID format
-    try:
-        subscription_uuid = UUID(subscription_id)
-    except ValueError:
-        return jsonify({"error": "Invalid subscription ID format"}), 400
+    subscription_uuid = parse_uuid(subscription_id)
 
     # Initialize services
     subscription_repo = SubscriptionRepository(db.session)
@@ -239,10 +235,7 @@ def pause_subscription(subscription_id: str):
         400: Cannot pause subscription
         404: Subscription not found
     """
-    try:
-        subscription_uuid = UUID(subscription_id)
-    except ValueError:
-        return jsonify({"error": "Invalid subscription ID format"}), 400
+    subscription_uuid = parse_uuid(subscription_id)
 
     subscription_repo = SubscriptionRepository(db.session)
     subscription_service = SubscriptionService(subscription_repo=subscription_repo)
@@ -282,10 +275,7 @@ def resume_subscription(subscription_id: str):
         400: Cannot resume subscription
         404: Subscription not found
     """
-    try:
-        subscription_uuid = UUID(subscription_id)
-    except ValueError:
-        return jsonify({"error": "Invalid subscription ID format"}), 400
+    subscription_uuid = parse_uuid(subscription_id)
 
     subscription_repo = SubscriptionRepository(db.session)
     subscription_service = SubscriptionService(subscription_repo=subscription_repo)
@@ -326,10 +316,7 @@ def upgrade_subscription(subscription_id: str):
         400: Cannot upgrade
         404: Subscription not found
     """
-    try:
-        subscription_uuid = UUID(subscription_id)
-    except ValueError:
-        return jsonify({"error": "Invalid subscription ID format"}), 400
+    subscription_uuid = parse_uuid(subscription_id)
 
     data = request.get_json() or {}
     plan_id = data.get("plan_id")
@@ -337,10 +324,7 @@ def upgrade_subscription(subscription_id: str):
     if not plan_id:
         return jsonify({"error": "plan_id is required"}), 400
 
-    try:
-        plan_uuid = UUID(plan_id)
-    except ValueError:
-        return jsonify({"error": "Invalid plan ID format"}), 400
+    plan_uuid = parse_uuid(plan_id)
 
     subscription_repo = SubscriptionRepository(db.session)
     tarif_plan_repo = TarifPlanRepository(db.session)
@@ -384,10 +368,7 @@ def downgrade_subscription(subscription_id: str):
         400: Cannot downgrade
         404: Subscription not found
     """
-    try:
-        subscription_uuid = UUID(subscription_id)
-    except ValueError:
-        return jsonify({"error": "Invalid subscription ID format"}), 400
+    subscription_uuid = parse_uuid(subscription_id)
 
     data = request.get_json() or {}
     plan_id = data.get("plan_id")
@@ -395,10 +376,7 @@ def downgrade_subscription(subscription_id: str):
     if not plan_id:
         return jsonify({"error": "plan_id is required"}), 400
 
-    try:
-        plan_uuid = UUID(plan_id)
-    except ValueError:
-        return jsonify({"error": "Invalid plan ID format"}), 400
+    plan_uuid = parse_uuid(plan_id)
 
     subscription_repo = SubscriptionRepository(db.session)
     tarif_plan_repo = TarifPlanRepository(db.session)
@@ -441,19 +419,13 @@ def get_proration(subscription_id: str):
         400: Invalid request
         404: Subscription not found
     """
-    try:
-        subscription_uuid = UUID(subscription_id)
-    except ValueError:
-        return jsonify({"error": "Invalid subscription ID format"}), 400
+    subscription_uuid = parse_uuid(subscription_id)
 
     new_plan_id = request.args.get("new_plan_id")
     if not new_plan_id:
         return jsonify({"error": "new_plan_id query parameter is required"}), 400
 
-    try:
-        new_plan_uuid = UUID(new_plan_id)
-    except ValueError:
-        return jsonify({"error": "Invalid plan ID format"}), 400
+    new_plan_uuid = parse_uuid(new_plan_id)
 
     subscription_repo = SubscriptionRepository(db.session)
     tarif_plan_repo = TarifPlanRepository(db.session)

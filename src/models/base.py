@@ -1,5 +1,5 @@
 """Base model with common fields and optimistic locking."""
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from uuid import uuid4
 from sqlalchemy import Column, DateTime, Integer, event
 from sqlalchemy.dialects.postgresql import UUID
@@ -28,13 +28,13 @@ class BaseModel(db.Model):  # type: ignore[name-defined]
     created_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=utcnow,
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
     )
     version = Column(Integer, nullable=False, default=0)
 

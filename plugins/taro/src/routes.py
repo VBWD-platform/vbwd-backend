@@ -1,6 +1,6 @@
 """Routes for Taro plugin - API endpoints."""
 from flask import Blueprint, request, jsonify, current_app, send_from_directory, g
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from pathlib import Path
 from uuid import UUID
 from src.extensions import db
@@ -194,7 +194,7 @@ def create_session():
         # Emit event for session creation
         event = TaroSessionRequestedEvent(
             user_id=user_id,
-            requested_at=datetime.utcnow(),
+            requested_at=utcnow(),
             daily_limit=daily_limit,
             max_follow_ups=max_follow_ups,
         )
@@ -381,7 +381,7 @@ def create_follow_up(session_id: str):
             user_id=user_id,
             question=question,
             follow_up_type=follow_up_type,
-            requested_at=datetime.utcnow(),
+            requested_at=utcnow(),
         )
         current_app.container.event_dispatcher().emit(event)
 
@@ -395,7 +395,7 @@ def create_follow_up(session_id: str):
                     "question": question,
                     "follow_up_type": follow_up_type,
                     "follow_up_count": session.follow_up_count + 1,
-                    "requested_at": datetime.utcnow().isoformat(),
+                    "requested_at": utcnow().isoformat(),
                 },
             }),
             201,
@@ -884,7 +884,7 @@ def get_daily_limits():
         if active_session:
             has_warning = session_service.has_expiry_warning(active_session)
             if has_warning:
-                time_remaining = (active_session.expires_at - datetime.utcnow()).total_seconds()
+                time_remaining = (active_session.expires_at - utcnow()).total_seconds()
                 session_expiry_warning = {
                     "has_warning": True,
                     "session_id": str(active_session.id),

@@ -1,5 +1,5 @@
 """Refund service — orchestrates full invoice refund."""
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from typing import Optional, Dict, Any
 from uuid import UUID
 
@@ -167,7 +167,7 @@ class RefundService:
                     items_reversed["tokens_debited"] += default_tokens
 
             subscription.status = SubscriptionStatus.CANCELLED
-            subscription.cancelled_at = datetime.utcnow()
+            subscription.cancelled_at = utcnow()
             self._subscription_repo.save(subscription)
             items_reversed["subscription"] = str(subscription.id)
 
@@ -193,6 +193,6 @@ class RefundService:
         addon_sub = self._addon_sub_repo.find_by_id(line_item.item_id)
         if addon_sub and addon_sub.status == SubscriptionStatus.ACTIVE:
             addon_sub.status = SubscriptionStatus.CANCELLED
-            addon_sub.cancelled_at = datetime.utcnow()
+            addon_sub.cancelled_at = utcnow()
             self._addon_sub_repo.save(addon_sub)
             items_reversed["add_ons"].append(str(addon_sub.id))

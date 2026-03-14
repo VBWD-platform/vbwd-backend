@@ -1,6 +1,7 @@
 """Domain event system with handlers and results."""
 from dataclasses import dataclass
 from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from typing import Any, Dict, Optional, List
 from abc import ABC, abstractmethod
 from src.events.dispatcher import Event as BaseEvent
@@ -20,7 +21,7 @@ class DomainEvent(BaseEvent):
     def __post_init__(self):
         """Initialize default values after dataclass initialization."""
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = utcnow()
         if self.metadata is None:
             self.metadata = {}
 

@@ -1,5 +1,6 @@
 """Subscription domain model."""
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from sqlalchemy.dialects.postgresql import UUID
 from src.extensions import db
 from src.models.base import BaseModel
@@ -63,7 +64,7 @@ class Subscription(BaseModel):
         """Check if subscription is currently valid (ACTIVE or TRIALING)."""
         if self.status not in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING):
             return False
-        if self.expires_at and self.expires_at < datetime.utcnow():
+        if self.expires_at and self.expires_at < utcnow():
             return False
         return True
 
@@ -77,7 +78,7 @@ class Subscription(BaseModel):
         """Calculate days remaining until expiration."""
         if not self.expires_at:
             return 0
-        delta = self.expires_at - datetime.utcnow()
+        delta = self.expires_at - utcnow()
         return max(0, delta.days)
 
     def start_trial(self, trial_days: int) -> None:
@@ -87,7 +88,7 @@ class Subscription(BaseModel):
         Args:
             trial_days: Number of days for the trial.
         """
-        now = datetime.utcnow()
+        now = utcnow()
         self.status = SubscriptionStatus.TRIALING
         self.started_at = now
         self.trial_end_at = now + timedelta(days=trial_days)
@@ -100,7 +101,7 @@ class Subscription(BaseModel):
         Args:
             duration_days: Number of days the subscription is valid.
         """
-        now = datetime.utcnow()
+        now = utcnow()
         self.status = SubscriptionStatus.ACTIVE
         self.started_at = now
         self.expires_at = now + timedelta(days=duration_days)
@@ -108,7 +109,7 @@ class Subscription(BaseModel):
     def cancel(self) -> None:
         """Cancel subscription."""
         self.status = SubscriptionStatus.CANCELLED
-        self.cancelled_at = datetime.utcnow()
+        self.cancelled_at = utcnow()
 
     def expire(self) -> None:
         """Mark subscription as expired."""
@@ -117,7 +118,7 @@ class Subscription(BaseModel):
     def pause(self) -> None:
         """Pause subscription."""
         self.status = SubscriptionStatus.PAUSED
-        self.paused_at = datetime.utcnow()
+        self.paused_at = utcnow()
 
     def resume(self) -> None:
         """Resume paused subscription."""

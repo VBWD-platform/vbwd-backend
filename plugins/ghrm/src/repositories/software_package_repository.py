@@ -1,6 +1,8 @@
 """GhrmSoftwarePackageRepository — data access for software packages."""
 from typing import Optional, List, Dict, Any
 from plugins.ghrm.src.models.ghrm_software_package import GhrmSoftwarePackage
+from src.models.tarif_plan import TarifPlan
+from src.models.tarif_plan_category import TarifPlanCategory, tarif_plan_category_plans
 
 
 class GhrmSoftwarePackageRepository:
@@ -24,6 +26,13 @@ class GhrmSoftwarePackageRepository:
 
     def find_all(self, page: int = 1, per_page: int = 20, category_slug: Optional[str] = None, query: Optional[str] = None) -> Dict[str, Any]:
         q = self.session.query(GhrmSoftwarePackage).filter(GhrmSoftwarePackage.is_active == True)  # noqa
+        if category_slug:
+            q = (
+                q.join(TarifPlan, GhrmSoftwarePackage.tariff_plan_id == TarifPlan.id)
+                 .join(tarif_plan_category_plans, tarif_plan_category_plans.c.tarif_plan_id == TarifPlan.id)
+                 .join(TarifPlanCategory, tarif_plan_category_plans.c.category_id == TarifPlanCategory.id)
+                 .filter(TarifPlanCategory.slug == category_slug)
+            )
         if query:
             term = f"%{query}%"
             q = q.filter(GhrmSoftwarePackage.name.ilike(term) | GhrmSoftwarePackage.slug.ilike(term))

@@ -1,6 +1,7 @@
 """Payment event handlers."""
-from datetime import datetime
+from datetime import timedelta
 from typing import Any
+from src.utils.datetime_utils import utcnow
 from src.events.domain import DomainEvent, EventResult, IEventHandler
 from src.events.payment_events import PaymentCapturedEvent
 from src.models.enums import LineItemType, SubscriptionStatus, PurchaseStatus
@@ -73,7 +74,7 @@ class PaymentCapturedHandler(IEventHandler):
             if invoice.status.value != "PAID":
                 invoice.status = invoice.status.__class__("PAID")
                 invoice.payment_ref = event.payment_reference
-                invoice.paid_at = datetime.utcnow()
+                invoice.paid_at = utcnow()
                 repos["invoice"].save(invoice)
 
             items_activated: dict[str, Any] = {
@@ -111,11 +112,11 @@ class PaymentCapturedHandler(IEventHandler):
                                 for prev in conflicting:
                                     if str(prev.id) != str(subscription.id):
                                         prev.status = SubscriptionStatus.CANCELLED
-                                        prev.cancelled_at = datetime.utcnow()
+                                        prev.cancelled_at = utcnow()
                                         repos["subscription"].save(prev)
 
                         subscription.status = SubscriptionStatus.ACTIVE
-                        subscription.started_at = datetime.utcnow()
+                        subscription.started_at = utcnow()
                         # Calculate expiration based on plan
                         if subscription.tarif_plan:
                             from src.services.subscription_service import (
@@ -125,9 +126,8 @@ class PaymentCapturedHandler(IEventHandler):
                             period_days = SubscriptionService.PERIOD_DAYS.get(
                                 subscription.tarif_plan.billing_period, 30
                             )
-                            from datetime import timedelta
 
-                            subscription.expires_at = datetime.utcnow() + timedelta(
+                            subscription.expires_at = utcnow() + timedelta(
                                 days=period_days
                             )
                         repos["subscription"].save(subscription)
@@ -178,7 +178,7 @@ class PaymentCapturedHandler(IEventHandler):
                     if purchase and purchase.status == PurchaseStatus.PENDING:
                         # Mark purchase as completed
                         purchase.status = PurchaseStatus.COMPLETED
-                        purchase.completed_at = datetime.utcnow()
+                        purchase.completed_at = utcnow()
                         purchase.tokens_credited = True
                         repos["token_bundle_purchase"].save(purchase)
 
@@ -221,7 +221,7 @@ class PaymentCapturedHandler(IEventHandler):
                     )
                     if addon_sub and addon_sub.status == SubscriptionStatus.PENDING:
                         addon_sub.status = SubscriptionStatus.ACTIVE
-                        addon_sub.activated_at = datetime.utcnow()
+                        addon_sub.activated_at = utcnow()
                         repos["addon_subscription"].save(addon_sub)
                         items_activated["add_ons"].append(str(addon_sub.id))
 

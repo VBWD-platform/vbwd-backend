@@ -23,6 +23,7 @@ NC='\033[0m' # No Color
 
 # Default values
 SKIP_DEMO_DATA=false
+FORCE=false
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-AdminPass123@}"
 TEST_EMAIL="${TEST_EMAIL:-test@example.com}"
@@ -35,11 +36,16 @@ while [[ $# -gt 0 ]]; do
             SKIP_DEMO_DATA=true
             shift
             ;;
+        --force|-f)
+            FORCE=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --skip-demo-data    Skip demo data installation"
+            echo "  --force, -f         Skip confirmation prompts (for automation)"
             echo "  --help, -h          Show this help message"
             echo ""
             echo "Environment variables:"
@@ -81,20 +87,25 @@ fi
 echo ""
 echo -e "${YELLOW}This operation CANNOT be undone!${NC}"
 echo ""
-read -p "Type 'RESET' to continue, or anything else to cancel: " CONFIRMATION
 
-if [ "$CONFIRMATION" != "RESET" ]; then
-    echo -e "${GREEN}Operation cancelled. Database unchanged.${NC}"
-    exit 0
-fi
+if [ "$FORCE" = true ]; then
+    echo -e "${YELLOW}--force flag set, skipping confirmation prompts.${NC}"
+else
+    read -p "Type 'RESET' to continue, or anything else to cancel: " CONFIRMATION
 
-echo ""
-echo -e "${RED}Final confirmation required!${NC}"
-read -p "Are you absolutely sure? Type 'YES' to proceed: " FINAL_CONFIRMATION
+    if [ "$CONFIRMATION" != "RESET" ]; then
+        echo -e "${GREEN}Operation cancelled. Database unchanged.${NC}"
+        exit 0
+    fi
 
-if [ "$FINAL_CONFIRMATION" != "YES" ]; then
-    echo -e "${GREEN}Operation cancelled. Database unchanged.${NC}"
-    exit 0
+    echo ""
+    echo -e "${RED}Final confirmation required!${NC}"
+    read -p "Are you absolutely sure? Type 'YES' to proceed: " FINAL_CONFIRMATION
+
+    if [ "$FINAL_CONFIRMATION" != "YES" ]; then
+        echo -e "${GREEN}Operation cancelled. Database unchanged.${NC}"
+        exit 0
+    fi
 fi
 
 echo ""

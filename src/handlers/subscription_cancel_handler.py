@@ -1,5 +1,5 @@
 """Subscription cancellation event handler."""
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from src.events.domain import DomainEvent, EventResult, IEventHandler
 from src.events.payment_events import SubscriptionCancelledEvent
 from src.models.enums import SubscriptionStatus
@@ -35,7 +35,7 @@ class SubscriptionCancelledHandler(IEventHandler):
                 return EventResult.success_result()
 
             subscription.status = SubscriptionStatus.CANCELLED
-            subscription.cancelled_at = datetime.utcnow()
+            subscription.cancelled_at = utcnow()
             repos["subscription"].save(subscription)
 
             # Cancel linked add-on subscriptions
@@ -45,7 +45,7 @@ class SubscriptionCancelledHandler(IEventHandler):
             for addon_sub in addon_subs:
                 if addon_sub.status == SubscriptionStatus.ACTIVE:
                     addon_sub.status = SubscriptionStatus.CANCELLED
-                    addon_sub.cancelled_at = datetime.utcnow()
+                    addon_sub.cancelled_at = utcnow()
                     repos["addon_subscription"].save(addon_sub)
 
             return EventResult.success_result(

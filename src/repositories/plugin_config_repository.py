@@ -4,7 +4,7 @@ Deprecated: Use JsonFilePluginConfigStore for new deployments.
 This repository is retained for backward compatibility with existing
 PostgreSQL-based plugin state.
 """
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from typing import Optional, List
 from src.models.plugin_config import PluginConfig
 from src.plugins.config_store import PluginConfigStore, PluginConfigEntry
@@ -68,7 +68,7 @@ class PluginConfigRepository(PluginConfigStore):
             .filter(PluginConfig.plugin_name == plugin_name)
             .first()
         )
-        now = datetime.utcnow()
+        now = utcnow()
 
         if existing:
             existing.status = status
@@ -109,7 +109,7 @@ class PluginConfigRepository(PluginConfigStore):
             .filter(PluginConfig.plugin_name == plugin_name)
             .first()
         )
-        now = datetime.utcnow()
+        now = utcnow()
 
         if existing:
             existing.config = config

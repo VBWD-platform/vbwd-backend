@@ -1,7 +1,8 @@
 """Subscription repository implementation."""
+from datetime import timedelta
 from typing import Optional, List, Union, Tuple
 from uuid import UUID
-from datetime import datetime
+from src.utils.datetime_utils import utcnow
 from src.repositories.base import BaseRepository
 from src.models import Subscription, SubscriptionStatus
 
@@ -49,9 +50,8 @@ class SubscriptionRepository(BaseRepository[Subscription]):
 
     def find_expiring_soon(self, days: int = 7) -> List[Subscription]:
         """Find subscriptions expiring within specified days."""
-        from datetime import timedelta
 
-        threshold = datetime.utcnow() + timedelta(days=days)
+        threshold = utcnow() + timedelta(days=days)
         return (
             self._session.query(Subscription)
             .filter(
@@ -67,7 +67,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             self._session.query(Subscription)
             .filter(
                 Subscription.status == SubscriptionStatus.ACTIVE,
-                Subscription.expires_at < datetime.utcnow(),
+                Subscription.expires_at < utcnow(),
             )
             .all()
         )
@@ -78,7 +78,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             self._session.query(Subscription)
             .filter(
                 Subscription.status == SubscriptionStatus.TRIALING,
-                Subscription.trial_end_at <= datetime.utcnow(),
+                Subscription.trial_end_at <= utcnow(),
             )
             .all()
         )

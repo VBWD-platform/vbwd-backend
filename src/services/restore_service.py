@@ -1,5 +1,6 @@
 """Restore service — reverses a refund, restoring invoice and all items."""
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
 
@@ -100,10 +101,8 @@ class RestoreService:
                 period_days = SubscriptionService.PERIOD_DAYS.get(
                     subscription.tarif_plan.billing_period, 30
                 )
-                subscription.starts_at = datetime.utcnow()
-                subscription.expires_at = datetime.utcnow() + timedelta(
-                    days=period_days
-                )
+                subscription.starts_at = utcnow()
+                subscription.expires_at = utcnow() + timedelta(days=period_days)
             sub_repo.save(subscription)
             items_restored["subscription"] = str(subscription.id)
 
@@ -148,6 +147,6 @@ class RestoreService:
         if addon_sub and addon_sub.status == SubscriptionStatus.CANCELLED:
             addon_sub.status = SubscriptionStatus.ACTIVE
             addon_sub.cancelled_at = None
-            addon_sub.activated_at = datetime.utcnow()
+            addon_sub.activated_at = utcnow()
             addon_repo.save(addon_sub)
             items_restored["add_ons"].append(str(addon_sub.id))

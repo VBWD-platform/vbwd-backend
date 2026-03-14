@@ -1,5 +1,6 @@
 """GithubAccessService — manages GitHub OAuth identity and repo collaborator lifecycle."""
-from datetime import datetime, timedelta
+from datetime import timedelta
+from src.utils.datetime_utils import utcnow
 from typing import Optional, Dict, Any
 from plugins.ghrm.src.models.ghrm_user_github_access import GhrmUserGithubAccess, AccessStatus
 from plugins.ghrm.src.models.ghrm_access_log import SyncAction
@@ -138,7 +139,7 @@ class GithubAccessService:
             return
         days = trailing_days or self._grace_fallback_days
         access.access_status = AccessStatus.GRACE
-        access.grace_expires_at = datetime.utcnow() + timedelta(days=days)
+        access.grace_expires_at = utcnow() + timedelta(days=days)
         self._access_repo.save(access)
         pkg = self._package_repo.find_by_tariff_plan_id(plan_id)
         self._log_repo.log(user_id, str(pkg.id) if pkg else None, SyncAction.GRACE_STARTED, "subscription_event")
@@ -173,7 +174,7 @@ class GithubAccessService:
 
     def revoke_expired_grace_access(self) -> int:
         """Revoke all access records where grace period has expired. Returns count."""
-        expired = self._access_repo.find_grace_expired(datetime.utcnow())
+        expired = self._access_repo.find_grace_expired(utcnow())
         count = 0
         for access in expired:
             packages = self._get_packages_for_user(str(access.user_id))

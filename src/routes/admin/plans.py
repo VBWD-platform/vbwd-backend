@@ -1,4 +1,6 @@
 """Admin tariff plan management routes."""
+import re
+from src.utils.datetime_utils import utcnow
 from flask import Blueprint, jsonify, request
 from decimal import Decimal
 from sqlalchemy import func
@@ -96,8 +98,6 @@ def create_plan():
 
     try:
         # Generate slug if not provided
-        import re
-
         slug = data.get("slug")
         if not slug:
             slug = re.sub(r"[^a-z0-9]+", "-", data["name"].lower()).strip("-")
@@ -309,26 +309,8 @@ def activate_plan(plan_id):
 @require_auth
 @require_admin
 def archive_plan(plan_id):
-    """
-    Archive (deactivate) a tariff plan.
-
-    Args:
-        plan_id: UUID of the plan
-
-    Returns:
-        200: Plan archived
-        404: Plan not found
-    """
-    plan_repo = TarifPlanRepository(db.session)
-    plan = plan_repo.find_by_id(plan_id)
-
-    if not plan:
-        return jsonify({"error": "Plan not found"}), 404
-
-    plan.is_active = False
-    saved_plan = plan_repo.save(plan)
-
-    return jsonify({"plan": saved_plan.to_dict(), "message": "Plan archived"}), 200
+    """Archive (deactivate) a tariff plan. Alias for /deactivate for backwards compat."""
+    return deactivate_plan(plan_id)
 
 
 @admin_plans_bp.route("/<plan_id>/copy", methods=["POST"])
@@ -353,13 +335,10 @@ def copy_plan(plan_id):
 
     # Create a copy with "(copy)" appended to the name
     # Generate a unique slug for the copy
-    import re
-    from datetime import datetime
-
     base_slug = source_plan.slug or re.sub(
         r"[^a-z0-9]+", "-", source_plan.name.lower()
     ).strip("-")
-    new_slug = f"{base_slug}-copy-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    new_slug = f"{base_slug}-copy-{utcnow().strftime('%Y%m%d%H%M%S')}"
 
     new_plan = TarifPlan(
         name=f"{source_plan.name} (copy)",
