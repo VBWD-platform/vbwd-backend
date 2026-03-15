@@ -53,7 +53,36 @@ class CmsPlugin(BasePlugin):
         return ""
 
     def on_enable(self) -> None:
-        pass
+        from flask import current_app
+        from plugins.cms.src.middleware.routing_middleware import CmsRoutingMiddleware
+        from plugins.cms.src.repositories.routing_rule_repository import CmsRoutingRuleRepository
+        from plugins.cms.src.services.routing.routing_service import CmsRoutingService
+        from plugins.cms.src.services.routing.nginx_conf_generator import NginxConfGenerator
+        from plugins.cms.src.services.routing.nginx_reload_gateway import (
+            StubNginxReloadGateway,
+            SubprocessNginxReloadGateway,
+        )
+        from src.extensions import db
+        import os
+
+        cfg = self._config or {}
+        routing_cfg = cfg.get("routing", {})
+        reload_cmd = routing_cfg.get("nginx_reload_command", "nginx -s reload")
+        if os.environ.get("TESTING") == "true":
+            nginx_gw = StubNginxReloadGateway()
+        else:
+            nginx_gw = SubprocessNginxReloadGateway(reload_cmd)
+
+        app = current_app._get_current_object()
+
+        routing_svc = CmsRoutingService(
+            rule_repo=CmsRoutingRuleRepository(db.session),
+            conf_generator=NginxConfGenerator(),
+            nginx_gateway=nginx_gw,
+            config=cfg,
+        )
+        middleware = CmsRoutingMiddleware(routing_svc)
+        app.before_request(middleware.before_request)
 
     def on_disable(self) -> None:
         pass

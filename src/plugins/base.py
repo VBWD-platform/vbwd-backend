@@ -101,6 +101,19 @@ class BasePlugin(ABC):
         """Return Flask blueprint for admin-specific routes. None if no admin routes."""
         return None
 
+    def register_event_handlers(self, bus: Any) -> None:
+        """Subscribe to EventBus events.
+
+        Called by ``PluginManager.enable_plugin()`` after ``on_enable()``.
+        Override this method to subscribe to domain or plugin events using
+        ``bus.subscribe(event_name, callback)``.
+
+        Args:
+            bus: The ``EventBus`` singleton (typed as ``Any`` to avoid a
+                 circular import; in practice always an ``EventBus`` instance).
+        """
+        pass
+
     def register_categories(self) -> List[Dict[str, Any]]:
         """
         Return category definitions to register on plugin enable.

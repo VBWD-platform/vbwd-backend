@@ -51,21 +51,31 @@ class EmailPlugin(BasePlugin):
 
     def get_blueprint(self) -> Optional["Blueprint"]:
         from plugins.email.src.routes import email_bp
+
         return email_bp
 
     def get_url_prefix(self) -> Optional[str]:
         return ""
 
     def on_enable(self) -> None:
-        """Register email event handlers and seed default templates."""
+        pass
+
+    def register_event_handlers(self, bus: Any) -> None:
+        """Subscribe email handlers to EventBus.
+
+        Called by PluginManager after on_enable(). Replaces the broken
+        ``event_dispatcher.subscribe()`` pattern from the old handlers.py.
+        """
         try:
             cfg = self._config or {}
             from plugins.email.src.handlers import register_handlers
-            register_handlers(cfg)
+
+            register_handlers(bus, cfg)
         except Exception:
             import logging
+
             logging.getLogger(__name__).warning(
-                "[email] Event handlers not registered — plugin may be initializing"
+                "[email] Event handlers not registered — check config"
             )
 
     def on_disable(self) -> None:

@@ -5,6 +5,11 @@ Each entry describes:
 - variables   : dict of var_name → {"type", "description", "example"}
 
 These are the 8 core transactional email events.
+
+At import time, all entries are auto-registered in ``EventContextRegistry``
+so other plugins can query the full set via the registry API without needing
+to import this module directly. Additional plugins register their own schemas
+by calling ``EventContextRegistry.register()`` in ``on_enable()``.
 """
 from typing import Dict, Any
 
@@ -12,84 +17,266 @@ EVENT_CONTEXTS: Dict[str, Dict[str, Any]] = {
     "subscription.activated": {
         "description": "Sent when a user's subscription becomes active",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "plan_name": {"type": "string", "description": "Plan display name", "example": "Pro Monthly"},
-            "plan_price": {"type": "string", "description": "Formatted plan price", "example": "$29.00"},
-            "billing_period": {"type": "string", "description": "Billing period label", "example": "monthly"},
-            "start_date": {"type": "string", "description": "Subscription start ISO date", "example": "2026-03-14"},
-            "next_billing_date": {"type": "string", "description": "Next charge ISO date", "example": "2026-04-14"},
-            "dashboard_url": {"type": "string", "description": "Link to user dashboard", "example": "https://app.example.com/dashboard"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "plan_name": {
+                "type": "string",
+                "description": "Plan display name",
+                "example": "Pro Monthly",
+            },
+            "plan_price": {
+                "type": "string",
+                "description": "Formatted plan price",
+                "example": "$29.00",
+            },
+            "billing_period": {
+                "type": "string",
+                "description": "Billing period label",
+                "example": "monthly",
+            },
+            "start_date": {
+                "type": "string",
+                "description": "Subscription start ISO date",
+                "example": "2026-03-14",
+            },
+            "next_billing_date": {
+                "type": "string",
+                "description": "Next charge ISO date",
+                "example": "2026-04-14",
+            },
+            "dashboard_url": {
+                "type": "string",
+                "description": "Link to user dashboard",
+                "example": "https://app.example.com/dashboard",
+            },
         },
     },
     "subscription.cancelled": {
         "description": "Sent when a subscription is cancelled",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "plan_name": {"type": "string", "description": "Plan display name", "example": "Pro Monthly"},
-            "end_date": {"type": "string", "description": "Last active date", "example": "2026-04-14"},
-            "resubscribe_url": {"type": "string", "description": "Link to resubscribe", "example": "https://app.example.com/plans"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "plan_name": {
+                "type": "string",
+                "description": "Plan display name",
+                "example": "Pro Monthly",
+            },
+            "end_date": {
+                "type": "string",
+                "description": "Last active date",
+                "example": "2026-04-14",
+            },
+            "resubscribe_url": {
+                "type": "string",
+                "description": "Link to resubscribe",
+                "example": "https://app.example.com/plans",
+            },
         },
     },
     "subscription.payment_failed": {
         "description": "Sent immediately when a recurring charge fails",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "plan_name": {"type": "string", "description": "Plan display name", "example": "Pro Monthly"},
-            "amount": {"type": "string", "description": "Amount that failed to charge", "example": "$29.00"},
-            "retry_date": {"type": "string", "description": "Next retry ISO date", "example": "2026-03-17"},
-            "update_payment_url": {"type": "string", "description": "Link to update payment", "example": "https://app.example.com/billing"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "plan_name": {
+                "type": "string",
+                "description": "Plan display name",
+                "example": "Pro Monthly",
+            },
+            "amount": {
+                "type": "string",
+                "description": "Amount that failed to charge",
+                "example": "$29.00",
+            },
+            "retry_date": {
+                "type": "string",
+                "description": "Next retry ISO date",
+                "example": "2026-03-17",
+            },
+            "update_payment_url": {
+                "type": "string",
+                "description": "Link to update payment",
+                "example": "https://app.example.com/billing",
+            },
         },
     },
     "subscription.renewed": {
         "description": "Sent when a subscription is successfully renewed",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "plan_name": {"type": "string", "description": "Plan display name", "example": "Pro Monthly"},
-            "amount_charged": {"type": "string", "description": "Amount charged", "example": "$29.00"},
-            "next_billing_date": {"type": "string", "description": "Next charge ISO date", "example": "2026-05-14"},
-            "invoice_url": {"type": "string", "description": "Link to invoice", "example": "https://app.example.com/invoices/abc"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "plan_name": {
+                "type": "string",
+                "description": "Plan display name",
+                "example": "Pro Monthly",
+            },
+            "amount_charged": {
+                "type": "string",
+                "description": "Amount charged",
+                "example": "$29.00",
+            },
+            "next_billing_date": {
+                "type": "string",
+                "description": "Next charge ISO date",
+                "example": "2026-05-14",
+            },
+            "invoice_url": {
+                "type": "string",
+                "description": "Link to invoice",
+                "example": "https://app.example.com/invoices/abc",
+            },
         },
     },
     "trial.started": {
         "description": "Sent when a free trial begins",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "plan_name": {"type": "string", "description": "Plan display name", "example": "Pro Trial"},
-            "trial_end_date": {"type": "string", "description": "Trial expiry ISO date", "example": "2026-03-28"},
-            "upgrade_url": {"type": "string", "description": "Link to upgrade page", "example": "https://app.example.com/plans"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "plan_name": {
+                "type": "string",
+                "description": "Plan display name",
+                "example": "Pro Trial",
+            },
+            "trial_end_date": {
+                "type": "string",
+                "description": "Trial expiry ISO date",
+                "example": "2026-03-28",
+            },
+            "upgrade_url": {
+                "type": "string",
+                "description": "Link to upgrade page",
+                "example": "https://app.example.com/plans",
+            },
         },
     },
     "trial.expiring_soon": {
         "description": "Reminder sent 3 days before trial expires",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "plan_name": {"type": "string", "description": "Plan display name", "example": "Pro Trial"},
-            "days_remaining": {"type": "integer", "description": "Days until trial expires", "example": 3},
-            "trial_end_date": {"type": "string", "description": "Trial expiry ISO date", "example": "2026-03-17"},
-            "upgrade_url": {"type": "string", "description": "Link to upgrade page", "example": "https://app.example.com/plans"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "plan_name": {
+                "type": "string",
+                "description": "Plan display name",
+                "example": "Pro Trial",
+            },
+            "days_remaining": {
+                "type": "integer",
+                "description": "Days until trial expires",
+                "example": 3,
+            },
+            "trial_end_date": {
+                "type": "string",
+                "description": "Trial expiry ISO date",
+                "example": "2026-03-17",
+            },
+            "upgrade_url": {
+                "type": "string",
+                "description": "Link to upgrade page",
+                "example": "https://app.example.com/plans",
+            },
         },
     },
     "user.registered": {
         "description": "Welcome email sent on new user registration",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "login_url": {"type": "string", "description": "Link to login page", "example": "https://app.example.com/login"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "login_url": {
+                "type": "string",
+                "description": "Link to login page",
+                "example": "https://app.example.com/login",
+            },
         },
     },
     "user.password_reset": {
         "description": "Sent when a password reset is requested",
         "variables": {
-            "user_name": {"type": "string", "description": "User display name", "example": "Alice"},
-            "user_email": {"type": "string", "description": "User email address", "example": "alice@example.com"},
-            "reset_url": {"type": "string", "description": "Password reset link (expires in 1 hour)", "example": "https://app.example.com/reset?token=abc"},
-            "expires_in": {"type": "string", "description": "Token expiry duration", "example": "1 hour"},
+            "user_name": {
+                "type": "string",
+                "description": "User display name",
+                "example": "Alice",
+            },
+            "user_email": {
+                "type": "string",
+                "description": "User email address",
+                "example": "alice@example.com",
+            },
+            "reset_url": {
+                "type": "string",
+                "description": "Password reset link (expires in 1 hour)",
+                "example": "https://app.example.com/reset?token=abc",
+            },
+            "expires_in": {
+                "type": "string",
+                "description": "Token expiry duration",
+                "example": "1 hour",
+            },
         },
     },
 }
+
+# Auto-register all core event contexts into the open registry so that
+# other plugins and admin routes can use EventContextRegistry.get_all()
+# without importing EVENT_CONTEXTS directly.
+from plugins.email.src.services.event_context_registry import (
+    register as _register,
+)  # noqa: E402
+
+for _event_type, _schema in EVENT_CONTEXTS.items():
+    _register(_event_type, _schema)

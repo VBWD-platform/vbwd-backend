@@ -118,6 +118,16 @@ class PluginManager:
 
         plugin.enable()
 
+        # Wire event handlers after on_enable() has run
+        try:
+            from src.events.bus import event_bus
+
+            plugin.register_event_handlers(event_bus)
+        except Exception as e:
+            logger.warning(
+                f"Failed to register event handlers for plugin '{name}': {e}"
+            )
+
         # Register plugin categories (idempotent)
         if self._category_service:
             for cat_def in plugin.register_categories():

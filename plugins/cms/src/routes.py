@@ -967,3 +967,129 @@ def admin_delete_style(style_id: str):
         return jsonify({"deleted": style_id}), 200
     except CmsStyleNotFoundError as e:
         return jsonify({"error": str(e)}), 404
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Routing Rules
+# ════════════════════════════════════════════════════════════════════════════
+
+def _routing_svc():
+    from plugins.cms.src.repositories.routing_rule_repository import CmsRoutingRuleRepository
+    from plugins.cms.src.services.routing.routing_service import CmsRoutingService
+    from plugins.cms.src.services.routing.nginx_conf_generator import NginxConfGenerator
+    from plugins.cms.src.services.routing.nginx_reload_gateway import (
+        StubNginxReloadGateway,
+        SubprocessNginxReloadGateway,
+    )
+    import os
+    cfg = _cms_config()
+    routing_cfg = cfg.get("routing", {})
+    reload_cmd = routing_cfg.get("nginx_reload_command", "nginx -s reload")
+    if os.environ.get("TESTING") == "true":
+        nginx_gw = StubNginxReloadGateway()
+    else:
+        nginx_gw = SubprocessNginxReloadGateway(reload_cmd)
+    return CmsRoutingService(
+        rule_repo=CmsRoutingRuleRepository(db.session),
+        conf_generator=NginxConfGenerator(),
+        nginx_gateway=nginx_gw,
+        config=cfg,
+    )
+
+
+@cms_bp.route("/api/v1/cms/routing-rules", methods=["GET"])
+def public_list_routing_rules():
+    """GET /api/v1/cms/routing-rules — public, nginx-layer rules only."""
+    from plugins.cms.src.repositories.routing_rule_repository import CmsRoutingRuleRepository
+    repo = CmsRoutingRuleRepository(db.session)
+    rules = repo.find_all_active_for_layer("nginx")
+    return jsonify([r.to_dict() for r in rules]), 200
+
+
+@cms_bp.route("/api/v1/cms/routing-rules/middleware", methods=["GET"])
+def public_list_middleware_routing_rules():
+    """GET /api/v1/cms/routing-rules/middleware — public, middleware-layer rules only.
+    Used by the fe-user SPA to resolve the homepage redirect client-side."""
+    from plugins.cms.src.repositories.routing_rule_repository import CmsRoutingRuleRepository
+    repo = CmsRoutingRuleRepository(db.session)
+    rules = repo.find_all_active_for_layer("middleware")
+    return jsonify([r.to_dict() for r in rules]), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/routing-rules", methods=["GET"])
+@require_auth
+@require_admin
+def admin_list_routing_rules():
+    """GET /api/v1/admin/cms/routing-rules — all rules ordered by priority."""
+    return jsonify(_routing_svc().list_rules()), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/routing-rules", methods=["POST"])
+@require_auth
+@require_admin
+def admin_create_routing_rule():
+    """POST /api/v1/admin/cms/routing-rules — create a new routing rule."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        rule = _routing_svc().create_rule(data)
+        return jsonify(rule), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@cms_bp.route("/api/v1/admin/cms/routing-rules/reload", methods=["POST"])
+@require_auth
+@require_admin
+def admin_reload_nginx():
+    """POST /api/v1/admin/cms/routing-rules/reload — force nginx reload."""
+    try:
+        _routing_svc().sync_nginx()
+        return jsonify({"status": "reloaded"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@cms_bp.route("/api/v1/admin/cms/routing-rules/<rule_id>", methods=["GET"])
+@require_auth
+@require_admin
+def admin_get_routing_rule(rule_id: str):
+    """GET /api/v1/admin/cms/routing-rules/<id> — get a single routing rule."""
+    from plugins.cms.src.repositories.routing_rule_repository import CmsRoutingRuleRepository
+    repo = CmsRoutingRuleRepository(db.session)
+    rule = repo.find_by_id(rule_id)
+    if not rule:
+        return jsonify({"error": "Routing rule not found"}), 404
+    return jsonify(rule.to_dict()), 200
+
+
+@cms_bp.route("/api/v1/admin/cms/routing-rules/<rule_id>", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_update_routing_rule(rule_id: str):
+    """PUT /api/v1/admin/cms/routing-rules/<id> — update a routing rule."""
+    from plugins.cms.src.services.routing.routing_service import CmsRoutingRuleNotFoundError
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+    try:
+        rule = _routing_svc().update_rule(rule_id, data)
+        return jsonify(rule), 200
+    except CmsRoutingRuleNotFoundError:
+        return jsonify({"error": "Routing rule not found"}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@cms_bp.route("/api/v1/admin/cms/routing-rules/<rule_id>", methods=["DELETE"])
+@require_auth
+@require_admin
+def admin_delete_routing_rule(rule_id: str):
+    """DELETE /api/v1/admin/cms/routing-rules/<id> — delete (returns 204)."""
+    from plugins.cms.src.services.routing.routing_service import CmsRoutingRuleNotFoundError
+    try:
+        _routing_svc().delete_rule(rule_id)
+        return "", 204
+    except CmsRoutingRuleNotFoundError:
+        return jsonify({"error": "Routing rule not found"}), 404

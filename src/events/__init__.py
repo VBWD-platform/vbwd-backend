@@ -14,6 +14,7 @@ from src.events.payment_events import (
     PaymentCapturedEvent,
     PaymentFailedEvent,
 )
+from src.events.bus import EventBus, event_bus
 
 __all__ = [
     "DomainEvent",
@@ -25,4 +26,6 @@ __all__ = [
     "CheckoutFailedEvent",
     "PaymentCapturedEvent",
     "PaymentFailedEvent",
+    "EventBus",
+    "event_bus",
 ]

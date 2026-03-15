@@ -49,13 +49,24 @@ class GhrmPlugin(BasePlugin):
         return ""
 
     def on_enable(self) -> None:
-        """Wire subscription lifecycle events to GithubAccessService."""
+        pass
+
+    def register_event_handlers(self, bus: Any) -> None:
+        """Subscribe GHRM subscription lifecycle handlers to EventBus."""
         try:
             from src.extensions import db
-            from plugins.ghrm.src.repositories.user_github_access_repository import GhrmUserGithubAccessRepository
-            from plugins.ghrm.src.repositories.access_log_repository import GhrmAccessLogRepository
-            from plugins.ghrm.src.repositories.software_package_repository import GhrmSoftwarePackageRepository
-            from plugins.ghrm.src.services.github_access_service import GithubAccessService
+            from plugins.ghrm.src.repositories.user_github_access_repository import (
+                GhrmUserGithubAccessRepository,
+            )
+            from plugins.ghrm.src.repositories.access_log_repository import (
+                GhrmAccessLogRepository,
+            )
+            from plugins.ghrm.src.repositories.software_package_repository import (
+                GhrmSoftwarePackageRepository,
+            )
+            from plugins.ghrm.src.services.github_access_service import (
+                GithubAccessService,
+            )
             from plugins.ghrm.src.routes import _make_github_client, GithubNotConfiguredError
 
             cfg = self._config or {}
@@ -73,38 +84,39 @@ class GhrmPlugin(BasePlugin):
                     grace_period_fallback_days=cfg.get("grace_period_fallback_days", 7),
                 )
 
-            from src.events import event_dispatcher
-
-            def on_activated(payload):
+            def on_activated(_name: str, payload: dict) -> None:
                 _make_access_service().on_subscription_activated(
                     payload["user_id"], payload["plan_id"]
                 )
 
-            def on_cancelled(payload):
+            def on_cancelled(_name: str, payload: dict) -> None:
                 _make_access_service().on_subscription_cancelled(
-                    payload["user_id"], payload["plan_id"],
+                    payload["user_id"],
+                    payload["plan_id"],
                     trailing_days=payload.get("trailing_days", 0),
                 )
 
-            def on_payment_failed(payload):
+            def on_payment_failed(_name: str, payload: dict) -> None:
                 _make_access_service().on_subscription_payment_failed(
-                    payload["user_id"], payload["plan_id"],
+                    payload["user_id"],
+                    payload["plan_id"],
                     trailing_days=payload.get("trailing_days", 0),
                 )
 
-            def on_renewed(payload):
+            def on_renewed(_name: str, payload: dict) -> None:
                 _make_access_service().on_subscription_renewed(
                     payload["user_id"], payload["plan_id"]
                 )
 
-            event_dispatcher.subscribe("subscription.activated", on_activated)
-            event_dispatcher.subscribe("subscription.cancelled", on_cancelled)
-            event_dispatcher.subscribe("subscription.payment_failed", on_payment_failed)
-            event_dispatcher.subscribe("subscription.renewed", on_renewed)
+            bus.subscribe("subscription.activated", on_activated)
+            bus.subscribe("subscription.cancelled", on_cancelled)
+            bus.subscribe("subscription.payment_failed", on_payment_failed)
+            bus.subscribe("subscription.renewed", on_renewed)
         except GithubNotConfiguredError as exc:
             import logging
+
             logging.getLogger(__name__).warning(
-                f"[GHRM] Subscription event handlers not registered — {exc}"
+                "[GHRM] Subscription event handlers not registered — %s", exc
             )
         except Exception:
             pass  # Plugin disabled or dependencies not ready

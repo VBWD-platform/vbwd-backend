@@ -2,7 +2,7 @@
 from src.extensions import db
 from src.models.base import BaseModel
 
-WIDGET_TYPES = frozenset({"html", "menu", "slideshow"})
+WIDGET_TYPES = frozenset({"html", "menu", "slideshow", "vue-component"})
 
 
 class CmsWidget(BaseModel):

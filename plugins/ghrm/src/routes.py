@@ -6,6 +6,7 @@ Public (no auth):
     GET  /api/v1/ghrm/packages/<slug>/related  related packages
     GET  /api/v1/ghrm/packages/<slug>/versions versions list
     GET  /api/v1/ghrm/sync                     GitHub Action sync trigger (API key auth)
+    GET  /api/v1/ghrm/widgets                  breadcrumb widget configs (public read)
 
 Subscriber-only:
     GET  /api/v1/ghrm/packages/<slug>/install  install instructions
@@ -29,8 +30,12 @@ Admin (require_admin):
     POST   /api/v1/admin/ghrm/packages/<id>/sync/<field>      (readme|changelog|screenshots)
     GET    /api/v1/admin/ghrm/access-log
     POST   /api/v1/admin/ghrm/access/sync/<user_id>
+    GET    /api/v1/admin/ghrm/widgets
+    PUT    /api/v1/admin/ghrm/widgets/<widget_id>
 """
+import json
 import logging
+import os
 import uuid
 import secrets
 from flask import Blueprint, jsonify, request, redirect, g, current_app
@@ -286,7 +291,7 @@ def github_oauth_start():
     except Exception:
         pass
     state = pyjwt.encode(
-        {"user_id": user_id, "nonce": nonce, "exp": int(time.time()) + 600},
+        {"user_id": str(user_id), "nonce": nonce, "exp": int(time.time()) + 600},
         current_app.config.get("JWT_SECRET_KEY", "dev"),
         algorithm="HS256",
     )
@@ -551,3 +556,110 @@ def admin_access_log():
 def admin_sync_user_access(user_id):
     _access_svc().on_subscription_activated(user_id, "")
     return jsonify({"ok": True})
+
+
+# ─── Widget config ────────────────────────────────────────────────────────────
+
+_WIDGETS_PATH = os.path.join(os.path.dirname(__file__), "..", "widgets.json")
+
+_DEFAULT_BREADCRUMB_CSS = (
+    ".ghrm-breadcrumb {"
+    " display: flex; align-items: center; gap: 6px; font-size: 13px;"
+    " color: #6b7280; padding: 8px 0 16px; flex-wrap: wrap; }\n"
+    ".ghrm-breadcrumb a { color: #3498db; text-decoration: none; }\n"
+    ".ghrm-breadcrumb a:hover { text-decoration: underline; }\n"
+    ".ghrm-breadcrumb__separator { color: #9ca3af; user-select: none; }\n"
+    ".ghrm-breadcrumb__current { color: #374151; font-weight: 500; }"
+)
+
+_DEFAULT_WIDGETS = {
+    "catalogue": {
+        "id": "catalogue",
+        "separator": "/",
+        "root_name": "Home",
+        "root_slug": "/",
+        "show_category": True,
+        "max_label_length": 40,
+        "css": _DEFAULT_BREADCRUMB_CSS,
+    },
+    "detail": {
+        "id": "detail",
+        "separator": "/",
+        "root_name": "Home",
+        "root_slug": "/",
+        "show_category": True,
+        "max_label_length": 40,
+        "css": _DEFAULT_BREADCRUMB_CSS,
+    },
+}
+
+_WIDGET_ALLOWED_FIELDS = {"separator", "root_name", "root_slug", "show_category", "max_label_length", "css"}
+
+
+def _load_widgets() -> dict:
+    try:
+        with open(_WIDGETS_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {k: dict(v) for k, v in _DEFAULT_WIDGETS.items()}
+
+
+def _save_widgets(data: dict) -> None:
+    with open(_WIDGETS_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+@ghrm_bp.route("/api/v1/ghrm/widgets", methods=["GET"])
+def get_widgets():
+    """Return breadcrumb widget config — public read for fe-user rendering.
+
+    Prefers the CMS widget (widget_type='vue-component', config.component_name='ghrm-breadcrumb')
+    when one exists in the DB.  Falls back to widgets.json for backward compatibility.
+    """
+    _BREADCRUMB_FIELDS = ("separator", "root_name", "root_slug", "show_category", "max_label_length", "css")
+    try:
+        from plugins.cms.src.models.cms_widget import CmsWidget as _CmsWidget
+        candidates = db.session.query(_CmsWidget).filter(
+            _CmsWidget.widget_type == "vue-component",
+            _CmsWidget.is_active.is_(True),
+        ).all()
+        cms_widget = next(
+            (w for w in candidates if
+             (w.content_json or {}).get("component") == "CmsBreadcrumb"
+             or (w.config or {}).get("component_name") in ("CmsBreadcrumb", "ghrm-breadcrumb")),
+            None,
+        )
+        if cms_widget and cms_widget.config:
+            cfg = {k: cms_widget.config[k] for k in _BREADCRUMB_FIELDS if k in cms_widget.config}
+            cfg["id"] = "ghrm-breadcrumb"
+            return jsonify({"widgets": [cfg]})
+    except Exception:
+        pass
+    # Fallback: widgets.json
+    widgets = _load_widgets()
+    return jsonify({"widgets": list(widgets.values())})
+
+
+@ghrm_bp.route("/api/v1/admin/ghrm/widgets", methods=["GET"])
+@require_auth
+@require_admin
+def admin_get_widgets():
+    """Admin: return all GHRM widget configs."""
+    widgets = _load_widgets()
+    return jsonify({"widgets": list(widgets.values())})
+
+
+@ghrm_bp.route("/api/v1/admin/ghrm/widgets/<widget_id>", methods=["PUT"])
+@require_auth
+@require_admin
+def admin_update_widget(widget_id):
+    """Admin: update a widget config (General fields + CSS)."""
+    widgets = _load_widgets()
+    if widget_id not in widgets:
+        return jsonify({"error": f"Widget '{widget_id}' not found"}), 404
+    body = request.json or {}
+    update = {k: v for k, v in body.items() if k in _WIDGET_ALLOWED_FIELDS}
+    widgets[widget_id].update(update)
+    result = dict(widgets[widget_id])
+    _save_widgets(widgets)
+    return jsonify(result)

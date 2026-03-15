@@ -59,6 +59,7 @@ def _template_svc():
 def list_templates():
     from src.extensions import db
     from plugins.email.src.models.email_template import EmailTemplate
+
     templates = db.session.query(EmailTemplate).order_by(EmailTemplate.event_type).all()
     return jsonify([t.to_dict() for t in templates]), 200
 
@@ -101,6 +102,7 @@ def get_template(template_id: str):
         return jsonify({"error": "invalid id"}), 400
     from src.extensions import db
     from plugins.email.src.models.email_template import EmailTemplate
+
     tpl = db.session.get(EmailTemplate, template_id)
     if tpl is None:
         return jsonify({"error": "not found"}), 404
@@ -139,12 +141,12 @@ def update_template(template_id: str):
 @require_auth
 @require_admin
 def list_event_types():
-    from plugins.email.src.services.event_contexts import EVENT_CONTEXTS
-    result = [
-        {"event_type": k, **v}
-        for k, v in EVENT_CONTEXTS.items()
-    ]
-    return jsonify(result), 200
+    # Import event_contexts to trigger auto-registration of core schemas, then
+    # read the full registry (which also includes schemas from other plugins).
+    import plugins.email.src.services.event_contexts  # noqa: F401
+    from plugins.email.src.services.event_context_registry import get_all
+
+    return jsonify(get_all()), 200
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +165,10 @@ def test_send():
     if not event_type or not to_address:
         return jsonify({"error": "event_type and to_address required"}), 400
 
-    from plugins.email.src.services.event_contexts import EVENT_CONTEXTS
-    ctx_schema = EVENT_CONTEXTS.get(event_type, {})
+    import plugins.email.src.services.event_contexts  # noqa: F401 — triggers auto-registration
+    from plugins.email.src.services.event_context_registry import get as _get_ctx
+
+    ctx_schema = _get_ctx(event_type) or {}
     preview_ctx = {
         k: v.get("example", "") for k, v in ctx_schema.get("variables", {}).items()
     }
@@ -176,6 +180,9 @@ def test_send():
         return jsonify({"error": str(exc)}), 502
 
     if not sent:
-        return jsonify({"message": "template inactive or not found, email not sent"}), 200
+        return (
+            jsonify({"message": "template inactive or not found, email not sent"}),
+            200,
+        )
 
     return jsonify({"message": f"test email sent to {to_address}"}), 200

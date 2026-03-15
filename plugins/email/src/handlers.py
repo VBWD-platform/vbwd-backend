@@ -1,6 +1,10 @@
-"""Email event handlers — subscribe to domain events and fire emails."""
+"""Email event handlers — subscribe to EventBus and fire emails."""
 from __future__ import annotations
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.events.bus import EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +31,17 @@ def _make_email_service(cfg: dict):
     return EmailService(registry=registry, db_session=db.session)
 
 
-def register_handlers(cfg: dict) -> None:
-    """Subscribe email handlers to domain events.
+def register_handlers(bus: "EventBus", cfg: dict) -> None:
+    """Subscribe email handlers to EventBus events.
 
-    Called from EmailPlugin.on_enable() with the plugin config dict.
+    Called from ``EmailPlugin.register_event_handlers(bus)`` with the plugin
+    config dict.  Uses ``bus.subscribe()`` — no broken ``event_dispatcher``
+    import needed.
+
+    Args:
+        bus: The ``EventBus`` singleton.
+        cfg: Plugin configuration dict (SMTP settings etc.).
     """
-    from src.events import event_dispatcher
 
     def _safe_send(event_type: str, to: str, context: dict) -> None:
         try:
@@ -41,7 +50,7 @@ def register_handlers(cfg: dict) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[email] Failed to send %s to %s: %s", event_type, to, exc)
 
-    def on_subscription_activated(payload: dict) -> None:
+    def on_subscription_activated(_name: str, payload: dict) -> None:
         _safe_send(
             "subscription.activated",
             payload.get("user_email", ""),
@@ -57,7 +66,7 @@ def register_handlers(cfg: dict) -> None:
             },
         )
 
-    def on_subscription_cancelled(payload: dict) -> None:
+    def on_subscription_cancelled(_name: str, payload: dict) -> None:
         _safe_send(
             "subscription.cancelled",
             payload.get("user_email", ""),
@@ -70,7 +79,7 @@ def register_handlers(cfg: dict) -> None:
             },
         )
 
-    def on_subscription_payment_failed(payload: dict) -> None:
+    def on_subscription_payment_failed(_name: str, payload: dict) -> None:
         _safe_send(
             "subscription.payment_failed",
             payload.get("user_email", ""),
@@ -84,7 +93,7 @@ def register_handlers(cfg: dict) -> None:
             },
         )
 
-    def on_subscription_renewed(payload: dict) -> None:
+    def on_subscription_renewed(_name: str, payload: dict) -> None:
         _safe_send(
             "subscription.renewed",
             payload.get("user_email", ""),
@@ -98,7 +107,7 @@ def register_handlers(cfg: dict) -> None:
             },
         )
 
-    def on_user_registered(payload: dict) -> None:
+    def on_user_registered(_name: str, payload: dict) -> None:
         _safe_send(
             "user.registered",
             payload.get("user_email", ""),
@@ -109,7 +118,7 @@ def register_handlers(cfg: dict) -> None:
             },
         )
 
-    def on_user_password_reset(payload: dict) -> None:
+    def on_user_password_reset(_name: str, payload: dict) -> None:
         _safe_send(
             "user.password_reset",
             payload.get("user_email", ""),
@@ -121,11 +130,11 @@ def register_handlers(cfg: dict) -> None:
             },
         )
 
-    event_dispatcher.subscribe("subscription.activated", on_subscription_activated)
-    event_dispatcher.subscribe("subscription.cancelled", on_subscription_cancelled)
-    event_dispatcher.subscribe("subscription.payment_failed", on_subscription_payment_failed)
-    event_dispatcher.subscribe("subscription.renewed", on_subscription_renewed)
-    event_dispatcher.subscribe("user.registered", on_user_registered)
-    event_dispatcher.subscribe("user.password_reset", on_user_password_reset)
+    bus.subscribe("subscription.activated", on_subscription_activated)
+    bus.subscribe("subscription.cancelled", on_subscription_cancelled)
+    bus.subscribe("subscription.payment_failed", on_subscription_payment_failed)
+    bus.subscribe("subscription.renewed", on_subscription_renewed)
+    bus.subscribe("user.registered", on_user_registered)
+    bus.subscribe("user.password_reset", on_user_password_reset)
 
     logger.info("[email] Event handlers registered")

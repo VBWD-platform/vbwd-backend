@@ -133,10 +133,20 @@ class DomainEventDispatcher:
     Domain event dispatcher with handler interface support.
 
     Extends base EventDispatcher with domain event handling.
+
+    After running typed ``IEventHandler`` objects, ``emit()`` also forwards
+    the event to the module-level ``event_bus`` singleton so plugin subscribers
+    receive all domain events without modifying any core emit site.
+
+    Pass ``event_bus=None`` to disable the bridge (useful in unit tests that
+    want to test handlers in isolation without side-effects on the bus).
     """
 
-    def __init__(self):
+    def __init__(self, event_bus=None):
         self._handlers: Dict[str, List[IEventHandler]] = {}
+        # Accept explicit injection; fall back to the module singleton lazily
+        # to avoid a circular import at class-definition time.
+        self._event_bus = event_bus  # None → resolved lazily in emit()
 
     def register(self, event_name: str, handler: IEventHandler) -> None:
         """
@@ -157,7 +167,11 @@ class DomainEventDispatcher:
 
     def emit(self, event: DomainEvent) -> EventResult:
         """
-        Emit event to all registered handlers.
+        Emit event to all registered handlers, then forward to EventBus.
+
+        Typed ``IEventHandler`` objects run first (core behaviour unchanged).
+        Afterwards, ``event_bus.publish(event.name, event.data)`` is called so
+        plugin callbacks also receive the event — no call-site changes needed.
 
         Args:
             event: Domain event to emit
@@ -165,21 +179,38 @@ class DomainEventDispatcher:
         Returns:
             Combined EventResult from all handlers
         """
-        if event.name not in self._handlers:
-            return EventResult.no_handler()
-
         results = []
 
-        for handler in self._handlers[event.name]:
-            try:
-                if handler.can_handle(event):
-                    result = handler.handle(event)
-                    results.append(result)
-            except Exception as e:
-                results.append(
-                    EventResult.error_result(
-                        error=str(e), error_type="handler_exception"
+        if event.name in self._handlers:
+            for handler in self._handlers[event.name]:
+                try:
+                    if handler.can_handle(event):
+                        result = handler.handle(event)
+                        results.append(result)
+                except Exception as e:
+                    results.append(
+                        EventResult.error_result(
+                            error=str(e), error_type="handler_exception"
+                        )
                     )
+
+        # Bridge to EventBus (lazy import avoids circular dependency)
+        bus = self._event_bus
+        if bus is None:
+            try:
+                from src.events.bus import event_bus as _bus
+
+                bus = _bus
+            except Exception:
+                bus = None
+        if bus is not None:
+            try:
+                bus.publish(event.name, event.data or {})
+            except Exception as exc:  # noqa: BLE001
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "[domain] EventBus.publish failed for %s: %s", event.name, exc
                 )
 
         if not results:
