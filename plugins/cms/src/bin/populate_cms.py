@@ -33,6 +33,8 @@ from plugins.cms.src.models.cms_menu_item import CmsMenuItem  # noqa: E402
 from plugins.cms.src.models.cms_layout import CmsLayout  # noqa: E402
 from plugins.cms.src.models.cms_layout_widget import CmsLayoutWidget  # noqa: E402
 from plugins.cms.src.models.cms_page import CmsPage  # noqa: E402
+from plugins.cms.src.models.cms_category import CmsCategory  # noqa: E402
+from plugins.cms.src.models.cms_routing_rule import CmsRoutingRule  # noqa: E402
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -706,6 +708,33 @@ NATIVE_PRICING_CONFIG = {
     },
 }
 
+BREADCRUMBS_CSS = (
+    ".cms-breadcrumb {\n"
+    "    display: flex;\n"
+    "    align-items: center;\n"
+    "    flex-wrap: wrap;\n"
+    "    gap: 4px;\n"
+    "    font-size: 0.7rem;\n"
+    "    color: #6b7280;\n"
+    "    padding: 8px 0 0.25rem;\n"
+    "}\n"
+    ".cms-breadcrumb a, .cms-breadcrumb__link { color: #3498db; text-decoration: none; }\n"
+    ".cms-breadcrumb a:hover, .cms-breadcrumb__link:hover { text-decoration: underline; }\n"
+    ".cms-breadcrumb__separator { color: #9ca3af; user-select: none; }\n"
+    ".cms-breadcrumb__current { color: #374151; font-weight: 500; }"
+)
+
+BREADCRUMBS_CONFIG = {
+    "component_name": "CmsBreadcrumb",
+    "separator": "/",
+    "root_name": "Home",
+    "root_slug": "/home1",
+    "show_category": False,
+    "max_label_length": 60,
+    "category_label": "Software",
+    "css": BREADCRUMBS_CSS,
+}
+
 TESTIMONIALS_HTML = """
 <section class="testimonials">
   <div class="container">
@@ -863,11 +892,13 @@ LAYOUTS = [
         "sort_order": 13,
         "areas": [
             {"name": "header", "type": "header", "label": "Header"},
+            {"name": "breadcrumbs", "type": "vue", "label": ""},
             {"name": "main", "type": "content", "label": "Main Content"},
             {"name": "footer", "type": "footer", "label": "Footer"},
         ],
         "widget_assignments": [
             ("header", "header-nav"),
+            ("breadcrumbs", "breadcrumbs"),
             ("footer", "footer-nav"),
         ],
     },
@@ -1021,11 +1052,28 @@ def _get_or_create_layout(data: dict, widget_map: dict) -> "CmsLayout":
     return layout
 
 
+def _get_or_create_category(slug: str, name: str, sort_order: int = 0):
+    existing = db.session.query(CmsCategory).filter_by(slug=slug).first()
+    if existing:
+        existing.name = name
+        existing.sort_order = sort_order
+        db.session.flush()
+        print(f"  ~ category '{slug}' (updated)")
+        return existing, False
+    obj = CmsCategory(slug=slug, name=name, sort_order=sort_order)
+    db.session.add(obj)
+    db.session.flush()
+    print(f"  + category '{slug}'")
+    return obj, True
+
+
 def _get_or_create_page(slug: str, name: str, layout: "CmsLayout",
                           style: "CmsStyle", content_json: dict = None,
                           content_html: str = None,
                           meta_description: str = None,
-                          sort_order: int = 0) -> None:
+                          sort_order: int = 0,
+                          category_id: str = None,
+                          robots: str = "index,follow") -> None:
     existing = db.session.query(CmsPage).filter_by(slug=slug).first()
     if existing:
         existing.name = name
@@ -1038,6 +1086,9 @@ def _get_or_create_page(slug: str, name: str, layout: "CmsLayout",
         if meta_description:
             existing.meta_description = meta_description
         existing.sort_order = sort_order
+        if category_id is not None:
+            existing.category_id = category_id
+        existing.robots = robots
         db.session.flush()
         print(f"  ~ page '{slug}' (updated)")
         return
@@ -1051,10 +1102,11 @@ def _get_or_create_page(slug: str, name: str, layout: "CmsLayout",
         sort_order=sort_order,
         layout_id=layout.id if layout else None,
         style_id=style.id if style else None,
+        category_id=category_id,
         use_theme_switcher_styles=False,
         meta_title=name,
         meta_description=meta_description or name,
-        robots="index,follow",
+        robots=robots,
     )
     db.session.add(page)
     print(f"  + page '{slug}' (layout={layout.slug if layout else None})")
@@ -1164,6 +1216,11 @@ def populate_cms() -> None:
         "pricing-native-plans", "Pricing — Native CMS Plans", "vue-component",
         config=NATIVE_PRICING_CONFIG,
     )
+    widget_map["breadcrumbs"] = _get_or_create_widget(
+        "breadcrumbs", "Breadcrumbs", "vue-component",
+        content_json={"component": "CmsBreadcrumb"},
+        config=BREADCRUMBS_CONFIG,
+    )
 
     db.session.commit()
     print(f"  Widgets: {len(widget_map)} total")
@@ -1174,6 +1231,12 @@ def populate_cms() -> None:
         layout_map[ld["slug"]] = _get_or_create_layout(ld, widget_map)
     db.session.commit()
     print(f"  Layouts: {len(layout_map)} total")
+
+    print("\n── Categories ──────────────────────────────────────────────────")
+    cat_about, _ = _get_or_create_category("about", "About", sort_order=0)
+    cat_blog, _ = _get_or_create_category("blog", "Blog", sort_order=0)
+    cat_static, _ = _get_or_create_category("static-pages", "Static Pages", sort_order=0)
+    db.session.commit()
 
     print("\n── Pages ───────────────────────────────────────────────────────")
     default_light = style_map.get("light-clean")
@@ -1209,24 +1272,28 @@ def populate_cms() -> None:
         content_html=STANDARD_CONTENT_HTML,
         meta_description="Learn about our team, our story, and our values.",
         sort_order=20,
+        category_id=cat_about.id,
     )
     _get_or_create_page(
         "privacy", "Privacy Policy", content_page, default_light,
         content_html="<h1>Privacy Policy</h1><p>Your privacy policy content goes here.</p>",
         meta_description="Read our privacy policy.",
         sort_order=30,
+        category_id=cat_about.id,
     )
     _get_or_create_page(
         "terms", "Terms of Service", content_page, default_light,
         content_html="<h1>Terms of Service</h1><p>Your terms of service content goes here.</p>",
         meta_description="Read our terms of service.",
         sort_order=31,
+        category_id=cat_about.id,
     )
     _get_or_create_page(
         "contact", "Contact", content_page, default_light,
         content_html="<h1>Contact Us</h1><p>Get in touch with our team.</p>",
         meta_description="Contact our team.",
         sort_order=32,
+        category_id=cat_about.id,
     )
 
     native_pricing_layout = layout_map.get("native-pricing-page")
@@ -1235,31 +1302,60 @@ def populate_cms() -> None:
         content_html=FEATURES_SLIDESHOW_HTML,
         meta_description="Explore the key features of the VBWD platform: billing, user management, plugins, CMS, and more.",
         sort_order=40,
+        category_id=cat_about.id,
     )
     _get_or_create_page(
         "pricing-embedded", "Embedded Pricing Guide", content_page, default_light,
         content_html=PRICING_EMBED_GUIDE_HTML,
         meta_description="Learn how to embed the VBWD pricing widget in any website with a single script tag.",
         sort_order=41,
+        category_id=cat_blog.id,
     )
     _get_or_create_page(
         "pricing-native", "Native CMS Pricing", native_pricing_layout, default_light,
         meta_description="View our subscription plans rendered natively within the VBWD CMS.",
         sort_order=42,
     )
+    _get_or_create_page(
+        "we-are-launching-soon", "We are launching soon!", content_page, default_light,
+        content_html="<h1>We are launching soon!</h1><p>Stay tuned for our upcoming launch. Sign up to be notified.</p>",
+        meta_description="We are launching soon. Stay tuned.",
+        sort_order=50,
+        category_id=cat_static.id,
+    )
 
     db.session.commit()
 
+    print("\n── Routing Rules ───────────────────────────────────────────────")
+    rule = db.session.query(CmsRoutingRule).filter_by(match_type="default", layer="middleware").first()
+    if not rule:
+        rule = CmsRoutingRule(
+            name="home",
+            match_type="default",
+            target_slug="home1",
+            is_active=True,
+            priority=0,
+            layer="middleware",
+            redirect_code=302,
+            is_rewrite=False,
+        )
+        db.session.add(rule)
+        db.session.commit()
+        print("  + routing rule: default → home1")
+    else:
+        print(f"  ~ routing rule: default → {rule.target_slug} (exists)")
+
     print("\n" + "=" * 55)
     print("✓ CMS demo data population complete")
-    print(f"  Styles  : {len(STYLES)} (5 light + 5 dark)")
-    print(f"  Widgets : {len(widget_map)}")
-    print(f"  Layouts : {len(LAYOUTS)}")
-    print("  Pages   : 11 (home1, home2, landing2, landing3, about, privacy, terms, contact,")
-    print("               features, pricing-embedded, pricing-native)")
-    print("  Embed widgets: tarif-plans-root, tarif-plans-backend, features-slideshow,")
-    print("                 pricing-embed-demo, pricing-native-plans (vue-component)")
-    print("  Header nav: Home | Features | Pricing (submenu) | About | Software")
+    print(f"  Styles      : {len(STYLES)} (5 light + 5 dark)")
+    print(f"  Widgets     : {len(widget_map)} (incl. breadcrumbs vue-component)")
+    print(f"  Layouts     : {len(LAYOUTS)} (content-page now has breadcrumbs area)")
+    print("  Categories  : about, blog, static-pages")
+    print("  Pages       : 12 (home1, home2, landing2, landing3, about, privacy, terms,")
+    print("                    contact, features, pricing-embedded, pricing-native,")
+    print("                    we-are-launching-soon)")
+    print("  Routing     : default → home1")
+    print("  Header nav  : Home | Features | Pricing (submenu) | About | Software")
     print("=" * 55)
 
 

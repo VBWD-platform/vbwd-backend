@@ -90,6 +90,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-plugin-stripe",
         "author_name": "dantweb",
         "sort_order": 10,
+        "icon_url": "https://clipartcraft.com/images/stripe-logo-icon-8.png",
     },
     {
         "plan_slug": "plugin-paypal",
@@ -103,6 +104,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-plugin-paypal",
         "author_name": "dantweb",
         "sort_order": 11,
+        "icon_url": "https://www.paypalobjects.com/webstatic/icon/pp258.png",
     },
     {
         "plan_slug": "plugin-theme-switcher",
@@ -116,6 +118,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-fe-user",
         "author_name": "dantweb",
         "sort_order": 12,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/4489/4489592.png",
     },
     {
         "plan_slug": "plugin-llm-chat",
@@ -129,6 +132,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-plugin-llm-chat",
         "author_name": "dantweb",
         "sort_order": 13,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/4712/4712104.png",
     },
     {
         "plan_slug": "plugin-ai-tarot",
@@ -142,6 +146,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-backend",
         "author_name": "dantweb",
         "sort_order": 14,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/1913/1913744.png",
     },
     {
         "plan_slug": "plugin-import-export",
@@ -155,6 +160,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-plugin-import-export",
         "author_name": "dantweb",
         "sort_order": 15,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/8227/8227945.png",
     },
     {
         "plan_slug": "plugin-analytics",
@@ -168,6 +174,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-fe-admin",
         "author_name": "dantweb",
         "sort_order": 16,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/1546/1546912.png",
     },
     # ── GHRM (new plan + package) ─────────────────────────────────────────────
     {
@@ -182,6 +189,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "vbwd-plugin-ghrm",
         "author_name": "dantweb",
         "sort_order": 17,
+        "icon_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
     },
     # ── dantweb open-source packages (10) ────────────────────────────────────
     {
@@ -196,6 +204,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "lensforge",
         "author_name": "dantweb",
         "sort_order": 20,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/685/685655.png",
     },
     {
         "plan_slug": "pkg-loopai-core",
@@ -209,6 +218,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "loopai-core",
         "author_name": "dantweb",
         "sort_order": 21,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/4481/4481503.png",
     },
     {
         "plan_slug": "pkg-loopai-view",
@@ -222,6 +232,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "loopai-view",
         "author_name": "dantweb",
         "sort_order": 22,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/1087/1087815.png",
     },
     {
         "plan_slug": "pkg-agent-post",
@@ -235,6 +246,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "agent_post",
         "author_name": "dantweb",
         "sort_order": 23,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/1384/1384060.png",
     },
     {
         "plan_slug": "pkg-oxid-shop-watch",
@@ -248,6 +260,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "oxid-shop-watch",
         "author_name": "dantweb",
         "sort_order": 24,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/2037/2037082.png",
     },
     {
         "plan_slug": "pkg-ecwatch-core",
@@ -261,6 +274,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "ecwatch-core",
         "author_name": "dantweb",
         "sort_order": 25,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/3281/3281289.png",
     },
     {
         "plan_slug": "pkg-ecwatch-web",
@@ -274,6 +288,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "ecwatch-web",
         "author_name": "dantweb",
         "sort_order": 26,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/1828/1828765.png",
     },
     {
         "plan_slug": "pkg-oxid-devchat",
@@ -287,6 +302,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "oxid-devchat",
         "author_name": "dantweb",
         "sort_order": 27,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/4944/4944377.png",
     },
     {
         "plan_slug": "pkg-wp-post2md",
@@ -300,6 +316,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "wp-dantweb-post2md",
         "author_name": "dantweb",
         "sort_order": 28,
+        "icon_url": "https://s.w.org/style/images/about/WordPress-logotype-wmark.png",
     },
     {
         "plan_slug": "pkg-quantum-llm",
@@ -313,6 +330,7 @@ SOFTWARE_PACKAGES = [
         "github_repo": "quantum-llm",
         "author_name": "dantweb",
         "sort_order": 29,
+        "icon_url": "https://cdn-icons-png.flaticon.com/512/1976/1976916.png",
     },
 ]
 
@@ -377,10 +395,12 @@ try:
         # Create GhrmSoftwarePackage if it doesn't exist yet
         existing_pkg = session.query(GhrmSoftwarePackage).filter_by(slug=entry["pkg_slug"]).first()
         if existing_pkg:
-            # Update description if missing
+            # Update description and icon_url if missing or changed
             if not existing_pkg.description and entry.get("description"):
                 existing_pkg.description = entry["description"]
-                session.flush()
+            if entry.get("icon_url") and existing_pkg.icon_url != entry["icon_url"]:
+                existing_pkg.icon_url = entry["icon_url"]
+            session.flush()
             print(f"  Exists  pkg  : {entry['pkg_slug']}")
         else:
             pkg = GhrmSoftwarePackage(
@@ -389,6 +409,7 @@ try:
                 slug=entry["pkg_slug"],
                 description=entry.get("description"),
                 author_name=entry.get("author_name"),
+                icon_url=entry.get("icon_url"),
                 github_owner=entry["github_owner"],
                 github_repo=entry["github_repo"],
                 sort_order=entry.get("sort_order", 0),
@@ -467,13 +488,22 @@ try:
         session, CmsLayout, slug=CATALOGUE_LAYOUT_SLUG,
         name="GHRM Software Catalogue",
         areas=[
-            {"name": "header",           "type": "header", "label": "Header"},
-            {"name": "ghrm-categories",  "type": "vue",    "label": "Categories"},
-            {"name": "footer",           "type": "footer", "label": "Footer"},
+            {"name": "header",          "type": "header", "label": "Header"},
+            {"name": "breadcrumbs",     "type": "vue",    "label": ""},
+            {"name": "ghrm-categories", "type": "vue",    "label": "Categories"},
+            {"name": "footer",          "type": "footer", "label": "Footer"},
         ],
         sort_order=10,
         is_active=True,
     )
+    if not created:
+        layout_catalogue.areas = [
+            {"name": "header",          "type": "header", "label": "Header"},
+            {"name": "breadcrumbs",     "type": "vue",    "label": ""},
+            {"name": "ghrm-categories", "type": "vue",    "label": "Categories"},
+            {"name": "footer",          "type": "footer", "label": "Footer"},
+        ]
+        session.flush()
     print(f"  {'Created' if created else 'Exists'}: {CATALOGUE_LAYOUT_SLUG}")
 
     # Detail layout — used by individual package pages
@@ -482,12 +512,21 @@ try:
         name="GHRM Software Detail",
         areas=[
             {"name": "header",               "type": "header", "label": "Header"},
+            {"name": "breadcrumbs",          "type": "vue",    "label": ""},
             {"name": "ghrm-software-detail", "type": "vue",    "label": "Software Detail"},
             {"name": "footer",               "type": "footer", "label": "Footer"},
         ],
         sort_order=11,
         is_active=True,
     )
+    if not created:
+        layout_detail.areas = [
+            {"name": "header",               "type": "header", "label": "Header"},
+            {"name": "breadcrumbs",          "type": "vue",    "label": ""},
+            {"name": "ghrm-software-detail", "type": "vue",    "label": "Software Detail"},
+            {"name": "footer",               "type": "footer", "label": "Footer"},
+        ]
+        session.flush()
     print(f"  {'Created' if created else 'Exists'}: {DETAIL_LAYOUT_SLUG}")
 
     # ── Widgets ─────────────────────────────────────────────────────────────
@@ -514,6 +553,8 @@ try:
             },
         },
     ]
+    # breadcrumbs widget is created by populate_cms.py — look it up here
+    breadcrumbs_widget = session.query(CmsWidget).filter_by(slug="breadcrumbs").first()
 
     widget_map: dict = {}
     for w in WIDGETS:
@@ -559,6 +600,12 @@ try:
     else:
         print("  ! header-nav not found — run populate_cms first")
 
+    if breadcrumbs_widget:
+        added = assign_widget(layout_catalogue, breadcrumbs_widget, "breadcrumbs", 3)
+        print(f"  {'Assigned' if added else 'Exists'}: {CATALOGUE_LAYOUT_SLUG} / breadcrumbs → breadcrumbs")
+    else:
+        print("  ! breadcrumbs widget not found — run populate_cms first")
+
     added = assign_widget(layout_catalogue, widget_map["ghrm-categories"], "ghrm-categories", 0)
     print(f"  {'Assigned' if added else 'Exists'}: {CATALOGUE_LAYOUT_SLUG} / ghrm-categories → ghrm-categories")
 
@@ -572,6 +619,10 @@ try:
     if header_nav:
         added = assign_widget(layout_detail, header_nav, "header", 0)
         print(f"  {'Assigned' if added else 'Exists'}: {DETAIL_LAYOUT_SLUG} / header → header-nav")
+
+    if breadcrumbs_widget:
+        added = assign_widget(layout_detail, breadcrumbs_widget, "breadcrumbs", 3)
+        print(f"  {'Assigned' if added else 'Exists'}: {DETAIL_LAYOUT_SLUG} / breadcrumbs → breadcrumbs")
 
     added = assign_widget(layout_detail, widget_map["ghrm-software-detail"], "ghrm-software-detail", 0)
     print(f"  {'Assigned' if added else 'Exists'}: {DETAIL_LAYOUT_SLUG} / ghrm-software-detail → ghrm-software-detail")
@@ -614,6 +665,28 @@ try:
     )
     print(f"  {'Created' if created else 'Exists'}: template /{DETAIL_PAGE_SLUG}")
 
+    # Look up dark-midnight style (created by populate_cms.py)
+    from plugins.cms.src.models.cms_style import CmsStyle as _CmsStyle
+    style_dark = session.query(_CmsStyle).filter_by(slug="dark-midnight").first()
+    style_light = session.query(_CmsStyle).filter_by(slug="light-clean").first()
+
+    # /software — alternate root entry point with dark theme
+    page_software, created = get_or_create(
+        session, CmsPage, slug="software",
+        name="Software",
+        language="en",
+        content_json={"type": "doc", "content": []},
+        is_published=True,
+        sort_order=0,
+        category_id=cms_cat.id,
+        layout_id=layout_catalogue.id,
+        style_id=style_dark.id if style_dark else None,
+        meta_title="Software Catalogue",
+        meta_description="Browse available software packages",
+        robots="index,follow",
+    )
+    print(f"  {'Created' if created else 'Exists'}: /software")
+
     # Category index (root /category page)
     page_index, created = get_or_create(
         session, CmsPage, slug="category",
@@ -624,6 +697,7 @@ try:
         sort_order=0,
         category_id=cms_cat.id,
         layout_id=layout_catalogue.id,
+        style_id=style_light.id if style_light else None,
         meta_title="Software Catalogue",
         meta_description="Browse available software packages",
         robots="index,follow",
@@ -643,6 +717,7 @@ try:
             sort_order=i + 1,
             category_id=cms_cat.id,
             layout_id=layout_catalogue.id,
+            style_id=style_light.id if style_light else None,
             meta_title=f"{label} Packages",
             meta_description=f"Browse {label} software packages",
             robots="index,follow",
