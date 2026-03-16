@@ -118,6 +118,7 @@ htmlcov/
 
 
 plugins/config.json
+plugins/plugins.json
 
 # Plugin dirs are hosted in individual repos (vbwd-plugin-*)
 # Install via: recipes/install-plugins.sh or CI
