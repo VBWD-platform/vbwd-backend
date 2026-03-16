@@ -1,1 +1,0 @@
-"""Taro plugin source code."""
