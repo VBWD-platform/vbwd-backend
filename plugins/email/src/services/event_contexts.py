@@ -399,9 +399,9 @@ EVENT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 # Auto-register all core event contexts into the open registry so that
 # other plugins and admin routes can use EventContextRegistry.get_all()
 # without importing EVENT_CONTEXTS directly.
-from plugins.email.src.services.event_context_registry import (  # noqa: E402
+from plugins.email.src.services.event_context_registry import (
     register as _register,
-)
+)  # noqa: E402
 
 for _event_type, _schema in EVENT_CONTEXTS.items():
     _register(_event_type, _schema)

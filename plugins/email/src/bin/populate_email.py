@@ -25,14 +25,15 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from plugins.email.src.seeds import (  # noqa: E402
+from plugins.email.src.seeds import (
     DEFAULT_TEMPLATES,
     seed_default_templates,
-)
+)  # noqa: E402
 
 
 def populate_email() -> None:
     from src.extensions import db  # noqa: E402
+    from plugins.email.src.models.email_template import EmailTemplate  # noqa: E402
 
     created = seed_default_templates(db.session)
     total = len(DEFAULT_TEMPLATES)
