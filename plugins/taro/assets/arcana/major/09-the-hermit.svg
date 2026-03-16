@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="280" height="400" viewBox="0 0 280 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="280" height="400" fill="#1a1a2e"/>
+
+  <!-- Border -->
+  <rect x="10" y="10" width="260" height="380" fill="none" stroke="#d4af37" stroke-width="2"/>
+  <rect x="12" y="12" width="256" height="376" fill="none" stroke="#8b7500" stroke-width="1"/>
+
+  <!-- Card number (top-left) -->
+  <text x="30" y="50" font-family="Georgia, serif" font-size="32" font-weight="bold" fill="#d4af37" text-anchor="start">
+    09
+  </text>
+
+  <!-- Card symbol (center) -->
+  <circle cx="140" cy="140" r="60" fill="none" stroke="#d4af37" stroke-width="2"/>
+  <circle cx="140" cy="140" r="55" fill="none" stroke="#8b7500" stroke-width="1"/>
+  <text x="140" y="160" font-family="Georgia, serif" font-size="80" fill="#d4af37" text-anchor="middle" opacity="0.3">
+    ✦
+  </text>
+
+  <!-- Card title -->
+  <text x="140" y="290" font-family="Georgia, serif" font-size="20" font-weight="bold" fill="#ffffff" text-anchor="middle">
+    The Hermit
+  </text>
+  <text x="140" y="310" font-family="Georgia, serif" font-size="12" fill="#d4af37" text-anchor="middle">
+    MAJOR ARCANA
+  </text>
+
+  <!-- Bottom ornament -->
+  <line x1="50" y1="350" x2="230" y2="350" stroke="#d4af37" stroke-width="1"/>
+  <circle cx="140" cy="350" r="3" fill="#d4af37"/>
+</svg>

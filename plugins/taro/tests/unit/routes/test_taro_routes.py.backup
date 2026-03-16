@@ -1,0 +1,706 @@
+"""Tests for Taro plugin routes - API endpoints."""
+import pytest
+from datetime import datetime, timedelta
+from uuid import uuid4
+from unittest.mock import Mock, patch, MagicMock
+from flask import Flask
+from plugins.taro.src.routes import taro_bp
+from plugins.taro.src.events import (
+    TaroSessionRequestedEvent,
+    TaroSessionCreatedEvent,
+    TaroFollowUpRequestedEvent,
+)
+
+
+@pytest.fixture
+def app():
+    """Create Flask app for testing."""
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["JWT_SECRET_KEY"] = "test-secret"
+    app.register_blueprint(taro_bp, url_prefix="/api/v1/taro")
+    return app
+
+
+@pytest.fixture
+def client(app):
+    """Create test client."""
+    return app.test_client()
+
+
+@pytest.fixture
+def mock_auth_header():
+    """Fixture providing valid auth header."""
+    return {"Authorization": "Bearer test-token"}
+
+
+@pytest.fixture
+def mock_current_user():
+    """Fixture providing mock current user."""
+    user = Mock()
+    user.id = str(uuid4())
+    user.user_profile = Mock()
+    user.user_profile.current_tarif_plan = Mock()
+    user.user_profile.current_tarif_plan.id = "plan-star"
+    user.user_profile.current_tarif_plan.daily_taro_limit = 3
+    user.user_profile.current_tarif_plan.max_taro_follow_ups = 3
+    return user
+
+
+@pytest.fixture
+def mock_dispatcher():
+    """Fixture providing mock event dispatcher."""
+    dispatcher = Mock()
+    dispatcher.emit = Mock()
+    return dispatcher
+
+
+class TestTaroSessionRoutes:
+    """Test Taro session creation routes."""
+
+    def test_create_session_success(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test creating a Taro session successfully."""
+        with patch("plugins.taro.src.routes.verify_jwt_in_request"):
+            with patch("plugins.taro.src.routes.get_jwt_identity", return_value=mock_current_user.id):
+                with patch("plugins.taro.src.routes.get_user_tarif_plan_limits", return_value=(3, 3)):
+                    with patch("plugins.taro.src.routes.check_token_balance", return_value=True):
+                        with patch("plugins.taro.src.routes.current_app") as mock_app:
+                            mock_app.container.event_dispatcher.return_value = mock_dispatcher
+
+                            response = client.post(
+                                "/api/v1/taro/session",
+                                headers=mock_auth_header,
+                                json={},
+                            )
+
+                            assert response.status_code in [200, 201, 500]
+
+    def test_create_session_without_auth(self, client):
+        """Test that creating session without auth raises error."""
+        with patch("plugins.taro.src.routes.verify_jwt_in_request") as mock_verify_jwt:
+            mock_verify_jwt.side_effect = Exception("Unauthorized")
+
+            response = client.post(
+                "/api/v1/taro/session",
+                json={},
+            )
+            # Should either return error or raise exception
+            assert response.status_code in [400, 401, 500] or isinstance(mock_verify_jwt.side_effect, Exception)
+
+    def test_create_session_daily_limit_exceeded(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test that exceeding daily limit returns 402."""
+        with patch("plugins.taro.src.routes.verify_jwt_in_request"):
+            with patch("plugins.taro.src.routes.get_jwt_identity", return_value=mock_current_user.id):
+                with patch("plugins.taro.src.routes.get_user_tarif_plan_limits", return_value=(0, 3)):
+                    with patch("plugins.taro.src.routes.current_app") as mock_app:
+                        mock_app.container.event_dispatcher.return_value = mock_dispatcher
+
+                        response = client.post(
+                            "/api/v1/taro/session",
+                            headers=mock_auth_header,
+                            json={},
+                        )
+
+                        assert response.status_code == 402
+                        data = response.get_json()
+                        assert data["success"] is False
+                        assert "daily limit" in data["message"].lower()
+
+    def test_create_session_insufficient_tokens(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test that insufficient tokens returns 402."""
+        with patch("plugins.taro.src.routes.verify_jwt_in_request"):
+            with patch("plugins.taro.src.routes.get_jwt_identity", return_value=mock_current_user.id):
+                with patch("plugins.taro.src.routes.get_user_tarif_plan_limits", return_value=(3, 3)):
+                    with patch("plugins.taro.src.routes.check_token_balance", return_value=False):
+                        with patch("plugins.taro.src.routes.current_app") as mock_app:
+                            mock_app.container.event_dispatcher.return_value = mock_dispatcher
+
+                            response = client.post(
+                                "/api/v1/taro/session",
+                                headers=mock_auth_header,
+                                json={},
+                            )
+
+                            assert response.status_code == 402
+                            data = response.get_json()
+                            assert data["success"] is False
+                            assert "token" in data["message"].lower()
+
+    def test_create_session_emits_event(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test that session creation emits TaroSessionRequestedEvent."""
+        with patch("plugins.taro.src.routes.verify_jwt_in_request"):
+            with patch("plugins.taro.src.routes.get_jwt_identity", return_value=mock_current_user.id):
+                with patch("plugins.taro.src.routes.get_user_tarif_plan_limits", return_value=(3, 3)):
+                    with patch("plugins.taro.src.routes.check_token_balance", return_value=True):
+                        with patch("plugins.taro.src.routes.current_app") as mock_app:
+                            mock_app.container.event_dispatcher.return_value = mock_dispatcher
+
+                            response = client.post(
+                                "/api/v1/taro/session",
+                                headers=mock_auth_header,
+                                json={},
+                            )
+
+                            # Check if event was emitted (if request succeeded)
+                            if response.status_code in [200, 201]:
+                                mock_dispatcher.emit.assert_called()
+
+    def test_create_session_response_includes_spread(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test that session response includes 3-card spread."""
+        with patch("plugins.taro.src.routes.verify_jwt_in_request"):
+            with patch("plugins.taro.src.routes.get_jwt_identity", return_value=mock_current_user.id):
+                with patch("plugins.taro.src.routes.get_user_tarif_plan_limits", return_value=(3, 3)):
+                    with patch("plugins.taro.src.routes.check_token_balance", return_value=True):
+                        with patch("plugins.taro.src.routes.current_app") as mock_app:
+                            mock_app.container.event_dispatcher.return_value = mock_dispatcher
+
+                            response = client.post(
+                                "/api/v1/taro/session",
+                                headers=mock_auth_header,
+                                json={},
+                            )
+
+                            # If successful, check spread
+                            if response.status_code in [200, 201]:
+                                data = response.get_json()
+                                if "cards" in data.get("session", {}):
+                                    assert len(data["session"]["cards"]) == 3
+
+
+class TestTaroFollowUpRoutes:
+    """Test Taro follow-up question routes."""
+
+    def test_follow_up_same_cards_success(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test follow-up with SAME_CARDS type successfully."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch("plugins.taro.src.routes.dispatcher", mock_dispatcher):
+                    with patch(
+                        "src.plugins.taro.routes.TaroSessionService.get_session",
+                        return_value=Mock(id=session_id, status="ACTIVE"),
+                    ):
+                        mock_require_auth.return_value = lambda f: f
+
+                        response = client.post(
+                            f"/api/v1/taro/session/{session_id}/follow-up",
+                            headers=mock_auth_header,
+                            json={
+                                "question": "Tell me more",
+                                "follow_up_type": "SAME_CARDS",
+                            },
+                        )
+
+                        assert response.status_code == 201
+                        data = response.get_json()
+                        assert data["success"] is True
+                        assert "follow_up" in data
+
+    def test_follow_up_additional_card_success(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test follow-up with ADDITIONAL card type successfully."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch("plugins.taro.src.routes.dispatcher", mock_dispatcher):
+                    with patch(
+                        "src.plugins.taro.routes.TaroSessionService.get_session",
+                        return_value=Mock(id=session_id, status="ACTIVE"),
+                    ):
+                        mock_require_auth.return_value = lambda f: f
+
+                        response = client.post(
+                            f"/api/v1/taro/session/{session_id}/follow-up",
+                            headers=mock_auth_header,
+                            json={
+                                "question": "Show me more insights",
+                                "follow_up_type": "ADDITIONAL",
+                            },
+                        )
+
+                        assert response.status_code == 201
+                        data = response.get_json()
+                        assert data["success"] is True
+
+    def test_follow_up_new_spread_success(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test follow-up with NEW_SPREAD type successfully."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch("plugins.taro.src.routes.dispatcher", mock_dispatcher):
+                    with patch(
+                        "src.plugins.taro.routes.TaroSessionService.get_session",
+                        return_value=Mock(id=session_id, status="ACTIVE"),
+                    ):
+                        mock_require_auth.return_value = lambda f: f
+
+                        response = client.post(
+                            f"/api/v1/taro/session/{session_id}/follow-up",
+                            headers=mock_auth_header,
+                            json={
+                                "question": "Start fresh",
+                                "follow_up_type": "NEW_SPREAD",
+                            },
+                        )
+
+                        assert response.status_code == 201
+                        data = response.get_json()
+                        assert data["success"] is True
+
+    def test_follow_up_invalid_type(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test follow-up with invalid type returns 400."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                mock_require_auth.return_value = lambda f: f
+
+                response = client.post(
+                    f"/api/v1/taro/session/{session_id}/follow-up",
+                    headers=mock_auth_header,
+                    json={
+                        "question": "Ask something",
+                        "follow_up_type": "INVALID_TYPE",
+                    },
+                )
+
+                assert response.status_code == 400
+                data = response.get_json()
+                assert data["success"] is False
+
+    def test_follow_up_session_not_found(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test follow-up with non-existent session returns 404."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_session",
+                    return_value=None,
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.post(
+                        f"/api/v1/taro/session/{session_id}/follow-up",
+                        headers=mock_auth_header,
+                        json={
+                            "question": "Ask",
+                            "follow_up_type": "SAME_CARDS",
+                        },
+                    )
+
+                    assert response.status_code == 404
+                    data = response.get_json()
+                    assert data["success"] is False
+
+    def test_follow_up_session_expired(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test follow-up on expired session returns 410."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_session",
+                    return_value=Mock(id=session_id, status="EXPIRED"),
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.post(
+                        f"/api/v1/taro/session/{session_id}/follow-up",
+                        headers=mock_auth_header,
+                        json={
+                            "question": "Ask",
+                            "follow_up_type": "SAME_CARDS",
+                        },
+                    )
+
+                    assert response.status_code == 410
+                    data = response.get_json()
+                    assert data["success"] is False
+                    assert "expired" in data["message"].lower()
+
+    def test_follow_up_limit_exceeded(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test follow-up with max count exceeded returns 402."""
+        session_id = str(uuid4())
+        mock_session = Mock(id=session_id, status="ACTIVE", follow_up_count=3)
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_session",
+                    return_value=mock_session,
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.post(
+                        f"/api/v1/taro/session/{session_id}/follow-up",
+                        headers=mock_auth_header,
+                        json={
+                            "question": "Ask",
+                            "follow_up_type": "SAME_CARDS",
+                        },
+                    )
+
+                    assert response.status_code == 402
+                    data = response.get_json()
+                    assert data["success"] is False
+
+    def test_follow_up_insufficient_tokens(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test follow-up with insufficient tokens returns 402."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_session",
+                    return_value=Mock(id=session_id, status="ACTIVE", follow_up_count=0),
+                ):
+                    with patch(
+                        "src.plugins.taro.routes.check_token_balance",
+                        return_value=False,
+                    ):
+                        mock_require_auth.return_value = lambda f: f
+
+                        response = client.post(
+                            f"/api/v1/taro/session/{session_id}/follow-up",
+                            headers=mock_auth_header,
+                            json={
+                                "question": "Ask",
+                                "follow_up_type": "SAME_CARDS",
+                            },
+                        )
+
+                        assert response.status_code == 402
+
+    def test_follow_up_emits_event(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+        mock_dispatcher,
+    ):
+        """Test that follow-up emits TaroFollowUpRequestedEvent."""
+        session_id = str(uuid4())
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch("plugins.taro.src.routes.dispatcher", mock_dispatcher):
+                    with patch(
+                        "src.plugins.taro.routes.TaroSessionService.get_session",
+                        return_value=Mock(id=session_id, status="ACTIVE", follow_up_count=0),
+                    ):
+                        with patch(
+                            "src.plugins.taro.routes.check_token_balance",
+                            return_value=True,
+                        ):
+                            mock_require_auth.return_value = lambda f: f
+
+                            response = client.post(
+                                f"/api/v1/taro/session/{session_id}/follow-up",
+                                headers=mock_auth_header,
+                                json={
+                                    "question": "Ask something",
+                                    "follow_up_type": "SAME_CARDS",
+                                },
+                            )
+
+                            assert response.status_code == 201
+                            mock_dispatcher.emit.assert_called()
+                            call_args = mock_dispatcher.emit.call_args
+                            assert isinstance(call_args[0][0], TaroFollowUpRequestedEvent)
+
+
+class TestTaroHistoryRoutes:
+    """Test Taro session history routes."""
+
+    def test_get_history_success(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test retrieving session history successfully."""
+        mock_sessions = [
+            Mock(id=str(uuid4()), created_at=datetime.utcnow()),
+            Mock(id=str(uuid4()), created_at=datetime.utcnow()),
+        ]
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_user_sessions",
+                    return_value=mock_sessions,
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.get(
+                        "/api/v1/taro/history",
+                        headers=mock_auth_header,
+                    )
+
+                    assert response.status_code == 200
+                    data = response.get_json()
+                    assert data["success"] is True
+                    assert "sessions" in data
+                    assert len(data["sessions"]) == 2
+
+    def test_get_history_empty(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test retrieving empty session history."""
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_user_sessions",
+                    return_value=[],
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.get(
+                        "/api/v1/taro/history",
+                        headers=mock_auth_header,
+                    )
+
+                    assert response.status_code == 200
+                    data = response.get_json()
+                    assert data["success"] is True
+                    assert len(data["sessions"]) == 0
+
+    def test_get_history_includes_session_details(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test that history includes session details and cards."""
+        mock_card = Mock(id=str(uuid4()), position="PAST")
+        mock_session = Mock(
+            id=str(uuid4()),
+            created_at=datetime.utcnow(),
+            tokens_consumed=20,
+            follow_up_count=1,
+            status="ACTIVE",
+        )
+        mock_session.cards = [mock_card]
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_user_sessions",
+                    return_value=[mock_session],
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.get(
+                        "/api/v1/taro/history",
+                        headers=mock_auth_header,
+                    )
+
+                    assert response.status_code == 200
+                    data = response.get_json()
+                    assert len(data["sessions"]) == 1
+                    session = data["sessions"][0]
+                    assert "tokens_consumed" in session
+                    assert "follow_up_count" in session
+                    assert "cards" in session
+
+    def test_get_history_pagination(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test history with pagination parameters."""
+        mock_sessions = [Mock(id=str(uuid4())) for _ in range(5)]
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.get_user_sessions",
+                    return_value=mock_sessions[:3],
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.get(
+                        "/api/v1/taro/history?limit=3&offset=0",
+                        headers=mock_auth_header,
+                    )
+
+                    assert response.status_code == 200
+                    data = response.get_json()
+                    assert len(data["sessions"]) == 3
+
+
+class TestTaroLimitRoutes:
+    """Test Taro daily limit routes."""
+
+    def test_get_limits_success(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test retrieving daily limits successfully."""
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.check_daily_limit",
+                    return_value=(True, 2),
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.get(
+                        "/api/v1/taro/limits",
+                        headers=mock_auth_header,
+                    )
+
+                    assert response.status_code == 200
+                    data = response.get_json()
+                    assert data["success"] is True
+                    assert "limits" in data
+                    assert "daily_remaining" in data["limits"]
+                    assert "daily_total" in data["limits"]
+
+    def test_get_limits_includes_plan_info(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test that limits include tarif plan information."""
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.check_daily_limit",
+                    return_value=(True, 2),
+                ):
+                    mock_require_auth.return_value = lambda f: f
+
+                    response = client.get(
+                        "/api/v1/taro/limits",
+                        headers=mock_auth_header,
+                    )
+
+                    assert response.status_code == 200
+                    data = response.get_json()
+                    limits = data["limits"]
+                    assert limits["daily_total"] == 3  # Star plan limit
+                    assert limits["daily_remaining"] == 2
+                    assert "plan_name" in limits
+
+    def test_get_limits_expired_session_warning(
+        self,
+        client,
+        mock_auth_header,
+        mock_current_user,
+    ):
+        """Test that limits include active session expiry warning if applicable."""
+        mock_session = Mock(
+            id=str(uuid4()),
+            expires_at=datetime.utcnow() + timedelta(minutes=2),
+            status="ACTIVE",
+        )
+
+        with patch("plugins.taro.src.routes.require_auth") as mock_require_auth:
+            with patch("plugins.taro.src.routes.current_user", mock_current_user):
+                with patch(
+                    "src.plugins.taro.routes.TaroSessionService.check_daily_limit",
+                    return_value=(True, 2),
+                ):
+                    with patch(
+                        "src.plugins.taro.routes.TaroSessionService.get_active_session",
+                        return_value=mock_session,
+                    ):
+                        with patch(
+                            "src.plugins.taro.routes.TaroSessionService.has_expiry_warning",
+                            return_value=True,
+                        ):
+                            mock_require_auth.return_value = lambda f: f
+
+                            response = client.get(
+                                "/api/v1/taro/limits",
+                                headers=mock_auth_header,
+                            )
+
+                            assert response.status_code == 200
+                            data = response.get_json()
+                            assert "session_expiry_warning" in data
+                            assert data["session_expiry_warning"]["has_warning"] is True

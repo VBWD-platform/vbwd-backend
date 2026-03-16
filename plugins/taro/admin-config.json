@@ -1,0 +1,37 @@
+{
+  "tabs": [
+    {
+      "id": "llm",
+      "label": "LLM Configuration",
+      "fields": [
+        { "key": "llm_api_endpoint", "label": "API Endpoint", "component": "input", "inputType": "text" },
+        { "key": "llm_api_key", "label": "API Key", "component": "input", "inputType": "password" },
+        { "key": "llm_model", "label": "Model", "component": "input", "inputType": "text" },
+        { "key": "llm_temperature", "label": "Temperature", "component": "input", "inputType": "number" },
+        { "key": "llm_max_tokens", "label": "Max Tokens", "component": "input", "inputType": "number" }
+      ]
+    },
+    {
+      "id": "session",
+      "label": "Session Configuration",
+      "fields": [
+        { "key": "session_duration_minutes", "label": "Session Duration (minutes)", "component": "input", "inputType": "number" },
+        { "key": "session_expiry_warning_minutes", "label": "Expiry Warning (minutes)", "component": "input", "inputType": "number" },
+        { "key": "base_session_tokens", "label": "Base Session Token Cost", "component": "input", "inputType": "number" },
+        { "key": "follow_up_base_tokens", "label": "Follow-up Token Cost", "component": "input", "inputType": "number" }
+      ]
+    },
+    {
+      "id": "prompts",
+      "label": "Oracle Prompts",
+      "fields": [
+        { "key": "system_prompt", "label": "System Prompt", "component": "textarea", "description": "System prompt for all Tarot LLM operations" },
+        { "key": "card_interpretation_template", "label": "Card Interpretation", "component": "textarea", "description": "Template for single card interpretation. Variables: {{card_name}}, {{orientation}}, {{position}}, {{base_meaning}}, {{position_context}}" },
+        { "key": "situation_reading_template", "label": "Situation Reading", "component": "textarea", "description": "Template for situation reading. Variables: {{situation_text}}, {{cards_context}}" },
+        { "key": "card_explanation_template", "label": "Card Explanation", "component": "textarea", "description": "Template for card explanation. Variables: {{cards_context}}" },
+        { "key": "follow_up_question_template", "label": "Follow-up Question", "component": "textarea", "description": "Template for follow-up questions. Variables: {{cards_context}}, {{question}}" },
+        { "key": "initial_greeting", "label": "Initial Greeting", "component": "textarea", "description": "Greeting message shown after cards are drawn" }
+      ]
+    }
+  ]
+}

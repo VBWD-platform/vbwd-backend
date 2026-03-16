@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="280" height="400" viewBox="0 0 280 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="280" height="400" fill="#1a1a2e"/>
+
+  <!-- Border -->
+  <rect x="10" y="10" width="260" height="380" fill="none" stroke="#3498db" stroke-width="2"/>
+  <rect x="12" y="12" width="256" height="376" fill="none" stroke="#3498db" stroke-width="1" opacity="0.5"/>
+
+  <!-- Suit symbol (top-left) -->
+  <text x="30" y="50" font-family="Georgia, serif" font-size="28" fill="#3498db" text-anchor="start">
+    ♣
+  </text>
+
+  <!-- Card symbol (center) -->
+  <circle cx="140" cy="140" r="50" fill="none" stroke="#3498db" stroke-width="2"/>
+  <circle cx="140" cy="140" r="45" fill="none" stroke="#3498db" stroke-width="1" opacity="0.5"/>
+  <text x="140" y="155" font-family="Georgia, serif" font-size="60" fill="#3498db" text-anchor="middle" opacity="0.4">
+    ♣
+  </text>
+
+  <!-- Card title -->
+  <text x="140" y="290" font-family="Georgia, serif" font-size="18" font-weight="bold" fill="#ffffff" text-anchor="middle">
+    Nine of Cups
+  </text>
+  <text x="140" y="310" font-family="Georgia, serif" font-size="12" fill="#3498db" text-anchor="middle">
+    MINOR ARCANA
+  </text>
+
+  <!-- Bottom ornament -->
+  <line x1="50" y1="350" x2="230" y2="350" stroke="#3498db" stroke-width="1"/>
+  <circle cx="140" cy="350" r="3" fill="#3498db"/>
+</svg>

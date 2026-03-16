@@ -1,0 +1,23 @@
+{
+  "plugin_name": "Taro",
+  "plugin_description": "Tarot card reading with LLM-powered interpretations",
+  "errors": {
+    "daily_limit_exceeded": "Daily session limit reached for your plan",
+    "insufficient_tokens": "Insufficient tokens for this operation",
+    "session_not_found": "Session not found",
+    "session_expired": "Session has expired",
+    "invalid_follow_up_type": "Invalid follow-up type",
+    "max_follow_ups_reached": "Maximum follow-ups reached for this session",
+    "interpretation_failed": "Failed to generate interpretation",
+    "permission_denied": "Permission denied for this session"
+  },
+  "config": {
+    "llm_model": "LLM Model",
+    "llm_temperature": "Temperature",
+    "llm_max_tokens": "Max Tokens",
+    "session_duration_minutes": "Session Duration (minutes)",
+    "session_expiry_warning_minutes": "Expiry Warning (minutes)",
+    "base_session_tokens": "Base Session Tokens",
+    "follow_up_base_tokens": "Follow-up Base Tokens"
+  }
+}

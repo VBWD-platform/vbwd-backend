@@ -118,15 +118,3 @@ htmlcov/
 
 
 plugins/config.json
-
-# Plugin dirs are hosted in individual repos (vbwd-plugin-*)
-plugins/analytics/
-plugins/chat/
-plugins/cms/
-plugins/email/
-plugins/ghrm/
-plugins/mailchimp/
-plugins/paypal/
-plugins/stripe/
-plugins/taro/
-plugins/yookassa/

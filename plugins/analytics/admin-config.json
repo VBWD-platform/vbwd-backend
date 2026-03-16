@@ -1,0 +1,23 @@
+{
+  "tabs": [
+    {
+      "id": "display",
+      "label": "Display",
+      "fields": [
+        {
+          "key": "refreshInterval",
+          "label": "Refresh Interval (seconds)",
+          "component": "input",
+          "inputType": "number",
+          "min": 5,
+          "max": 300
+        },
+        {
+          "key": "showInDashboard",
+          "label": "Show on Dashboard",
+          "component": "checkbox"
+        }
+      ]
+    }
+  ]
+}

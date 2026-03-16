@@ -1,0 +1,12 @@
+{
+  "refreshInterval": {
+    "type": "number",
+    "default": 30,
+    "description": "Dashboard widget refresh interval in seconds"
+  },
+  "showInDashboard": {
+    "type": "boolean",
+    "default": true,
+    "description": "Show analytics widget on admin dashboard"
+  }
+}
