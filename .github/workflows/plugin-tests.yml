@@ -69,6 +69,18 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${{ matrix.plugin }}.git plugins/${{ matrix.plugin }}
 
+      - name: Install plugin dependencies
+        run: |
+          declare -A PLUGIN_DEPS=(
+            ["taro"]="chat"
+          )
+          DEPS="${PLUGIN_DEPS[${{ matrix.plugin }}]:-}"
+          if [ -n "$DEPS" ]; then
+            for dep in $DEPS; do
+              git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${dep}.git plugins/${dep}
+            done
+          fi
+
       - name: Run unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -140,6 +152,18 @@ jobs:
       - name: Install plugin
         run: |
           git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${{ matrix.plugin }}.git plugins/${{ matrix.plugin }}
+
+      - name: Install plugin dependencies
+        run: |
+          declare -A PLUGIN_DEPS=(
+            ["taro"]="chat"
+          )
+          DEPS="${PLUGIN_DEPS[${{ matrix.plugin }}]:-}"
+          if [ -n "$DEPS" ]; then
+            for dep in $DEPS; do
+              git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${dep}.git plugins/${dep}
+            done
+          fi
 
       - name: Run integration tests
         env:
