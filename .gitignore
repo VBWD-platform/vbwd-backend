@@ -122,13 +122,4 @@ plugins/plugins.json
 
 # Plugin dirs are hosted in individual repos (vbwd-plugin-*)
 # Install via: recipes/install-plugins.sh or CI
-plugins/analytics/
-plugins/chat/
-plugins/cms/*
-plugins/email/
-plugins/ghrm/
-plugins/mailchimp/
-plugins/paypal/
-plugins/stripe/
-plugins/taro/
-plugins/yookassa/
+plugins/*
