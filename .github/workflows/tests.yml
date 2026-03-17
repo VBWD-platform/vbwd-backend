@@ -168,7 +168,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
           DATABASE_URL: postgresql://vbwd:vbwd@localhost:5432/vbwd_test
         run: |
-          alembic upgrade heads
+          alembic upgrade head
 
       - name: Run integration tests
         env:
