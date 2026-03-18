@@ -20,7 +20,7 @@ from vbwd.models.base import BaseModel
 
 def get_all_models() -> list[Type[BaseModel]]:
     """Get all model classes that have table definitions."""
-    from src import models
+    from vbwd import models
 
     # Import all models to register them
     _ = models
