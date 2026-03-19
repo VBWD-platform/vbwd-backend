@@ -112,9 +112,13 @@ else
     INTEGRATION_PATHS="tests/integration/ plugins/*/tests/integration/"
 fi
 
-# Detect environment (Docker or local)
+# Detect environment (Docker, CI, or local)
 IN_DOCKER=false
 if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+    IN_DOCKER=true
+fi
+# In CI (GitHub Actions), run commands directly — services are already running
+if [ -n "$GITHUB_ACTIONS" ] || [ "$CI" = "true" ]; then
     IN_DOCKER=true
 fi
 
