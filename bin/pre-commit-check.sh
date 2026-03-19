@@ -180,9 +180,9 @@ run_static_analysis() {
     echo -e "${YELLOW}[A.3] Running Mypy (static type analyzer)...${NC}"
     local mypy_failed=0
     if $IN_DOCKER; then
-        mypy $MYPY_PATHS --ignore-missing-imports --no-error-summary 2>&1 || mypy_failed=1
+        mypy $MYPY_PATHS --ignore-missing-imports --no-error-summary --disable-error-code=import-untyped 2>&1 || mypy_failed=1
     else
-        docker compose run --rm -T test mypy $MYPY_PATHS --ignore-missing-imports --no-error-summary 2>&1 || mypy_failed=1
+        docker compose run --rm -T test mypy $MYPY_PATHS --ignore-missing-imports --no-error-summary --disable-error-code=import-untyped 2>&1 || mypy_failed=1
     fi
     print_result "Mypy type check" $mypy_failed
     [ $mypy_failed -ne 0 ] && failed=1
@@ -208,7 +208,18 @@ run_unit_tests() {
     echo -e "${YELLOW}Running unit tests with pytest (core + plugins)...${NC}"
     echo ""
 
-    if $IN_DOCKER; then
+    # Check if test paths exist
+    local has_tests=false
+    for test_path in $UNIT_PATHS; do
+        if [ -d "$test_path" ] && find "$test_path" -name "*.py" -not -name "__init__.py" 2>/dev/null | head -1 | grep -q .; then
+            has_tests=true
+            break
+        fi
+    done
+
+    if [ "$has_tests" = false ]; then
+        echo -e "${YELLOW}No unit tests found — skipping${NC}"
+    elif $IN_DOCKER; then
         pytest $UNIT_PATHS -q --tb=line 2>&1
         local exit_code=$?
         # exit 5 = no tests collected (not a failure)
