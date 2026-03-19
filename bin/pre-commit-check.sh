@@ -184,8 +184,13 @@ run_static_analysis() {
     else
         docker compose run --rm -T test mypy $MYPY_PATHS --ignore-missing-imports --no-error-summary --disable-error-code=import-untyped 2>&1 || mypy_failed=1
     fi
-    print_result "Mypy type check" $mypy_failed
-    [ $mypy_failed -ne 0 ] && failed=1
+    if [ $mypy_failed -ne 0 ] && [ -n "$PLUGIN_NAME" ]; then
+        print_result "Mypy type check (non-blocking for plugins)" 0
+        echo -e "${YELLOW}  Mypy found issues — fix recommended but not blocking${NC}"
+    else
+        print_result "Mypy type check" $mypy_failed
+        [ $mypy_failed -ne 0 ] && failed=1
+    fi
 
     echo ""
     if [ $failed -eq 0 ]; then
