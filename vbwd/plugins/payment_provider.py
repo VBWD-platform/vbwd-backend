@@ -12,6 +12,7 @@ class PaymentStatus(Enum):
 
     PENDING = "pending"
     PROCESSING = "processing"
+    AUTHORIZED = "authorized"
     COMPLETED = "completed"
     FAILED = "failed"
     REFUNDED = "refunded"
@@ -41,6 +42,7 @@ class PaymentProviderPlugin(BasePlugin):
     Abstract base class for payment provider plugins.
 
     Payment providers (Stripe, PayPal, etc.) must inherit from this class.
+    Supports both immediate charge and authorize-then-capture flows.
     """
 
     @abstractmethod
@@ -51,6 +53,7 @@ class PaymentProviderPlugin(BasePlugin):
         subscription_id: UUID,
         user_id: UUID,
         metadata: Optional[Dict[str, Any]] = None,
+        capture: bool = True,
     ) -> PaymentResult:
         """
         Create payment intent/session.
@@ -61,9 +64,44 @@ class PaymentProviderPlugin(BasePlugin):
             subscription_id: Subscription UUID
             user_id: User UUID
             metadata: Optional metadata
+            capture: If True, charge immediately. If False, authorize only (hold).
 
         Returns:
             PaymentResult with transaction details
+        """
+        pass
+
+    @abstractmethod
+    def capture_payment(
+        self,
+        payment_id: str,
+        amount: Optional[Decimal] = None,
+    ) -> PaymentResult:
+        """
+        Capture a previously authorized payment.
+
+        Args:
+            payment_id: Provider-specific payment/intent ID
+            amount: Optional partial capture amount. None = full amount.
+
+        Returns:
+            PaymentResult with capture status
+        """
+        pass
+
+    @abstractmethod
+    def release_authorization(
+        self,
+        payment_id: str,
+    ) -> PaymentResult:
+        """
+        Release/void a previously authorized payment hold.
+
+        Args:
+            payment_id: Provider-specific payment/intent ID
+
+        Returns:
+            PaymentResult with void status
         """
         pass
 
@@ -92,7 +130,7 @@ class PaymentProviderPlugin(BasePlugin):
         amount: Optional[Decimal] = None,
     ) -> PaymentResult:
         """
-        Refund a payment.
+        Refund a payment (full or partial).
 
         Args:
             transaction_id: Original transaction ID

@@ -34,6 +34,7 @@ class InvoiceStatus(enum.Enum):
     """Invoice status."""
 
     PENDING = "PENDING"
+    AUTHORIZED = "AUTHORIZED"
     PAID = "PAID"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
