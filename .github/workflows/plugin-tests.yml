@@ -5,140 +5,69 @@ on:
     branches: ['*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   unit:
-    name: Unit Tests — ${{ matrix.plugin }}
+    name: Unit — ${{ matrix.plugin }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        plugin:
-          - analytics
-          - booking
-          - chat
-          - cms
-          - email
-          - ghrm
-          - mailchimp
-          - paypal
-          - stripe
-          - taro
-          - yookassa
+        plugin: [analytics, booking, chat, cms, email, ghrm, mailchimp, paypal, stripe, taro, yookassa]
 
     services:
       postgres:
         image: postgres:16-alpine
-        env:
-          POSTGRES_USER: vbwd
-          POSTGRES_PASSWORD: vbwd
-          POSTGRES_DB: vbwd_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        env: { POSTGRES_USER: vbwd, POSTGRES_PASSWORD: vbwd, POSTGRES_DB: vbwd_test }
+        ports: [5432:5432]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        ports: [6379:6379]
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: requirements.txt
-
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: requirements.txt }
       - run: pip install -r requirements.txt
-
       - name: Install plugin
-        run: git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${{ matrix.plugin }}.git plugins/${{ matrix.plugin }}
-
-      - name: Install plugin dependencies
+        run: git clone --depth=1 -q https://github.com/VBWD-platform/vbwd-plugin-${{ matrix.plugin }}.git plugins/${{ matrix.plugin }}
+      - name: Install plugin deps
         run: |
-          declare -A PLUGIN_DEPS=(["taro"]="chat")
-          DEPS="${PLUGIN_DEPS[${{ matrix.plugin }}]:-}"
-          if [ -n "$DEPS" ]; then
-            for dep in $DEPS; do
-              git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${dep}.git plugins/${dep}
-            done
-          fi
-
-      - name: Run pre-commit (lint + unit)
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-          REDIS_URL: redis://localhost:6379/0
-          DATABASE_URL: postgresql://vbwd:vbwd@localhost:5432/vbwd_test
+          declare -A DEPS=(["taro"]="chat")
+          [ -n "${DEPS[${{ matrix.plugin }}]:-}" ] && for dep in ${DEPS[${{ matrix.plugin }}]}; do
+            git clone --depth=1 -q https://github.com/VBWD-platform/vbwd-plugin-${dep}.git plugins/${dep}; done || true
+      - name: Run lint + unit
+        env: { PYTHONPATH: "${{ github.workspace }}", REDIS_URL: "redis://localhost:6379/0", DATABASE_URL: "postgresql://vbwd:vbwd@localhost:5432/vbwd_test" }
         run: ./bin/pre-commit-check.sh --plugin ${{ matrix.plugin }} --quick
 
   integration:
-    name: Integration Tests — ${{ matrix.plugin }}
+    name: Integration — ${{ matrix.plugin }}
     needs: unit
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        plugin:
-          - booking
-          - cms
-          - email
-          - ghrm
-          - taro
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: vbwd
-          POSTGRES_PASSWORD: vbwd
-          POSTGRES_DB: vbwd_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
+        plugin: [booking, cms, email, ghrm, taro]
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: requirements.txt
-
+        with: { python-version: '3.11', cache: 'pip', cache-dependency-path: requirements.txt }
       - run: pip install -r requirements.txt
-
-      - name: Install plugin
-        run: git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${{ matrix.plugin }}.git plugins/${{ matrix.plugin }}
-
-      - name: Install plugin dependencies
+      - name: Install ALL plugins (full SDK)
         run: |
-          declare -A PLUGIN_DEPS=(["taro"]="chat")
-          DEPS="${PLUGIN_DEPS[${{ matrix.plugin }}]:-}"
-          if [ -n "$DEPS" ]; then
-            for dep in $DEPS; do
-              git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${dep}.git plugins/${dep}
-            done
-          fi
-
+          for plugin in analytics booking chat cms email ghrm mailchimp paypal stripe taro yookassa; do
+            git clone --depth=1 -q https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git plugins/${plugin} 2>/dev/null || true
+          done
+      - name: Start full stack
+        run: docker compose up -d --build
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 30); do curl -sf http://localhost:5000/api/v1/health > /dev/null 2>&1 && break; sleep 2; done
       - name: Run integration tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-          REDIS_URL: redis://localhost:6379/0
-          DATABASE_URL: postgresql://vbwd:vbwd@localhost:5432/vbwd_test
-        run: ./bin/pre-commit-check.sh --plugin ${{ matrix.plugin }} --integration
+        run: docker compose run --rm test ./bin/pre-commit-check.sh --plugin ${{ matrix.plugin }} --integration
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
