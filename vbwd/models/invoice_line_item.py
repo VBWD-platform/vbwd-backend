@@ -9,9 +9,11 @@ class InvoiceLineItem(BaseModel):
     """
     Invoice line item model.
 
-    Tracks individual items on an invoice (subscription, token bundle, add-on).
+    Tracks individual items on an invoice (subscription, token bundle, add-on,
+    or custom plugin items like bookings).
     item_id references the purchase record (subscription, token_bundle_purchase,
-    addon_subscription). catalog_item_id resolves to the actual catalog entity
+    addon_subscription, or plugin-specific record).
+    catalog_item_id resolves to the actual catalog entity
     (tarif_plan, token_bundle, addon).
     """
 
@@ -38,6 +40,7 @@ class InvoiceLineItem(BaseModel):
     quantity = db.Column(db.Integer, nullable=False, default=1)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)
     total_price = db.Column(db.Numeric(10, 2), nullable=False)
+    extra_data = db.Column("metadata", db.JSON, nullable=True, default=dict)
 
     def _resolve_catalog_item_id(self) -> str | None:
         """Resolve the catalog item ID from the purchase record."""
@@ -74,6 +77,8 @@ class InvoiceLineItem(BaseModel):
         catalog_id = self._resolve_catalog_item_id()
         if catalog_id:
             result["catalog_item_id"] = catalog_id
+        if self.extra_data:
+            result["metadata"] = self.extra_data
         return result
 
     def __repr__(self) -> str:

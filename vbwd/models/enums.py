@@ -75,6 +75,7 @@ class LineItemType(enum.Enum):
     SUBSCRIPTION = "SUBSCRIPTION"
     TOKEN_BUNDLE = "TOKEN_BUNDLE"
     ADD_ON = "ADD_ON"
+    CUSTOM = "CUSTOM"
 
 
 class TokenTransactionType(enum.Enum):
