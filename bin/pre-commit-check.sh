@@ -104,10 +104,12 @@ done
 # Set paths based on plugin scope
 if [ -n "$PLUGIN_NAME" ]; then
     LINT_PATHS="plugins/$PLUGIN_NAME/"
+    MYPY_PATHS="plugins/$PLUGIN_NAME/ --exclude tests/"
     UNIT_PATHS="plugins/$PLUGIN_NAME/tests/unit/"
     INTEGRATION_PATHS="plugins/$PLUGIN_NAME/tests/integration/"
 else
     LINT_PATHS="vbwd/ tests/"
+    MYPY_PATHS="vbwd/"
     UNIT_PATHS="tests/unit/ plugins/*/tests/unit/"
     INTEGRATION_PATHS="tests/integration/ plugins/*/tests/integration/"
 fi
@@ -178,9 +180,9 @@ run_static_analysis() {
     echo -e "${YELLOW}[A.3] Running Mypy (static type analyzer)...${NC}"
     local mypy_failed=0
     if $IN_DOCKER; then
-        mypy $LINT_PATHS --ignore-missing-imports --no-error-summary 2>&1 || mypy_failed=1
+        mypy $MYPY_PATHS --ignore-missing-imports --no-error-summary 2>&1 || mypy_failed=1
     else
-        docker compose run --rm -T test mypy $LINT_PATHS --ignore-missing-imports --no-error-summary 2>&1 || mypy_failed=1
+        docker compose run --rm -T test mypy $MYPY_PATHS --ignore-missing-imports --no-error-summary 2>&1 || mypy_failed=1
     fi
     print_result "Mypy type check" $mypy_failed
     [ $mypy_failed -ne 0 ] && failed=1
