@@ -80,7 +80,7 @@ class TestLineItemMetadata:
         assert "metadata" in result
         assert result["metadata"]["plugin"] == "booking"
         assert result["metadata"]["room"] == "204"
-        assert result["type"] == "CUSTOM"
+        assert result["type"] == "booking"
 
     def test_to_dict_omits_metadata_when_empty(self):
         line_item = InvoiceLineItem()

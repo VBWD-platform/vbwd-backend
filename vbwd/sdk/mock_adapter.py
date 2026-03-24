@@ -133,6 +133,12 @@ class MockSDKAdapter(ISDKAdapter):
             data={"payment_intent_id": payment_intent_id, "status": "captured"},
         )
 
+    def release_authorization(self, payment_intent_id: str) -> SDKResponse:
+        return SDKResponse(
+            success=True,
+            data={"payment_intent_id": payment_intent_id, "status": "canceled"},
+        )
+
     def refund_payment(
         self,
         payment_intent_id: str,

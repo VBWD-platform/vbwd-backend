@@ -498,6 +498,9 @@ class TestBaseSDKAdapter:
             def capture_payment(self, payment_intent_id, idempotency_key=None):
                 return SDKResponse(success=True)
 
+            def release_authorization(self, payment_intent_id):
+                return SDKResponse(success=True)
+
             def refund_payment(
                 self, payment_intent_id, amount=None, idempotency_key=None
             ):
@@ -542,6 +545,9 @@ class TestBaseSDKAdapter:
             def capture_payment(self, payment_intent_id, idempotency_key=None):
                 return SDKResponse(success=True)
 
+            def release_authorization(self, payment_intent_id):
+                return SDKResponse(success=True)
+
             def refund_payment(
                 self, payment_intent_id, amount=None, idempotency_key=None
             ):
@@ -582,6 +588,9 @@ class TestBaseSDKAdapter:
                 return self._with_idempotency(idempotency_key, _create)
 
             def capture_payment(self, payment_intent_id, idempotency_key=None):
+                return SDKResponse(success=True)
+
+            def release_authorization(self, payment_intent_id):
                 return SDKResponse(success=True)
 
             def refund_payment(
@@ -634,6 +643,9 @@ class TestBaseSDKAdapter:
             def capture_payment(self, payment_intent_id, idempotency_key=None):
                 return SDKResponse(success=True)
 
+            def release_authorization(self, payment_intent_id):
+                return SDKResponse(success=True)
+
             def refund_payment(
                 self, payment_intent_id, amount=None, idempotency_key=None
             ):
@@ -676,6 +688,9 @@ class TestBaseSDKAdapter:
             def capture_payment(self, payment_intent_id, idempotency_key=None):
                 return SDKResponse(success=True)
 
+            def release_authorization(self, payment_intent_id):
+                return SDKResponse(success=True)
+
             def refund_payment(
                 self, payment_intent_id, amount=None, idempotency_key=None
             ):
@@ -714,6 +729,9 @@ class TestBaseSDKAdapter:
                 return self._with_idempotency(idempotency_key, _create)
 
             def capture_payment(self, payment_intent_id, idempotency_key=None):
+                return SDKResponse(success=True)
+
+            def release_authorization(self, payment_intent_id):
                 return SDKResponse(success=True)
 
             def refund_payment(

@@ -243,6 +243,8 @@ def mark_paid(invoice_id):
     dispatcher = current_app.container.event_dispatcher()
     dispatcher.emit(event)
 
+    db.session.commit()
+
     return (
         jsonify(
             {"invoice": result.invoice.to_dict(), "message": "Invoice marked as paid"}
@@ -474,3 +476,55 @@ def download_pdf(invoice_id):
         ),
         200,
     )
+
+
+@admin_invoices_bp.route("/<invoice_id>/capture", methods=["POST"])
+@require_auth
+@require_admin
+def capture_authorized_payment(invoice_id):
+    """Capture an authorized payment (charge the held funds)."""
+    from vbwd.services.capture_service import CaptureService
+    from vbwd.sdk.registry import SDKAdapterRegistry
+
+    invoice_repo = InvoiceRepository(db.session)
+    sdk_registry = getattr(current_app, "sdk_registry", None)
+    if not sdk_registry:
+        sdk_registry = SDKAdapterRegistry()
+
+    service = CaptureService(
+        invoice_repository=invoice_repo,
+        sdk_registry=sdk_registry,
+    )
+
+    result = service.capture(invoice_id)
+    if not result.success:
+        return jsonify({"error": result.error}), 400
+
+    db.session.commit()
+    return jsonify(result.data)
+
+
+@admin_invoices_bp.route("/<invoice_id>/release", methods=["POST"])
+@require_auth
+@require_admin
+def release_authorized_payment(invoice_id):
+    """Release (void) an authorized payment."""
+    from vbwd.services.capture_service import CaptureService
+    from vbwd.sdk.registry import SDKAdapterRegistry
+
+    invoice_repo = InvoiceRepository(db.session)
+    sdk_registry = getattr(current_app, "sdk_registry", None)
+    if not sdk_registry:
+        sdk_registry = SDKAdapterRegistry()
+
+    service = CaptureService(
+        invoice_repository=invoice_repo,
+        sdk_registry=sdk_registry,
+    )
+
+    result = service.release(invoice_id)
+    if not result.success:
+        return jsonify({"error": result.error}), 400
+
+    db.session.commit()
+    return jsonify(result.data)

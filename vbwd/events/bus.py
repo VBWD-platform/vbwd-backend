@@ -27,10 +27,22 @@ class EventBus:
 
     def __init__(self) -> None:
         self._subscribers: Dict[str, List[Callback]] = defaultdict(list)
+        self._global_subscribers: List[Callback] = []
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def subscribe_all(self, callback: Callback) -> None:
+        """Register *callback* to receive ALL published events.
+
+        The callback receives ``(event_name: str, data: dict)`` for every
+        event, regardless of event name.  Useful for plugins that need to
+        react to any event dynamically (e.g. email plugin).
+        """
+        if callback not in self._global_subscribers:
+            self._global_subscribers.append(callback)
+            logger.debug("[bus] Global subscriber added: %s", callback)
 
     def subscribe(self, event_name: str, callback: Callback) -> None:
         """Register *callback* to be called when *event_name* is published.
@@ -67,6 +79,7 @@ class EventBus:
             data: Plain dict of event payload.
         """
         callbacks = list(self._subscribers.get(event_name, []))
+        callbacks.extend(self._global_subscribers)
         if not callbacks:
             logger.debug("[bus] No subscribers for %s", event_name)
             return
@@ -83,8 +96,11 @@ class EventBus:
                 )
 
     def has_subscribers(self, event_name: str) -> bool:
-        """Return True if at least one subscriber is registered for *event_name*."""
-        return bool(self._subscribers.get(event_name))
+        """Return True if at least one subscriber is registered for *event_name*.
+
+        Also returns True if global subscribers exist (they receive all events).
+        """
+        return bool(self._subscribers.get(event_name)) or bool(self._global_subscribers)
 
 
 # Module-level singleton — imported as ``from vbwd.events import event_bus``

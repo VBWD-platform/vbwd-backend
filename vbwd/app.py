@@ -22,6 +22,7 @@ def _register_event_handlers(app: Flask, container) -> None:
     from vbwd.handlers.restore_handler import RefundReversedHandler
     from vbwd.handlers.subscription_cancel_handler import SubscriptionCancelledHandler
     from vbwd.handlers.payment_failed_handler import PaymentFailedHandler
+    from vbwd.handlers.payment_authorized_handler import PaymentAuthorizedHandler
 
     try:
         dispatcher = container.event_dispatcher()
@@ -76,6 +77,10 @@ def _register_event_handlers(app: Flask, container) -> None:
         # Create and register payment failed handler
         payment_failed_handler = PaymentFailedHandler(container)
         dispatcher.register("payment.failed", payment_failed_handler)
+
+        # Create and register payment authorized handler
+        authorized_handler = PaymentAuthorizedHandler(container)
+        dispatcher.register("payment.authorized", authorized_handler)
 
         logger.info("Event handlers registered successfully")
 

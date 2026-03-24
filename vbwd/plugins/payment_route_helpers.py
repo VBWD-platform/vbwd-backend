@@ -8,7 +8,7 @@ import logging
 from uuid import UUID
 from flask import current_app, jsonify
 
-from vbwd.events.payment_events import PaymentCapturedEvent
+from vbwd.events.payment_events import PaymentCapturedEvent, PaymentAuthorizedEvent
 from vbwd.models.enums import LineItemType
 from vbwd.models.subscription import Subscription
 from vbwd.models.addon_subscription import AddOnSubscription
@@ -109,6 +109,58 @@ def emit_payment_captured(
             "PaymentCapturedEvent processed successfully for invoice %s", invoice_id
         )
     return result
+
+
+def emit_payment_authorized(
+    invoice_id, payment_reference, amount, currency, provider, payment_intent_id=""
+):
+    """Emit PaymentAuthorizedEvent — card authorized, not yet captured.
+
+    Called by payment provider webhooks when capture_method is manual.
+    """
+    logger.info(
+        "emit_payment_authorized: invoice=%s provider=%s pi=%s amount=%s",
+        invoice_id,
+        provider,
+        payment_intent_id,
+        amount,
+    )
+    event = PaymentAuthorizedEvent(
+        invoice_id=invoice_id,
+        payment_reference=payment_reference,
+        amount=amount,
+        currency=currency,
+        provider=provider,
+        payment_intent_id=payment_intent_id,
+    )
+    container = current_app.container
+    result = container.event_dispatcher().emit(event)
+    if not result.success:
+        logger.error("PaymentAuthorizedEvent handler failed: %s", result.error)
+    return result
+
+
+def determine_capture_method(invoice):
+    """Determine capture method based on line item plugin configs.
+
+    Returns "manual" if any line item belongs to a plugin configured for
+    authorize-only, otherwise "auto" (immediate capture).
+    """
+    for item in invoice.line_items:
+        extra = getattr(item, "extra_data", None) or {}
+        plugin_name = extra.get("plugin")
+        if not plugin_name:
+            continue
+
+        config_store = getattr(current_app, "config_store", None)
+        if not config_store:
+            continue
+
+        plugin_config = config_store.get_config(plugin_name)
+        if plugin_config and plugin_config.get("capture_mode") == "manual":
+            return "manual"
+
+    return "auto"
 
 
 def determine_session_mode(invoice):

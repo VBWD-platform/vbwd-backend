@@ -303,6 +303,19 @@ class PluginManager:
                     if config.config:
                         plugin.initialize(config.config)
                     plugin.enable()
+
+                    # Wire event handlers (same as enable_plugin)
+                    try:
+                        from vbwd.events.bus import event_bus
+
+                        plugin.register_event_handlers(event_bus)
+                    except Exception as handler_err:
+                        logger.warning(
+                            "Failed to register event handlers for '%s': %s",
+                            config.plugin_name,
+                            handler_err,
+                        )
+
                     logger.info(
                         f"Restored enabled state for plugin '{config.plugin_name}'"
                     )

@@ -66,6 +66,7 @@ class UserInvoice(BaseModel):
     provider_session_id = db.Column(
         db.String(255), unique=True, nullable=True, index=True
     )
+    payment_intent_id = db.Column(db.String(255), nullable=True, index=True)
 
     # Relationships
     line_items = db.relationship(
@@ -78,11 +79,26 @@ class UserInvoice(BaseModel):
     @property
     def is_payable(self) -> bool:
         """Check if invoice can still be paid."""
-        if self.status not in [InvoiceStatus.PENDING]:
+        if self.status not in [InvoiceStatus.PENDING, InvoiceStatus.AUTHORIZED]:
             return False
         if self.expires_at and self.expires_at < utcnow():
             return False
         return True
+
+    @property
+    def is_capturable(self) -> bool:
+        """Check if invoice has an authorized payment that can be captured."""
+        return self.status == InvoiceStatus.AUTHORIZED
+
+    def mark_authorized(
+        self,
+        payment_ref: str,
+        payment_method: str,
+    ) -> None:
+        """Mark invoice as authorized (funds held, not yet captured)."""
+        self.status = InvoiceStatus.AUTHORIZED
+        self.payment_ref = payment_ref
+        self.payment_method = payment_method
 
     def mark_paid(
         self,
@@ -141,6 +157,8 @@ class UserInvoice(BaseModel):
             "payment_method": self.payment_method,
             "payment_ref": self.payment_ref,
             "is_payable": self.is_payable,
+            "is_capturable": self.is_capturable,
+            "payment_intent_id": self.payment_intent_id,
             "line_items": [item.to_dict() for item in self.line_items]  # type: ignore[attr-defined]
             if self.line_items
             else [],

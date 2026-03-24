@@ -64,10 +64,17 @@ class InvoiceLineItem(BaseModel):
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
+        # For CUSTOM items, use plugin name as display type if available
+        display_type = self.item_type.value
+        if self.item_type == LineItemType.CUSTOM and self.extra_data:
+            plugin_name = self.extra_data.get("plugin")
+            if plugin_name:
+                display_type = plugin_name
+
         result = {
             "id": str(self.id),
             "invoice_id": str(self.invoice_id),
-            "type": self.item_type.value,
+            "type": display_type,
             "item_id": str(self.item_id),
             "description": self.description,
             "quantity": self.quantity,

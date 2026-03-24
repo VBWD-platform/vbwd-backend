@@ -95,6 +95,18 @@ class ISDKAdapter(ABC):
         ...
 
     @abstractmethod
+    def release_authorization(self, payment_intent_id: str) -> SDKResponse:
+        """Release (void) an authorized payment.
+
+        Args:
+            payment_intent_id: ID of payment intent to cancel
+
+        Returns:
+            SDKResponse with release status
+        """
+        ...
+
+    @abstractmethod
     def refund_payment(
         self,
         payment_intent_id: str,
