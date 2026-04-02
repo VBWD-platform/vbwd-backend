@@ -12,11 +12,11 @@ class UserCase(BaseModel):
     Stores case descriptions for subscriptions.
     """
 
-    __tablename__ = "user_case"
+    __tablename__ = "vbwd_user_case"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

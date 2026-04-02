@@ -13,11 +13,11 @@ class UserTokenBalance(BaseModel):
     Balance is updated via TokenTransaction records.
     """
 
-    __tablename__ = "user_token_balance"
+    __tablename__ = "vbwd_user_token_balance"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
@@ -48,11 +48,11 @@ class TokenTransaction(BaseModel):
     Positive amounts are credits, negative are debits.
     """
 
-    __tablename__ = "token_transaction"
+    __tablename__ = "vbwd_token_transaction"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

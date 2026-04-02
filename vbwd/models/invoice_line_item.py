@@ -17,11 +17,11 @@ class InvoiceLineItem(BaseModel):
     (tarif_plan, token_bundle, addon).
     """
 
-    __tablename__ = "invoice_line_item"
+    __tablename__ = "vbwd_invoice_line_item"
 
     invoice_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user_invoice.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user_invoice.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

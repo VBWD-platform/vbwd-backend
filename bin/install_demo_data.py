@@ -28,6 +28,7 @@ from vbwd.models.addon_subscription import AddOnSubscription
 from vbwd.models.token_bundle import TokenBundle
 from vbwd.models.payment_method import PaymentMethod
 from vbwd.models.invoice_line_item import InvoiceLineItem, LineItemType
+from vbwd.models.country import Country
 from vbwd.models.enums import (
     UserStatus, UserRole, BillingPeriod,
     SubscriptionStatus, InvoiceStatus
@@ -446,6 +447,57 @@ try:
             print(f"  Exists: invoice for test@example.com / free plan")
     else:
         print("  test@example.com or free plan not found — skipping invoice")
+
+    # ── Countries ─────────────────────────────────────────────────
+    print("\n=== Countries ===")
+    ENABLED_CODES = {"DE", "FR", "AT", "IT", "PL", "ES", "TH"}
+    COUNTRIES = [
+        ("AT", "Austria"), ("BE", "Belgium"), ("BG", "Bulgaria"),
+        ("HR", "Croatia"), ("CY", "Cyprus"), ("CZ", "Czechia"),
+        ("DK", "Denmark"), ("EE", "Estonia"), ("FI", "Finland"),
+        ("FR", "France"), ("DE", "Germany"), ("GR", "Greece"),
+        ("HU", "Hungary"), ("IE", "Ireland"), ("IT", "Italy"),
+        ("LV", "Latvia"), ("LT", "Lithuania"), ("LU", "Luxembourg"),
+        ("MT", "Malta"), ("NL", "Netherlands"), ("PL", "Poland"),
+        ("PT", "Portugal"), ("RO", "Romania"), ("SK", "Slovakia"),
+        ("SI", "Slovenia"), ("ES", "Spain"), ("SE", "Sweden"),
+        ("CH", "Switzerland"), ("GB", "United Kingdom"), ("NO", "Norway"),
+        ("IS", "Iceland"), ("LI", "Liechtenstein"),
+        ("US", "United States"), ("CA", "Canada"), ("MX", "Mexico"),
+        ("BR", "Brazil"), ("AR", "Argentina"), ("CL", "Chile"),
+        ("CO", "Colombia"),
+        ("AU", "Australia"), ("NZ", "New Zealand"),
+        ("JP", "Japan"), ("KR", "South Korea"), ("CN", "China"),
+        ("TW", "Taiwan"), ("SG", "Singapore"), ("TH", "Thailand"),
+        ("IN", "India"), ("ID", "Indonesia"), ("MY", "Malaysia"),
+        ("PH", "Philippines"), ("VN", "Vietnam"),
+        ("IL", "Israel"), ("AE", "United Arab Emirates"),
+        ("SA", "Saudi Arabia"), ("TR", "Turkey"),
+        ("ZA", "South Africa"), ("NG", "Nigeria"), ("KE", "Kenya"),
+        ("EG", "Egypt"), ("MA", "Morocco"),
+        ("UA", "Ukraine"), ("RS", "Serbia"), ("BA", "Bosnia"),
+        ("ME", "Montenegro"), ("MK", "North Macedonia"), ("AL", "Albania"),
+        ("RU", "Russia"), ("BY", "Belarus"), ("MD", "Moldova"),
+        ("GE", "Georgia"),
+    ]
+    position = 0
+    for code, name in COUNTRIES:
+        existing = session.query(Country).filter_by(code=code).first()
+        if not existing:
+            enabled = code in ENABLED_CODES
+            country = Country(
+                id=uuid.uuid4(),
+                code=code,
+                name=name,
+                is_enabled=enabled,
+                position=position if enabled else 999,
+            )
+            session.add(country)
+            if enabled:
+                position += 1
+    session.commit()
+    print(f"  Countries: {session.query(Country).count()} total, "
+          f"{session.query(Country).filter_by(is_enabled=True).count()} enabled")
 
     session.commit()
     print("\n=== Done ===")

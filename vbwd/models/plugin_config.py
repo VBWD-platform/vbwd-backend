@@ -9,7 +9,7 @@ from vbwd.extensions import db
 class PluginConfig(db.Model):  # type: ignore[name-defined]
     """Persists plugin enabled/disabled state and configuration across restarts."""
 
-    __tablename__ = "plugin_config"
+    __tablename__ = "vbwd_plugin_config"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     plugin_name = Column(String(100), unique=True, nullable=False)

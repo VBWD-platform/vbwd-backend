@@ -14,7 +14,7 @@ class PaymentMethod(BaseModel):
     Similar to enterprise e-commerce platforms (Shopware, OXID, Magento).
     """
 
-    __tablename__ = "payment_method"
+    __tablename__ = "vbwd_payment_method"
 
     # Unique identifier (immutable after creation)
     code = db.Column(db.String(50), unique=True, nullable=False, index=True)
@@ -252,7 +252,7 @@ class PaymentMethodTranslation(db.Model):  # type: ignore[name-defined]
     Supports i18n by providing localized names and descriptions.
     """
 
-    __tablename__ = "payment_method_translation"
+    __tablename__ = "vbwd_payment_method_translation"
 
     id = db.Column(
         UUID(as_uuid=True),
@@ -261,7 +261,7 @@ class PaymentMethodTranslation(db.Model):  # type: ignore[name-defined]
     )
     payment_method_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("payment_method.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_payment_method.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

@@ -13,7 +13,7 @@ class TokenBundle(BaseModel):
     Uses system default currency for pricing.
     """
 
-    __tablename__ = "token_bundle"
+    __tablename__ = "vbwd_token_bundle"
 
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)

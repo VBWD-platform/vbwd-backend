@@ -14,22 +14,22 @@ class UserInvoice(BaseModel):
     Tracks payment records for subscriptions.
     """
 
-    __tablename__ = "user_invoice"
+    __tablename__ = "vbwd_user_invoice"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     tarif_plan_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("tarif_plan.id"),
+        db.ForeignKey("vbwd_tarif_plan.id"),
         nullable=True,
     )
     subscription_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("subscription.id"),
+        db.ForeignKey("vbwd_subscription.id"),
         nullable=True,
     )
     invoice_number = db.Column(

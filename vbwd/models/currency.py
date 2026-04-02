@@ -13,7 +13,7 @@ class Currency(BaseModel):
     Other currencies use exchange_rate for conversion.
     """
 
-    __tablename__ = "currency"
+    __tablename__ = "vbwd_currency"
 
     code = db.Column(
         db.String(3),

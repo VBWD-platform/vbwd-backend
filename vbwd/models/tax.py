@@ -15,7 +15,7 @@ class Tax(BaseModel):
     Rates are stored as percentages (e.g., 19.0 for 19%).
     """
 
-    __tablename__ = "tax"
+    __tablename__ = "vbwd_tax"
 
     name = db.Column(db.String(100), nullable=False)
     code = db.Column(
@@ -148,11 +148,11 @@ class TaxRate(BaseModel):
     invoice recalculation.
     """
 
-    __tablename__ = "tax_rate"
+    __tablename__ = "vbwd_tax_rate"
 
     tax_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("tax.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_tax.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

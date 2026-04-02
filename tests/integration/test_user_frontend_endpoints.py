@@ -318,9 +318,10 @@ class TestUserInvoicesEndpoint:
         invoice = invoices[0]
         invoice_number = invoice.get("invoice_number", "")
 
+        valid_prefixes = ("INV-", "SH-", "BK-")
         assert invoice_number.startswith(
-            "INV-"
-        ), f"Invoice number should start with 'INV-', got: {invoice_number}"
+            valid_prefixes
+        ), f"Invoice number should start with one of {valid_prefixes}, got: {invoice_number}"
         assert len(invoice_number) > 10, "Invoice number seems too short"
 
     def test_invoice_status_is_valid_enum(self, auth_headers):

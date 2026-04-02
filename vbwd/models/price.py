@@ -13,7 +13,7 @@ class Price(BaseModel):
     Stores pricing information with currency reference and tax breakdown.
     """
 
-    __tablename__ = "price"
+    __tablename__ = "vbwd_price"
 
     # Float representation for quick calculations
     price_float = db.Column(db.Float, nullable=False)
@@ -24,7 +24,7 @@ class Price(BaseModel):
     # Currency reference
     currency_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("currency.id"),
+        db.ForeignKey("vbwd_currency.id"),
         nullable=False,
         index=True,
     )

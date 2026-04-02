@@ -14,23 +14,23 @@ class TokenBundlePurchase(BaseModel):
     Status is PENDING until payment is confirmed.
     """
 
-    __tablename__ = "token_bundle_purchase"
+    __tablename__ = "vbwd_token_bundle_purchase"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     bundle_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("token_bundle.id"),
+        db.ForeignKey("vbwd_token_bundle.id"),
         nullable=False,
         index=True,
     )
     invoice_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user_invoice.id"),
+        db.ForeignKey("vbwd_user_invoice.id"),
         nullable=True,
         index=True,
     )

@@ -92,10 +92,20 @@ def get_details():
         user_repository=user_repo, user_details_repository=user_details_repo
     )
 
-    # Get details
+    # Get details — return empty object if not yet created (normal for new users)
     details = user_service.get_user_details(user_id)
     if not details:
-        return jsonify({"error": "User details not found"}), 404
+        return jsonify({
+            "first_name": None,
+            "last_name": None,
+            "phone": None,
+            "address_line1": None,
+            "address_line2": None,
+            "city": None,
+            "state": None,
+            "postal_code": None,
+            "country": None,
+        }), 200
 
     return jsonify(user_details_schema.dump(details)), 200
 

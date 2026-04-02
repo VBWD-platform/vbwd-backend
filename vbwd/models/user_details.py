@@ -12,11 +12,11 @@ class UserDetails(BaseModel):
     Contains PII that may need to be deleted separately.
     """
 
-    __tablename__ = "user_details"
+    __tablename__ = "vbwd_user_details"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         unique=True,
         nullable=False,
         index=True,

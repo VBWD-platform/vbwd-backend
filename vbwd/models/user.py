@@ -12,7 +12,7 @@ class User(BaseModel):
     are stored separately in UserDetails for GDPR compliance.
     """
 
-    __tablename__ = "user"
+    __tablename__ = "vbwd_user"
 
     email = db.Column(
         db.String(255),

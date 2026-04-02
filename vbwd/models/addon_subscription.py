@@ -15,29 +15,29 @@ class AddOnSubscription(BaseModel):
     Linked to parent subscription and remains PENDING until payment is confirmed.
     """
 
-    __tablename__ = "addon_subscription"
+    __tablename__ = "vbwd_addon_subscription"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     addon_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("addon.id"),
+        db.ForeignKey("vbwd_addon.id"),
         nullable=False,
         index=True,
     )
     subscription_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("subscription.id"),
+        db.ForeignKey("vbwd_subscription.id"),
         nullable=True,
         index=True,
     )
     invoice_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user_invoice.id"),
+        db.ForeignKey("vbwd_user_invoice.id"),
         nullable=True,
         index=True,
     )

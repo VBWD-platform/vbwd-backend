@@ -12,7 +12,7 @@ class TarifPlan(BaseModel):
     Defines subscription plans with pricing and features.
     """
 
-    __tablename__ = "tarif_plan"
+    __tablename__ = "vbwd_tarif_plan"
 
     name = db.Column(db.String(100), nullable=False)
     slug = db.Column(
@@ -29,7 +29,7 @@ class TarifPlan(BaseModel):
     # Reference to Price object (detailed pricing with taxes)
     price_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("price.id"),
+        db.ForeignKey("vbwd_price.id"),
         nullable=True,  # Optional for backward compatibility
         index=True,
     )

@@ -5,26 +5,26 @@ from vbwd.models.base import BaseModel
 
 # Association table for role-permission many-to-many
 role_permissions = db.Table(
-    "role_permissions",
+    "vbwd_role_permissions",
     db.Column(
-        "role_id", db.UUID(as_uuid=True), db.ForeignKey("role.id"), primary_key=True
+        "role_id", db.UUID(as_uuid=True), db.ForeignKey("vbwd_role.id"), primary_key=True
     ),
     db.Column(
         "permission_id",
         db.UUID(as_uuid=True),
-        db.ForeignKey("permission.id"),
+        db.ForeignKey("vbwd_permission.id"),
         primary_key=True,
     ),
 )
 
 # Association table for user-role many-to-many
 user_roles = db.Table(
-    "user_roles",
+    "vbwd_user_roles",
     db.Column(
-        "user_id", db.UUID(as_uuid=True), db.ForeignKey("user.id"), primary_key=True
+        "user_id", db.UUID(as_uuid=True), db.ForeignKey("vbwd_user.id"), primary_key=True
     ),
     db.Column(
-        "role_id", db.UUID(as_uuid=True), db.ForeignKey("role.id"), primary_key=True
+        "role_id", db.UUID(as_uuid=True), db.ForeignKey("vbwd_role.id"), primary_key=True
     ),
 )
 
@@ -37,7 +37,7 @@ class Role(BaseModel):
     System roles (is_system=True) cannot be deleted.
     """
 
-    __tablename__ = "role"
+    __tablename__ = "vbwd_role"
 
     name = db.Column(db.String(50), unique=True, nullable=False, index=True)
     description = db.Column(db.String(255))
@@ -85,7 +85,7 @@ class Permission(BaseModel):
     Format: resource.action (e.g., users.view, subscriptions.manage)
     """
 
-    __tablename__ = "permission"
+    __tablename__ = "vbwd_permission"
 
     name = db.Column(db.String(100), unique=True, nullable=False, index=True)
     description = db.Column(db.String(255))

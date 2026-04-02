@@ -12,11 +12,11 @@ class PasswordResetToken(BaseModel):
     Stores tokens for password reset requests with expiration and usage tracking.
     """
 
-    __tablename__ = "password_reset_token"
+    __tablename__ = "vbwd_password_reset_token"
 
     user_id = db.Column(
         UUID(as_uuid=True),
-        db.ForeignKey("user.id", ondelete="CASCADE"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

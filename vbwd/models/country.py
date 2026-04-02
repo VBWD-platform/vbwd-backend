@@ -11,7 +11,7 @@ class Country(BaseModel):
     Only enabled countries are shown in checkout.
     """
 
-    __tablename__ = "country"
+    __tablename__ = "vbwd_country"
 
     code = Column(
         String(2), unique=True, nullable=False, index=True
