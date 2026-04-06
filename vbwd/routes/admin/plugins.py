@@ -1,7 +1,7 @@
 """Admin plugin management routes."""
 import logging
 from flask import Blueprint, jsonify, request, current_app
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.plugins.base import PluginStatus
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,7 @@ def _prepare_admin_config(admin_config: dict) -> dict:
 @admin_plugins_bp.route("", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def list_plugins():
     """List all backend plugins with their status."""
     plugin_manager = getattr(current_app, "plugin_manager", None)
@@ -107,6 +108,7 @@ def list_plugins():
 @admin_plugins_bp.route("/<plugin_name>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def get_plugin_detail(plugin_name):
     """Get detailed plugin info including config schema and admin config."""
     plugin_manager = getattr(current_app, "plugin_manager", None)
@@ -155,6 +157,7 @@ def get_plugin_detail(plugin_name):
 @admin_plugins_bp.route("/<plugin_name>/config", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("settings.system")
 def save_plugin_config(plugin_name):
     """Save plugin configuration values."""
     plugin_manager = getattr(current_app, "plugin_manager", None)
@@ -178,6 +181,7 @@ def save_plugin_config(plugin_name):
 @admin_plugins_bp.route("/<plugin_name>/enable", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.system")
 def enable_plugin(plugin_name):
     """Enable a backend plugin."""
     plugin_manager = getattr(current_app, "plugin_manager", None)
@@ -202,6 +206,7 @@ def enable_plugin(plugin_name):
 @admin_plugins_bp.route("/<plugin_name>/disable", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.system")
 def disable_plugin(plugin_name):
     """Disable a backend plugin."""
     plugin_manager = getattr(current_app, "plugin_manager", None)

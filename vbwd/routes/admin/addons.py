@@ -2,7 +2,7 @@
 import re
 from flask import Blueprint, jsonify, request
 from decimal import Decimal
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.addon_repository import AddOnRepository
 from vbwd.extensions import db
 from vbwd.models import AddOn, TarifPlan
@@ -28,6 +28,7 @@ def generate_slug(name: str) -> str:
 @admin_addons_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def list_addons():
     """
     List all add-ons with pagination.
@@ -71,6 +72,7 @@ def list_addons():
 @admin_addons_bp.route("/", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def create_addon():
     """
     Create a new add-on.
@@ -156,6 +158,7 @@ def create_addon():
 @admin_addons_bp.route("/<addon_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def get_addon(addon_id):
     """
     Get add-on details.
@@ -179,6 +182,7 @@ def get_addon(addon_id):
 @admin_addons_bp.route("/slug/<slug>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def get_addon_by_slug(slug):
     """
     Get add-on details by slug.
@@ -202,6 +206,7 @@ def get_addon_by_slug(slug):
 @admin_addons_bp.route("/<addon_id>", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def update_addon(addon_id):
     """
     Update add-on details.
@@ -295,6 +300,7 @@ def update_addon(addon_id):
 @admin_addons_bp.route("/<addon_id>", methods=["DELETE"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def delete_addon(addon_id):
     """
     Delete an add-on.
@@ -320,6 +326,7 @@ def delete_addon(addon_id):
 @admin_addons_bp.route("/<addon_id>/activate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def activate_addon(addon_id):
     """
     Activate an add-on.
@@ -346,6 +353,7 @@ def activate_addon(addon_id):
 @admin_addons_bp.route("/<addon_id>/deactivate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.addons.manage")
 def deactivate_addon(addon_id):
     """
     Deactivate an add-on.

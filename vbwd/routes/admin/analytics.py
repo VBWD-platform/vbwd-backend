@@ -1,7 +1,7 @@
 """Admin analytics routes."""
 from flask import Blueprint, jsonify
 from sqlalchemy import func
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.extensions import db
 from vbwd.models.user import User
 from vbwd.models.subscription import Subscription
@@ -16,6 +16,7 @@ admin_analytics_bp = Blueprint(
 @admin_analytics_bp.route("/dashboard", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("analytics.view")
 def get_dashboard():
     """
     Get dashboard analytics.

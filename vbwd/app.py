@@ -130,7 +130,9 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         admin_payment_methods_bp,
         admin_countries_bp,
         admin_plugins_bp,
+        admin_tax_bp,
     )
+    from vbwd.routes.admin.access import access_bp as admin_access_bp
     from vbwd.routes.config import config_bp
     from vbwd.routes.settings import settings_bp
     from vbwd.routes.token_bundles import token_bundles_bp
@@ -148,6 +150,8 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(admin_payment_methods_bp)
     csrf.exempt(admin_countries_bp)
     csrf.exempt(admin_plugins_bp)
+    csrf.exempt(admin_tax_bp)
+    csrf.exempt(admin_access_bp)
     csrf.exempt(token_bundles_bp)
     csrf.exempt(config_bp)
     csrf.exempt(settings_bp)
@@ -232,6 +236,8 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_payment_methods_bp)
     app.register_blueprint(admin_countries_bp)
     app.register_blueprint(admin_plugins_bp)
+    app.register_blueprint(admin_tax_bp)
+    app.register_blueprint(admin_access_bp)
     app.register_blueprint(token_bundles_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(settings_bp)

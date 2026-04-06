@@ -4,7 +4,7 @@ from vbwd.utils.datetime_utils import utcnow
 from flask import Blueprint, jsonify, request
 from decimal import Decimal
 from sqlalchemy import func
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.tarif_plan_repository import TarifPlanRepository
 from vbwd.repositories.subscription_repository import SubscriptionRepository
 from vbwd.extensions import db
@@ -20,6 +20,7 @@ admin_plans_bp = Blueprint(
 @admin_plans_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.view")
 def list_plans():
     """
     List all tariff plans including inactive ones.
@@ -71,6 +72,7 @@ def list_plans():
 @admin_plans_bp.route("/", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def create_plan():
     """
     Create a new tariff plan.
@@ -137,6 +139,7 @@ def create_plan():
 @admin_plans_bp.route("/<plan_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.view")
 def get_plan(plan_id):
     """
     Get plan detail.
@@ -160,6 +163,7 @@ def get_plan(plan_id):
 @admin_plans_bp.route("/<plan_id>", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def update_plan(plan_id):
     """
     Update tariff plan details.
@@ -217,6 +221,7 @@ def update_plan(plan_id):
 @admin_plans_bp.route("/<plan_id>", methods=["DELETE"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def delete_plan(plan_id):
     """
     Delete a tariff plan.
@@ -256,6 +261,7 @@ def delete_plan(plan_id):
 @admin_plans_bp.route("/<plan_id>/deactivate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def deactivate_plan(plan_id):
     """
     Deactivate a tariff plan.
@@ -282,6 +288,7 @@ def deactivate_plan(plan_id):
 @admin_plans_bp.route("/<plan_id>/activate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def activate_plan(plan_id):
     """
     Activate a tariff plan.
@@ -308,6 +315,7 @@ def activate_plan(plan_id):
 @admin_plans_bp.route("/<plan_id>/archive", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def archive_plan(plan_id):
     """Archive (deactivate) a tariff plan. Alias for /deactivate for backwards compat."""
     return deactivate_plan(plan_id)
@@ -316,6 +324,7 @@ def archive_plan(plan_id):
 @admin_plans_bp.route("/<plan_id>/copy", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def copy_plan(plan_id):
     """
     Create a copy of an existing tariff plan.

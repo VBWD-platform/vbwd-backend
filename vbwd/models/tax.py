@@ -7,6 +7,61 @@ from vbwd.extensions import db
 from vbwd.models.base import BaseModel
 
 
+class TaxClass(BaseModel):
+    """
+    Tax class — groups tax rates by category.
+
+    Examples: Standard, Reduced, Zero-rated.
+    """
+
+    __tablename__ = "vbwd_tax_class"
+
+    name = db.Column(db.String(100), nullable=False)
+    code = db.Column(
+        db.String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+    )  # e.g., standard, reduced, zero
+    description = db.Column(db.Text)
+    default_rate = db.Column(
+        db.Numeric(5, 2),
+        nullable=False,
+        default=0,
+    )  # Default rate for this class
+    is_default = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+    )  # Only one class should be default
+
+    taxes = db.relationship(
+        "Tax",
+        backref="tax_class",
+        lazy="dynamic",
+    )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "code": self.code,
+            "description": self.description,
+            "default_rate": str(self.default_rate),
+            "is_default": self.is_default,
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+            "updated_at": (
+                self.updated_at.isoformat() if self.updated_at else None
+            ),
+        }
+
+    def __repr__(self) -> str:
+        return f"<TaxClass(code='{self.code}', rate={self.default_rate}%)>"
+
+
 class Tax(BaseModel):
     """
     Tax configuration model.
@@ -34,6 +89,12 @@ class Tax(BaseModel):
         index=True,
     )  # ISO 3166-1 alpha-2
     region_code = db.Column(db.String(10))  # State/province code
+    tax_class_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("vbwd_tax_class.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     is_inclusive = db.Column(
         db.Boolean,
@@ -132,8 +193,17 @@ class Tax(BaseModel):
             "rate": str(self.rate),
             "country_code": self.country_code,
             "region_code": self.region_code,
+            "tax_class_id": (
+                str(self.tax_class_id) if self.tax_class_id else None
+            ),
             "is_active": self.is_active,
             "is_inclusive": self.is_inclusive,
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+            "updated_at": (
+                self.updated_at.isoformat() if self.updated_at else None
+            ),
         }
 
     def __repr__(self) -> str:

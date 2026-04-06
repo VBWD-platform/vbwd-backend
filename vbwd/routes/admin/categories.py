@@ -1,6 +1,6 @@
 """Admin tariff plan category management routes."""
 from flask import Blueprint, jsonify, request
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.tarif_plan_category_repository import TarifPlanCategoryRepository
 from vbwd.repositories.tarif_plan_repository import TarifPlanRepository
 from vbwd.services.tarif_plan_category_service import TarifPlanCategoryService
@@ -24,6 +24,7 @@ def _get_service() -> TarifPlanCategoryService:
 @admin_categories_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def list_categories():
     """
     List tariff plan categories.
@@ -48,6 +49,7 @@ def list_categories():
 @admin_categories_bp.route("/", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def create_category():
     """
     Create a new tariff plan category.
@@ -95,6 +97,7 @@ def create_category():
 @admin_categories_bp.route("/<category_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def get_category(category_id):
     """
     Get category detail.
@@ -115,6 +118,7 @@ def get_category(category_id):
 @admin_categories_bp.route("/<category_id>", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def update_category(category_id):
     """
     Update tariff plan category.
@@ -140,6 +144,7 @@ def update_category(category_id):
 @admin_categories_bp.route("/<category_id>", methods=["DELETE"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def delete_category(category_id):
     """
     Delete a tariff plan category.
@@ -163,6 +168,7 @@ def delete_category(category_id):
 @admin_categories_bp.route("/<category_id>/attach-plans", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def attach_plans(category_id):
     """
     Attach plans to a category.
@@ -191,6 +197,7 @@ def attach_plans(category_id):
 @admin_categories_bp.route("/<category_id>/detach-plans", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.plans.manage")
 def detach_plans(category_id):
     """
     Detach plans from a category.

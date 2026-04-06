@@ -16,6 +16,15 @@ from vbwd.repositories.token_repository import (
     TokenBalanceRepository,
     TokenTransactionRepository,
 )
+from vbwd.repositories.subscription_repository import SubscriptionRepository
+from vbwd.repositories.tarif_plan_repository import TarifPlanRepository
+from vbwd.repositories.tarif_plan_category_repository import (
+    TarifPlanCategoryRepository,
+)
+from vbwd.repositories.addon_repository import AddOnRepository
+from vbwd.repositories.addon_subscription_repository import (
+    AddOnSubscriptionRepository,
+)
 
 from vbwd.services.auth_service import AuthService
 from vbwd.services.user_service import UserService
@@ -78,6 +87,24 @@ class Container(containers.DeclarativeContainer):
 
     tax_repository = providers.Factory(TaxRepository, session=db_session)
 
+    subscription_repository = providers.Factory(
+        SubscriptionRepository, session=db_session
+    )
+
+    tarif_plan_repository = providers.Factory(
+        TarifPlanRepository, session=db_session
+    )
+
+    tarif_plan_category_repository = providers.Factory(
+        TarifPlanCategoryRepository, session=db_session
+    )
+
+    addon_repository = providers.Factory(AddOnRepository, session=db_session)
+
+    addon_subscription_repository = providers.Factory(
+        AddOnSubscriptionRepository, session=db_session
+    )
+
     # ==================
     # Services
     # ==================
@@ -138,4 +165,3 @@ class Container(containers.DeclarativeContainer):
     event_dispatcher = providers.Singleton(DomainEventDispatcher)
 
     # Note: Handlers are registered in app.py after container is wired
-    # Subscription/addon/plan repos and services are registered by the subscription plugin

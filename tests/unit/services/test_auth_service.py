@@ -5,7 +5,7 @@ from uuid import uuid4, UUID
 from datetime import datetime, timedelta
 from vbwd.interfaces.auth import AuthResult
 from vbwd.models.user import User
-from vbwd.models.enums import UserStatus
+from vbwd.models.enums import UserStatus, UserRole
 
 
 class TestAuthServiceRegister:
@@ -36,6 +36,7 @@ class TestAuthServiceRegister:
         mock_user.id = uuid4()
         mock_user.email = email
         mock_user.status = UserStatus.ACTIVE
+        mock_user.role = UserRole.USER
         mock_user_repo.save.return_value = mock_user
 
         # Call register
@@ -152,6 +153,7 @@ class TestAuthServiceLogin:
         mock_user.id = uuid4()
         mock_user.email = email
         mock_user.status = UserStatus.ACTIVE
+        mock_user.role = UserRole.USER
         # Hash the password using bcrypt
         import bcrypt
 
@@ -211,6 +213,7 @@ class TestAuthServiceLogin:
         mock_user.id = uuid4()
         mock_user.email = email
         mock_user.status = UserStatus.ACTIVE
+        mock_user.role = UserRole.USER
         import bcrypt
 
         mock_user.password_hash = bcrypt.hashpw(

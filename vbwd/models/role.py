@@ -7,7 +7,10 @@ from vbwd.models.base import BaseModel
 role_permissions = db.Table(
     "vbwd_role_permissions",
     db.Column(
-        "role_id", db.UUID(as_uuid=True), db.ForeignKey("vbwd_role.id"), primary_key=True
+        "role_id",
+        db.UUID(as_uuid=True),
+        db.ForeignKey("vbwd_role.id"),
+        primary_key=True,
     ),
     db.Column(
         "permission_id",
@@ -21,10 +24,16 @@ role_permissions = db.Table(
 user_roles = db.Table(
     "vbwd_user_roles",
     db.Column(
-        "user_id", db.UUID(as_uuid=True), db.ForeignKey("vbwd_user.id"), primary_key=True
+        "user_id",
+        db.UUID(as_uuid=True),
+        db.ForeignKey("vbwd_user.id"),
+        primary_key=True,
     ),
     db.Column(
-        "role_id", db.UUID(as_uuid=True), db.ForeignKey("vbwd_role.id"), primary_key=True
+        "role_id",
+        db.UUID(as_uuid=True),
+        db.ForeignKey("vbwd_role.id"),
+        primary_key=True,
     ),
 )
 
@@ -39,9 +48,10 @@ class Role(BaseModel):
 
     __tablename__ = "vbwd_role"
 
-    name = db.Column(db.String(50), unique=True, nullable=False, index=True)
-    description = db.Column(db.String(255))
-    is_system = db.Column(db.Boolean, default=False)
+    name = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    slug = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    description = db.Column(db.String(500))
+    is_system = db.Column(db.Boolean, default=False, nullable=False)
 
     # Many-to-many: Role <-> Permission
     permissions = db.relationship(
@@ -55,26 +65,36 @@ class Role(BaseModel):
     users = db.relationship(
         "User",
         secondary=user_roles,
-        backref=db.backref("rbac_roles", lazy="dynamic"),
+        backref=db.backref("assigned_roles", lazy="joined"),
         lazy="dynamic",
     )
 
     def has_permission(self, permission_name: str) -> bool:
-        """Check if role has a specific permission."""
-        return any(p.name == permission_name for p in self.permissions)  # type: ignore[attr-defined]
+        """Check if role grants a specific permission. Supports wildcards."""
+        perms = list(self.permissions)
+        for perm in perms:
+            if perm.name == "*":
+                return True
+            if perm.name == permission_name:
+                return True
+            if perm.name.endswith(".*") and permission_name.startswith(perm.name[:-1]):
+                return True
+        return False
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
+        perms = list(self.permissions)
         return {
             "id": str(self.id),
             "name": self.name,
+            "slug": self.slug,
             "description": self.description,
             "is_system": self.is_system,
-            "permissions": [p.name for p in self.permissions],  # type: ignore[attr-defined]
+            "permissions": [p.name for p in perms],
         }
 
     def __repr__(self) -> str:
-        return f"<Role(name='{self.name}')>"
+        return f"<Role(slug='{self.slug}')>"
 
 
 class Permission(BaseModel):

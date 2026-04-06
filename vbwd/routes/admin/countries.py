@@ -1,6 +1,6 @@
 """Admin countries configuration routes."""
 from flask import Blueprint, jsonify, request
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.country_repository import CountryRepository
 from vbwd.extensions import db
 
@@ -12,6 +12,7 @@ admin_countries_bp = Blueprint(
 @admin_countries_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def list_countries():
     """
     List all countries (enabled and disabled).
@@ -28,6 +29,7 @@ def list_countries():
 @admin_countries_bp.route("/<code>/enable", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def enable_country(code: str):
     """
     Enable a country for billing address selection.
@@ -78,6 +80,7 @@ def enable_country(code: str):
 @admin_countries_bp.route("/<code>/disable", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def disable_country(code: str):
     """
     Disable a country from billing address selection.
@@ -107,6 +110,7 @@ def disable_country(code: str):
 @admin_countries_bp.route("/reorder", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def reorder_countries():
     """
     Reorder enabled countries.
@@ -145,6 +149,7 @@ def reorder_countries():
 @admin_countries_bp.route("/enabled", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def list_enabled_countries():
     """
     List only enabled countries in position order.
@@ -161,6 +166,7 @@ def list_enabled_countries():
 @admin_countries_bp.route("/disabled", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def list_disabled_countries():
     """
     List only disabled countries.

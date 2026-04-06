@@ -1,6 +1,6 @@
 """Admin settings routes."""
 from flask import Blueprint, jsonify, request
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 
 admin_settings_bp = Blueprint("admin_settings", __name__, url_prefix="/api/v1/admin")
 
@@ -23,6 +23,7 @@ _settings = {
 @admin_settings_bp.route("/settings", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def get_settings():
     """
     Get admin settings.
@@ -36,6 +37,7 @@ def get_settings():
 @admin_settings_bp.route("/settings", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def update_settings():
     """
     Update admin settings.

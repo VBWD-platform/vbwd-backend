@@ -2,7 +2,7 @@
 import bcrypt
 from uuid import UUID
 from flask import Blueprint, jsonify, request, current_app
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.extensions import db
 from vbwd.models.user import User
@@ -16,6 +16,7 @@ admin_users_bp = Blueprint("admin_users", __name__, url_prefix="/api/v1/admin/us
 @admin_users_bp.route("/", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("users.manage")
 def create_user():
     """
     Create new user with optional details.
@@ -126,6 +127,7 @@ def create_user():
 @admin_users_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("users.view")
 def list_users():
     """
     List all users with pagination and filters.
@@ -168,6 +170,7 @@ def list_users():
 @admin_users_bp.route("/<user_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("users.view")
 def get_user(user_id):
     """
     Get user detail.
@@ -191,6 +194,7 @@ def get_user(user_id):
 @admin_users_bp.route("/<user_id>", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("users.manage")
 def update_user(user_id):
     """
     Update user details.
@@ -317,6 +321,7 @@ def update_user(user_id):
 @admin_users_bp.route("/<user_id>/roles", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("users.manage")
 def update_user_roles(user_id):
     """
     Update user roles.
@@ -359,6 +364,7 @@ def update_user_roles(user_id):
 @admin_users_bp.route("/<user_id>/suspend", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("users.manage")
 def suspend_user(user_id):
     """
     Suspend a user.
@@ -390,6 +396,7 @@ def suspend_user(user_id):
 @admin_users_bp.route("/<user_id>/activate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("users.manage")
 def activate_user(user_id):
     """
     Activate a suspended user.
@@ -421,6 +428,7 @@ def activate_user(user_id):
 @admin_users_bp.route("/<user_id>/deletion-info", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("users.view")
 def get_deletion_info(user_id):
     """
     Get information about what will be deleted if user is deleted.
@@ -465,6 +473,7 @@ def get_deletion_info(user_id):
 @admin_users_bp.route("/<user_id>", methods=["DELETE"])
 @require_auth
 @require_admin
+@require_permission("users.manage")
 def delete_user(user_id):
     """
     Delete a user completely.
@@ -527,6 +536,7 @@ def delete_user(user_id):
 @admin_users_bp.route("/<user_id>/addons", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("users.view")
 def get_user_addons(user_id):
     """
     Get user's add-on subscriptions with invoice data.

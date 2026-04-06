@@ -4,7 +4,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from flask import Blueprint, current_app, jsonify, request
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.invoice_repository import InvoiceRepository
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.services.invoice_service import InvoiceService
@@ -22,6 +22,7 @@ admin_invoices_bp = Blueprint(
 @admin_invoices_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("invoices.view")
 def list_invoices():
     """
     List all invoices with pagination and filters.
@@ -67,6 +68,7 @@ def list_invoices():
 @admin_invoices_bp.route("/<invoice_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("invoices.view")
 def get_invoice(invoice_id):
     """
     Get invoice detail with enriched user, plan, and subscription data.
@@ -152,6 +154,7 @@ def get_invoice(invoice_id):
 @admin_invoices_bp.route("/<invoice_id>/duplicate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("invoices.manage")
 def duplicate_invoice(invoice_id):
     """
     Create a new invoice based on an existing one.
@@ -203,6 +206,7 @@ def duplicate_invoice(invoice_id):
 @admin_invoices_bp.route("/<invoice_id>/mark-paid", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("invoices.manage")
 def mark_paid(invoice_id):
     """
     Mark invoice as paid manually.
@@ -256,6 +260,7 @@ def mark_paid(invoice_id):
 @admin_invoices_bp.route("/<invoice_id>/void", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("invoices.manage")
 def void_invoice(invoice_id):
     """
     Void/cancel an invoice.
@@ -286,6 +291,7 @@ def void_invoice(invoice_id):
 @admin_invoices_bp.route("/<invoice_id>/refund", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("invoices.manage")
 def refund_invoice(invoice_id):
     """
     Refund a paid invoice.
@@ -426,6 +432,7 @@ def _refund_via_provider(invoice):
 @admin_invoices_bp.route("/<invoice_id>", methods=["DELETE"])
 @require_auth
 @require_admin
+@require_permission("invoices.manage")
 def delete_invoice(invoice_id):
     """
     Delete an invoice completely.
@@ -452,6 +459,7 @@ def delete_invoice(invoice_id):
 @admin_invoices_bp.route("/<invoice_id>/pdf", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("invoices.view")
 def download_pdf(invoice_id):
     """
     Download invoice PDF.
@@ -481,6 +489,7 @@ def download_pdf(invoice_id):
 @admin_invoices_bp.route("/<invoice_id>/capture", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("invoices.manage")
 def capture_authorized_payment(invoice_id):
     """Capture an authorized payment (charge the held funds)."""
     from vbwd.services.capture_service import CaptureService
@@ -507,6 +516,7 @@ def capture_authorized_payment(invoice_id):
 @admin_invoices_bp.route("/<invoice_id>/release", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("invoices.manage")
 def release_authorized_payment(invoice_id):
     """Release (void) an authorized payment."""
     from vbwd.services.capture_service import CaptureService

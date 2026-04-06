@@ -69,16 +69,16 @@ class TestDockerInfrastructure:
         """Test that all database tables have been created."""
         expected_tables = [
             "alembic_version",
-            "currency",
-            "tax",
-            "user",
-            "price",
-            "tax_rate",
-            "user_case",
-            "user_details",
-            "tarif_plan",
-            "subscription",
-            "user_invoice",
+            "vbwd_currency",
+            "vbwd_tax",
+            "vbwd_user",
+            "vbwd_price",
+            "vbwd_tax_rate",
+            "vbwd_user_case",
+            "vbwd_user_details",
+            "vbwd_tarif_plan",
+            "vbwd_subscription",
+            "vbwd_user_invoice",
         ]
 
         try:
@@ -187,7 +187,7 @@ class TestDockerInfrastructure:
                 result = connection.execute(
                     text(
                         "SELECT column_name, data_type FROM information_schema.columns "
-                        "WHERE table_name = 'user' AND column_name = 'id'"
+                        "WHERE table_name = 'vbwd_user' AND column_name = 'id'"
                     )
                 )
                 row = result.fetchone()

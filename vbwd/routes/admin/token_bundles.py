@@ -1,7 +1,7 @@
 """Admin token bundle management routes."""
 from flask import Blueprint, jsonify, request
 from decimal import Decimal
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.token_bundle_repository import TokenBundleRepository
 from vbwd.extensions import db
 from vbwd.models import TokenBundle
@@ -14,6 +14,7 @@ admin_token_bundles_bp = Blueprint(
 @admin_token_bundles_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def list_token_bundles():
     """
     List all token bundles with pagination.
@@ -57,6 +58,7 @@ def list_token_bundles():
 @admin_token_bundles_bp.route("/", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def create_token_bundle():
     """
     Create a new token bundle.
@@ -127,6 +129,7 @@ def create_token_bundle():
 @admin_token_bundles_bp.route("/<bundle_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.view")
 def get_token_bundle(bundle_id):
     """
     Get token bundle details.
@@ -150,6 +153,7 @@ def get_token_bundle(bundle_id):
 @admin_token_bundles_bp.route("/<bundle_id>", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def update_token_bundle(bundle_id):
     """
     Update token bundle details.
@@ -218,6 +222,7 @@ def update_token_bundle(bundle_id):
 @admin_token_bundles_bp.route("/<bundle_id>", methods=["DELETE"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def delete_token_bundle(bundle_id):
     """
     Delete a token bundle.
@@ -243,6 +248,7 @@ def delete_token_bundle(bundle_id):
 @admin_token_bundles_bp.route("/<bundle_id>/activate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def activate_token_bundle(bundle_id):
     """
     Activate a token bundle.
@@ -274,6 +280,7 @@ def activate_token_bundle(bundle_id):
 @admin_token_bundles_bp.route("/<bundle_id>/deactivate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def deactivate_token_bundle(bundle_id):
     """
     Deactivate a token bundle.

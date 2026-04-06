@@ -4,7 +4,6 @@ from flask import request, jsonify, g
 from vbwd.services.auth_service import AuthService
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.extensions import db
-from vbwd.models.enums import UserRole
 
 
 def require_auth(f):
@@ -63,34 +62,91 @@ def require_auth(f):
 
 
 def require_admin(f):
-    """Decorator to require admin role for a route.
+    """Decorator to require admin panel access.
 
+    Uses RBAC is_admin check (backward compatible with legacy UserRole enum).
     Must be used with @require_auth decorator.
-
-    Usage:
-        @admin_bp.route('/admin-only')
-        @require_auth
-        @require_admin
-        def admin_route():
-            ...
-
-    Returns:
-        403: If user is not an admin
     """
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Check if user was loaded by @require_auth
         if not hasattr(g, "user"):
             return jsonify({"error": "Authentication required"}), 401
-
-        # Check if user is admin
-        if g.user.role != UserRole.ADMIN:
+        if not g.user.is_admin:
             return jsonify({"error": "Admin access required"}), 403
-
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+def require_permission(*permissions):
+    """Decorator to require specific permissions for a route.
+
+    Checks all specified permissions — user must have ALL of them.
+    Supports wildcards: "*" matches everything, "shop.*" matches all shop permissions.
+    Must be used with @require_auth decorator.
+
+    Usage:
+        @require_auth
+        @require_permission("shop.products.view")
+        def list_products(): ...
+
+        @require_auth
+        @require_permission("shop.products.manage")
+        def create_product(): ...
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not hasattr(g, "user") or not g.user:
+                return jsonify({"error": "Authentication required"}), 401
+            for perm in permissions:
+                if not g.user.has_permission(perm):
+                    return (
+                        jsonify(
+                            {
+                                "error": "Permission denied",
+                                "required": perm,
+                            }
+                        ),
+                        403,
+                    )
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    return decorator
+
+
+def require_user_permission(*permissions):
+    """Decorator to require user-facing permissions.
+
+    Checks user access levels (fe-user permissions).
+    Must be used with @require_auth decorator.
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not hasattr(g, "user") or not g.user:
+                return jsonify({"error": "Authentication required"}), 401
+            for perm in permissions:
+                if not g.user.has_user_permission(perm):
+                    return (
+                        jsonify(
+                            {
+                                "error": "Permission denied",
+                                "required": perm,
+                            }
+                        ),
+                        403,
+                    )
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    return decorator
 
 
 def optional_auth(f):

@@ -69,13 +69,30 @@ class LoginRequestSchema(Schema):
     )
 
 
+class RoleSchema(Schema):
+    """Schema for role in auth response."""
+
+    id = fields.Str()
+    slug = fields.Str()
+    name = fields.Str()
+
+
 class UserDataSchema(Schema):
     """Schema for user data in auth response."""
 
     id = fields.Str(required=True)
     email = fields.Email(required=True)
     name = fields.Str(allow_none=True)
-    roles = fields.List(fields.Str(), allow_none=True)
+    role = fields.Str(allow_none=True)
+    is_admin = fields.Bool(allow_none=True)
+    access_levels = fields.List(
+        fields.Nested(RoleSchema), allow_none=True
+    )
+    permissions = fields.List(fields.Str(), allow_none=True)
+    user_access_levels = fields.List(
+        fields.Nested(RoleSchema), allow_none=True
+    )
+    user_permissions = fields.List(fields.Str(), allow_none=True)
 
 
 class AuthResponseSchema(Schema):

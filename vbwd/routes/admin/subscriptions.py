@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 from vbwd.utils.datetime_utils import utcnow
 from dateutil.relativedelta import relativedelta  # type: ignore[import-untyped]
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.subscription_repository import SubscriptionRepository
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.repositories.tarif_plan_repository import TarifPlanRepository
@@ -33,6 +33,7 @@ def _get_billing_months(billing_period: BillingPeriod) -> int:
 @admin_subs_bp.route("/", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.subscriptions.manage")
 def create_subscription():
     """
     Create subscription for user with auto-generated invoice.
@@ -205,6 +206,7 @@ def create_subscription():
 @admin_subs_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.subscriptions.view")
 def list_subscriptions():
     """
     List all subscriptions with pagination and filters.
@@ -271,6 +273,7 @@ def list_subscriptions():
 @admin_subs_bp.route("/<subscription_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("subscription.subscriptions.view")
 def get_subscription(subscription_id):
     """
     Get subscription detail with enriched user, plan, and payment data.
@@ -352,6 +355,7 @@ def get_subscription(subscription_id):
 @admin_subs_bp.route("/<subscription_id>/extend", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.subscriptions.manage")
 def extend_subscription(subscription_id):
     """
     Extend subscription expiration.
@@ -394,6 +398,7 @@ def extend_subscription(subscription_id):
 @admin_subs_bp.route("/<subscription_id>/cancel", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.subscriptions.manage")
 def cancel_subscription(subscription_id):
     """
     Cancel a subscription.
@@ -429,6 +434,7 @@ def cancel_subscription(subscription_id):
 @admin_subs_bp.route("/<subscription_id>/activate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.subscriptions.manage")
 def activate_subscription(subscription_id):
     """
     Force activate a subscription.
@@ -480,6 +486,7 @@ def activate_subscription(subscription_id):
 @admin_subs_bp.route("/<subscription_id>/refund", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("subscription.subscriptions.manage")
 def refund_subscription(subscription_id):
     """
     Process refund for a subscription.

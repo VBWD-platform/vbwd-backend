@@ -35,7 +35,7 @@ def _mock_admin_auth(mock_auth_user_repo_class, mock_auth_class):
     mock_admin.id = admin_id
     mock_admin.status.value = "ACTIVE"
     mock_admin.role = UserRole.ADMIN
-
+    mock_admin.is_admin = True
     mock_auth_user_repo = MagicMock()
     mock_auth_user_repo.find_by_id.return_value = mock_admin
     mock_auth_user_repo_class.return_value = mock_auth_user_repo

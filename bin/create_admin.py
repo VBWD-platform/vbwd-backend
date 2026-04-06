@@ -21,8 +21,8 @@ try:
     user = session.query(User).filter_by(email=args.email).first()
     if user:
         changed = False
-        if user.role != UserRole.ADMIN:
-            user.role = UserRole.ADMIN
+        if user.role != UserRole.SUPER_ADMIN:
+            user.role = UserRole.SUPER_ADMIN
             changed = True
         if user.status != UserStatus.ACTIVE:
             user.status = UserStatus.ACTIVE
@@ -35,7 +35,7 @@ try:
     else:
         h = bcrypt.hashpw(args.password.encode(), bcrypt.gensalt()).decode()
         user = User(email=args.email, password_hash=h,
-                    status=UserStatus.ACTIVE, role=UserRole.ADMIN)
+                    status=UserStatus.ACTIVE, role=UserRole.SUPER_ADMIN)
         session.add(user)
         session.commit()
         print(f'Created admin: {user.email} (id={user.id})')

@@ -12,10 +12,11 @@ class UserStatus(enum.Enum):
 
 
 class UserRole(enum.Enum):
-    """User role."""
+    """User role — determines app access level."""
 
-    USER = "USER"
+    SUPER_ADMIN = "SUPER_ADMIN"
     ADMIN = "ADMIN"
+    USER = "USER"
     VENDOR = "VENDOR"
 
 

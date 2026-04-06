@@ -169,8 +169,8 @@ class TestPasswordResetHandler:
         from vbwd.services.password_reset_service import ResetRequestResult
 
         mock_password_reset_service.create_reset_token.return_value = (
-            ResetRequestResult(success=True)  # User not found but still success
-        )
+            ResetRequestResult(success=True)
+        )  # User not found but still success
 
         event = PasswordResetRequestEvent(
             email="unknown@example.com", request_ip="127.0.0.1"

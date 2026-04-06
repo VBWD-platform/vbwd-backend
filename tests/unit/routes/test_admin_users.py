@@ -21,7 +21,7 @@ class TestAdminListUsers:
         mock_admin.id = admin_id
         mock_admin.status.value = "ACTIVE"
         mock_admin.role = UserRole.ADMIN
-
+        mock_admin.is_admin = True
         mock_auth_user_repo = MagicMock()
         mock_auth_user_repo.find_by_id.return_value = mock_admin
         mock_auth_user_repo_class.return_value = mock_auth_user_repo
@@ -66,7 +66,7 @@ class TestAdminListUsers:
         mock_admin.id = admin_id
         mock_admin.status.value = "ACTIVE"
         mock_admin.role = UserRole.ADMIN
-
+        mock_admin.is_admin = True
         mock_auth_user_repo = MagicMock()
         mock_auth_user_repo.find_by_id.return_value = mock_admin
         mock_auth_user_repo_class.return_value = mock_auth_user_repo
@@ -102,7 +102,7 @@ class TestAdminListUsers:
         mock_user.id = user_id
         mock_user.status.value = "ACTIVE"
         mock_user.role = UserRole.USER
-
+        mock_user.is_admin = False
         mock_user_repo = MagicMock()
         mock_user_repo.find_by_id.return_value = mock_user
         mock_user_repo_class.return_value = mock_user_repo
@@ -141,7 +141,7 @@ class TestAdminGetUser:
         mock_admin.id = admin_id
         mock_admin.status.value = "ACTIVE"
         mock_admin.role = UserRole.ADMIN
-
+        mock_admin.is_admin = True
         mock_auth_user_repo = MagicMock()
         mock_auth_user_repo.find_by_id.return_value = mock_admin
         mock_auth_user_repo_class.return_value = mock_auth_user_repo
@@ -184,7 +184,7 @@ class TestAdminGetUser:
         mock_admin.id = admin_id
         mock_admin.status.value = "ACTIVE"
         mock_admin.role = UserRole.ADMIN
-
+        mock_admin.is_admin = True
         mock_auth_user_repo = MagicMock()
         mock_auth_user_repo.find_by_id.return_value = mock_admin
         mock_auth_user_repo_class.return_value = mock_auth_user_repo
@@ -222,7 +222,7 @@ class TestAdminUpdateUser:
         mock_admin.id = admin_id
         mock_admin.status.value = "ACTIVE"
         mock_admin.role = UserRole.ADMIN
-
+        mock_admin.is_admin = True
         mock_auth_user_repo = MagicMock()
         mock_auth_user_repo.find_by_id.return_value = mock_admin
         mock_auth_user_repo_class.return_value = mock_auth_user_repo
@@ -263,7 +263,7 @@ class TestAdminUpdateUser:
         mock_admin.id = admin_id
         mock_admin.status.value = "ACTIVE"
         mock_admin.role = UserRole.ADMIN
-
+        mock_admin.is_admin = True
         mock_auth_user_repo = MagicMock()
         mock_auth_user_repo.find_by_id.return_value = mock_admin
         mock_auth_user_repo_class.return_value = mock_auth_user_repo
@@ -303,7 +303,7 @@ class TestAdminUpdateUser:
         mock_admin.id = admin_id
         mock_admin.status.value = "ACTIVE"
         mock_admin.role = UserRole.ADMIN
-
+        mock_admin.is_admin = True
         mock_auth_user_repo = MagicMock()
         mock_auth_user_repo.find_by_id.return_value = mock_admin
         mock_auth_user_repo_class.return_value = mock_auth_user_repo

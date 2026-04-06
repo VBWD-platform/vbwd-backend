@@ -2,7 +2,7 @@
 
 Revision ID: vbwd_001
 Revises: 
-Create Date: 2026-04-02 17:19:20.721559+00:00
+Create Date: 2026-04-03 16:12:20.986833+00:00
 
 """
 from typing import Sequence, Union
@@ -384,9 +384,10 @@ def upgrade() -> None:
     op.create_index(op.f('ix_vbwd_permission_name'), 'vbwd_permission', ['name'], unique=True)
     op.create_index(op.f('ix_vbwd_permission_resource'), 'vbwd_permission', ['resource'], unique=False)
     op.create_table('vbwd_role',
-    sa.Column('name', sa.String(length=50), nullable=False),
-    sa.Column('description', sa.String(length=255), nullable=True),
-    sa.Column('is_system', sa.Boolean(), nullable=True),
+    sa.Column('name', sa.String(length=100), nullable=False),
+    sa.Column('slug', sa.String(length=100), nullable=False),
+    sa.Column('description', sa.String(length=500), nullable=True),
+    sa.Column('is_system', sa.Boolean(), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
@@ -394,6 +395,22 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_vbwd_role_name'), 'vbwd_role', ['name'], unique=True)
+    op.create_index(op.f('ix_vbwd_role_slug'), 'vbwd_role', ['slug'], unique=True)
+    op.create_table('vbwd_user_access_level',
+    sa.Column('name', sa.String(length=100), nullable=False),
+    sa.Column('slug', sa.String(length=100), nullable=False),
+    sa.Column('description', sa.String(length=500), nullable=True),
+    sa.Column('is_system', sa.Boolean(), nullable=False),
+    sa.Column('linked_plan_slug', sa.String(length=100), nullable=True),
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('version', sa.Integer(), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_vbwd_user_access_level_name'), 'vbwd_user_access_level', ['name'], unique=True)
+    op.create_index(op.f('ix_vbwd_user_access_level_slug'), 'vbwd_user_access_level', ['slug'], unique=True)
+    op.create_index(op.f('ix_vbwd_user_access_level_linked_plan_slug'), 'vbwd_user_access_level', ['linked_plan_slug'], unique=False)
     op.create_table('vbwd_tarif_plan_category',
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('slug', sa.String(length=100), nullable=False),
@@ -445,7 +462,7 @@ def upgrade() -> None:
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('password_hash', sa.String(length=255), nullable=False),
     sa.Column('status', sa.Enum('PENDING', 'ACTIVE', 'SUSPENDED', 'DELETED', name='userstatus'), nullable=False),
-    sa.Column('role', sa.Enum('USER', 'ADMIN', 'VENDOR', name='userrole'), nullable=False),
+    sa.Column('role', sa.Enum('SUPER_ADMIN', 'ADMIN', 'USER', 'VENDOR', name='userrole'), nullable=False),
     sa.Column('payment_customer_id', sa.String(length=255), nullable=True),
     sa.Column('has_used_trial', sa.Boolean(), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
@@ -828,6 +845,20 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['role_id'], ['vbwd_role.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['vbwd_user.id'], ),
     sa.PrimaryKeyConstraint('user_id', 'role_id')
+    )
+    op.create_table('vbwd_user_access_level_permissions',
+    sa.Column('user_access_level_id', sa.UUID(), nullable=False),
+    sa.Column('permission_id', sa.UUID(), nullable=False),
+    sa.ForeignKeyConstraint(['user_access_level_id'], ['vbwd_user_access_level.id'], ),
+    sa.ForeignKeyConstraint(['permission_id'], ['vbwd_permission.id'], ),
+    sa.PrimaryKeyConstraint('user_access_level_id', 'permission_id')
+    )
+    op.create_table('vbwd_user_user_access_levels',
+    sa.Column('user_id', sa.UUID(), nullable=False),
+    sa.Column('user_access_level_id', sa.UUID(), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['vbwd_user.id'], ),
+    sa.ForeignKeyConstraint(['user_access_level_id'], ['vbwd_user_access_level.id'], ),
+    sa.PrimaryKeyConstraint('user_id', 'user_access_level_id')
     )
     op.create_table('vbwd_user_token_balance',
     sa.Column('user_id', sa.UUID(), nullable=False),
@@ -1459,6 +1490,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_vbwd_tarif_plan_category_slug'), table_name='vbwd_tarif_plan_category')
     op.drop_index(op.f('ix_vbwd_tarif_plan_category_parent_id'), table_name='vbwd_tarif_plan_category')
     op.drop_table('vbwd_tarif_plan_category')
+    op.drop_index(op.f('ix_vbwd_role_slug'), table_name='vbwd_role')
     op.drop_index(op.f('ix_vbwd_role_name'), table_name='vbwd_role')
     op.drop_table('vbwd_role')
     op.drop_index(op.f('ix_vbwd_permission_resource'), table_name='vbwd_permission')

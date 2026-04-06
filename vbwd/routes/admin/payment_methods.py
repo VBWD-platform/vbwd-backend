@@ -1,7 +1,7 @@
 """Admin payment methods management routes."""
 from flask import Blueprint, jsonify, request
 from decimal import Decimal
-from vbwd.middleware.auth import require_auth, require_admin
+from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.payment_method_repository import (
     PaymentMethodRepository,
     PaymentMethodTranslationRepository,
@@ -17,6 +17,7 @@ admin_payment_methods_bp = Blueprint(
 @admin_payment_methods_bp.route("/", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def list_payment_methods():
     """
     List all payment methods including inactive ones.
@@ -33,6 +34,7 @@ def list_payment_methods():
 @admin_payment_methods_bp.route("/", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def create_payment_method():
     """
     Create a new payment method.
@@ -127,6 +129,7 @@ def create_payment_method():
 @admin_payment_methods_bp.route("/<method_id>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def get_payment_method(method_id):
     """
     Get payment method details.
@@ -150,6 +153,7 @@ def get_payment_method(method_id):
 @admin_payment_methods_bp.route("/code/<code>", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def get_payment_method_by_code(code):
     """
     Get payment method by code.
@@ -173,6 +177,7 @@ def get_payment_method_by_code(code):
 @admin_payment_methods_bp.route("/<method_id>", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def update_payment_method(method_id):
     """
     Update payment method.
@@ -247,6 +252,7 @@ def update_payment_method(method_id):
 @admin_payment_methods_bp.route("/<method_id>", methods=["DELETE"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def delete_payment_method(method_id):
     """
     Delete a payment method.
@@ -278,6 +284,7 @@ def delete_payment_method(method_id):
 @admin_payment_methods_bp.route("/<method_id>/activate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def activate_payment_method(method_id):
     """
     Activate a payment method.
@@ -304,6 +311,7 @@ def activate_payment_method(method_id):
 @admin_payment_methods_bp.route("/<method_id>/deactivate", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def deactivate_payment_method(method_id):
     """
     Deactivate a payment method.
@@ -336,6 +344,7 @@ def deactivate_payment_method(method_id):
 @admin_payment_methods_bp.route("/<method_id>/set-default", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def set_default_payment_method(method_id):
     """
     Set a payment method as the default.
@@ -362,6 +371,7 @@ def set_default_payment_method(method_id):
 @admin_payment_methods_bp.route("/reorder", methods=["PUT"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def reorder_payment_methods():
     """
     Reorder payment methods by position.
@@ -387,6 +397,7 @@ def reorder_payment_methods():
 @admin_payment_methods_bp.route("/<method_id>/translations", methods=["GET"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def get_translations(method_id):
     """
     Get all translations for a payment method.
@@ -413,6 +424,7 @@ def get_translations(method_id):
 @admin_payment_methods_bp.route("/<method_id>/translations", methods=["POST"])
 @require_auth
 @require_admin
+@require_permission("settings.manage")
 def add_translation(method_id):
     """
     Add or update a translation for a payment method.

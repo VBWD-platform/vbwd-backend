@@ -29,6 +29,7 @@ from vbwd.models.token_bundle import TokenBundle
 from vbwd.models.payment_method import PaymentMethod
 from vbwd.models.invoice_line_item import InvoiceLineItem, LineItemType
 from vbwd.models.country import Country
+from vbwd.models.role import Role, Permission, user_roles
 from vbwd.models.enums import (
     UserStatus, UserRole, BillingPeriod,
     SubscriptionStatus, InvoiceStatus
@@ -180,7 +181,7 @@ try:
             },
         },
         {'email': 'user.free@demo.local', 'password': 'demo123', 'plan_slug': 'free'},
-        {'email': 'user.pro@demo.local',  'password': 'demo123', 'plan_slug': 'pro'},
+        {'email': 'user.pro@demo.local',  'password': 'demo123', 'plan_slug': 'pro', 'role': 'ADMIN'},
     ]
 
     users = {}
@@ -188,8 +189,9 @@ try:
         user = session.query(User).filter_by(email=d['email']).first()
         if not user:
             h = bcrypt.hashpw(d['password'].encode(), bcrypt.gensalt()).decode()
+            user_role = UserRole(d.get('role', 'USER'))
             user = User(email=d['email'], password_hash=h,
-                        status=UserStatus.ACTIVE, role=UserRole.USER)
+                        status=UserStatus.ACTIVE, role=user_role)
             session.add(user); session.flush()
             print(f"  Created: {user.email}")
         else:
@@ -498,6 +500,169 @@ try:
     session.commit()
     print(f"  Countries: {session.query(Country).count()} total, "
           f"{session.query(Country).filter_by(is_enabled=True).count()} enabled")
+
+    # ── System Roles + Permissions ─────────────────────────────
+    print("\n=== Roles & Permissions ===")
+
+    # Core permissions
+    CORE_PERMS = [
+        ("*", "Full access (wildcard)", "*", "*"),
+        ("users.view", "View users", "users", "view"),
+        ("users.manage", "Manage users", "users", "manage"),
+        ("invoices.view", "View invoices", "invoices", "view"),
+        ("invoices.manage", "Manage invoices", "invoices", "manage"),
+        ("analytics.view", "View analytics", "analytics", "view"),
+        ("settings.view", "View settings", "settings", "view"),
+        ("settings.manage", "Manage settings", "settings", "manage"),
+        ("settings.system", "System settings (payment providers, API keys)", "settings", "system"),
+    ]
+    for perm_name, desc, resource, action in CORE_PERMS:
+        if not session.query(Permission).filter_by(name=perm_name).first():
+            session.add(Permission(
+                id=uuid.uuid4(), name=perm_name, description=desc,
+                resource=resource, action=action,
+            ))
+    session.flush()
+
+    wildcard_perm = session.query(Permission).filter_by(name="*").first()
+
+    # System roles
+    SYSTEM_ROLES = [
+        {"name": "Full Access", "slug": "full-access", "description": "All permissions (for admins who need everything)", "permissions": ["*"]},
+        {"name": "Observer", "slug": "observer", "description": "View-only access level", "permissions": []},
+    ]
+
+    role_map = {}
+    for role_data in SYSTEM_ROLES:
+        existing = session.query(Role).filter_by(slug=role_data["slug"]).first()
+        if not existing:
+            role = Role(
+                id=uuid.uuid4(),
+                name=role_data["name"],
+                slug=role_data["slug"],
+                description=role_data["description"],
+                is_system=True,
+            )
+            if "*" in role_data["permissions"]:
+                role.permissions.append(wildcard_perm)
+            session.add(role)
+            session.flush()
+            role_map[role_data["slug"]] = role
+            print(f"  Created role: {role_data['slug']}")
+        else:
+            role_map[role_data["slug"]] = existing
+
+    # Assign observer access level + view permissions to demo ADMIN user
+    observer_role = role_map.get("observer")
+    if observer_role and not observer_role.permissions:
+        # Add view-only permissions to observer
+        view_perms = ["analytics.view", "users.view", "invoices.view",
+                      "settings.view"]
+        for perm_name in view_perms:
+            perm = session.query(Permission).filter_by(name=perm_name).first()
+            if perm:
+                observer_role.permissions.append(perm)
+
+    # Assign full-access to admin@example.com (SUPER_ADMIN doesn't need it,
+    # but useful as a template)
+    # Assign observer to user.pro@demo.local
+    pro_user = session.query(User).filter_by(
+        email="user.pro@demo.local"
+    ).first()
+    if pro_user and observer_role:
+        if not session.query(user_roles).filter_by(
+            user_id=pro_user.id, role_id=observer_role.id
+        ).first():
+            session.execute(user_roles.insert().values(
+                user_id=pro_user.id, role_id=observer_role.id
+            ))
+            print(f"  Assigned observer to: {pro_user.email}")
+
+    session.commit()
+    print(f"  Admin access levels: {session.query(Role).count()}")
+
+    # ── User Access Levels ─────────────────────────────────────
+    print("\n=== Creating User Access Levels ===")
+
+    from vbwd.models.user_access_level import (
+        UserAccessLevel,
+        user_user_access_levels,
+    )
+
+    USER_ACCESS_LEVELS = [
+        {
+            "name": "New User",
+            "slug": "new",
+            "description": "Anonymous or newly registered — minimal access",
+            "linked_plan_slug": None,
+        },
+        {
+            "name": "Logged In",
+            "slug": "logged-in",
+            "description": "Authenticated free user",
+            "linked_plan_slug": "free",
+        },
+        {
+            "name": "Subscribed Basic",
+            "slug": "subscribed-basic",
+            "description": "User with Basic plan subscription",
+            "linked_plan_slug": "basic",
+        },
+        {
+            "name": "Subscribed Pro",
+            "slug": "subscribed-pro",
+            "description": "User with Pro plan subscription",
+            "linked_plan_slug": "pro",
+        },
+    ]
+
+    user_level_map = {}
+    for level_data in USER_ACCESS_LEVELS:
+        existing = session.query(UserAccessLevel).filter_by(
+            slug=level_data["slug"]
+        ).first()
+        if not existing:
+            level = UserAccessLevel(
+                id=uuid.uuid4(),
+                name=level_data["name"],
+                slug=level_data["slug"],
+                description=level_data["description"],
+                is_system=True,
+                linked_plan_slug=level_data["linked_plan_slug"],
+            )
+            session.add(level)
+            session.flush()
+            user_level_map[level_data["slug"]] = level
+            print(f"  Created: {level_data['slug']}")
+        else:
+            user_level_map[level_data["slug"]] = existing
+
+    # Assign user access levels to demo users based on plans
+    for email, level_slug in [
+        ("user.free@demo.local", "logged-in"),
+        ("user.pro@demo.local", "subscribed-pro"),
+        ("test@example.com", "logged-in"),
+    ]:
+        user = session.query(User).filter_by(email=email).first()
+        level = user_level_map.get(level_slug)
+        if user and level:
+            if not session.query(user_user_access_levels).filter_by(
+                user_id=user.id,
+                user_access_level_id=level.id,
+            ).first():
+                session.execute(
+                    user_user_access_levels.insert().values(
+                        user_id=user.id,
+                        user_access_level_id=level.id,
+                    )
+                )
+                print(f"  Assigned {level_slug} to {email}")
+
+    session.commit()
+    print(
+        f"  User access levels: "
+        f"{session.query(UserAccessLevel).count()}"
+    )
 
     session.commit()
     print("\n=== Done ===")

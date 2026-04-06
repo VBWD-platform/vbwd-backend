@@ -95,11 +95,17 @@ class AuthService(IAuthService):
         token = self._generate_token(user.id, user.email)  # type: ignore[arg-type]
 
         # Build user data for response
+        user_dict = user.to_dict()
         user_data = UserData(
             id=str(user.id),
             email=user.email,
-            name=user.email.split("@")[0],  # Use email prefix as name if no name field
-            roles=[user.role.value] if user.role else ["user"],
+            name=user_dict.get("name") or user.email.split("@")[0],
+            role=user_dict.get("role"),
+            is_admin=user_dict.get("is_admin", False),
+            access_levels=user_dict.get("access_levels", []),
+            permissions=user_dict.get("permissions", []),
+            user_access_levels=user_dict.get("user_access_levels", []),
+            user_permissions=user_dict.get("user_permissions", []),
         )
 
         return AuthResult(success=True, user_id=user.id, token=token, user=user_data)  # type: ignore[arg-type]

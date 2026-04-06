@@ -101,6 +101,30 @@ class BasePlugin(ABC):
         """Return Flask blueprint for admin-specific routes. None if no admin routes."""
         return None
 
+    @property
+    def admin_permissions(self) -> List[Dict[str, str]]:
+        """Declare admin permissions for this plugin.
+
+        Returns a list of permission definitions:
+            [{"key": "shop.products.view", "label": "View products", "group": "Shop"}, ...]
+
+        Override in subclass to declare plugin-specific permissions.
+        The access management API collects these from all enabled plugins.
+        """
+        return []
+
+    @property
+    def user_permissions(self) -> List[Dict[str, str]]:
+        """Declare user-facing permissions for this plugin.
+
+        Returns a list of permission definitions:
+            [{"key": "shop.catalog.view", "label": "Browse catalog", "group": "Shop"}, ...]
+
+        Override in subclass to declare plugin-specific user permissions.
+        Used in user access level management.
+        """
+        return []
+
     def register_event_handlers(self, bus: Any) -> None:
         """Subscribe to EventBus events.
 

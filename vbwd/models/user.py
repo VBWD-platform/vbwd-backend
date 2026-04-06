@@ -64,6 +64,13 @@ class User(BaseModel):
         cascade="all, delete-orphan",
     )
 
+    def _get_access_levels(self) -> list:
+        """Get assigned access levels (RBAC roles)."""
+        roles = getattr(self, "assigned_roles", None)
+        if roles is not None:
+            return list(roles)
+        return []
+
     @property
     def is_active(self) -> bool:
         """Check if user account is active."""
@@ -71,17 +78,54 @@ class User(BaseModel):
 
     @property
     def is_admin(self) -> bool:
-        """Check if user has admin role."""
-        return self.role == UserRole.ADMIN
+        """Check if user can access admin panel."""
+        return self.role in (UserRole.SUPER_ADMIN, UserRole.ADMIN)
+
+    @property
+    def effective_permissions(self) -> list[str]:
+        """Get effective permissions based on role."""
+        if self.role == UserRole.SUPER_ADMIN:
+            return ["*"]
+        permissions: set[str] = set()
+        for access_level in self._get_access_levels():
+            for perm in list(access_level.permissions):
+                permissions.add(perm.name)
+        return sorted(permissions)
+
+    def has_permission(self, permission_name: str) -> bool:
+        """Check if user has a specific admin permission."""
+        if self.role == UserRole.SUPER_ADMIN:
+            return True
+        for access_level in self._get_access_levels():
+            if access_level.has_permission(permission_name):
+                return True
+        return False
+
+    def _get_user_access_levels(self) -> list:
+        """Get assigned user access levels (fe-user permissions)."""
+        levels = getattr(self, "assigned_user_access_levels", None)
+        if levels is not None:
+            return list(levels)
+        return []
+
+    @property
+    def effective_user_permissions(self) -> list[str]:
+        """Get all user-facing permissions from assigned user access levels."""
+        permissions: set[str] = set()
+        for level in self._get_user_access_levels():
+            for perm in list(level.permissions):
+                permissions.add(perm.name)
+        return sorted(permissions)
+
+    def has_user_permission(self, permission_name: str) -> bool:
+        """Check if user has a specific user-facing permission."""
+        for level in self._get_user_access_levels():
+            if level.has_permission(permission_name):
+                return True
+        return False
 
     def to_dict(self) -> dict:
-        """
-        Convert to dictionary, excluding sensitive data.
-
-        Returns:
-            Dictionary representation without password_hash.
-        """
-        # Build name from details
+        """Convert to dictionary, excluding sensitive data."""
         name = None
         if self.details:
             name_parts = []
@@ -98,16 +142,36 @@ class User(BaseModel):
             "status": self.status.value,
             "is_active": self.is_active,
             "role": self.role.value,
-            "roles": [self.role.value],
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "is_admin": self.is_admin,
+            "access_levels": [
+                {
+                    "id": str(r.id),
+                    "slug": r.slug,
+                    "name": r.name,
+                }
+                for r in self._get_access_levels()
+            ],
+            "permissions": self.effective_permissions,
+            "user_access_levels": [
+                {
+                    "id": str(level.id),
+                    "slug": level.slug,
+                    "name": level.name,
+                }
+                for level in self._get_user_access_levels()
+            ],
+            "user_permissions": self.effective_user_permissions,
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+            "updated_at": (
+                self.updated_at.isoformat() if self.updated_at else None
+            ),
         }
 
-        # Include details object for balance and other user details
         if self.details:
             result["details"] = self.details.to_dict()
 
-        # Include token balance from UserTokenBalance (separate from details.balance)
         tb = getattr(self, "token_balance", None)
         result["token_balance"] = tb.balance if tb else 0
 

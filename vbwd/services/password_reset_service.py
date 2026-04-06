@@ -83,9 +83,7 @@ class PasswordResetService:
         expires_at = utcnow() + timedelta(hours=self.TOKEN_EXPIRY_HOURS)
 
         # Store token
-        self._reset_repo.create_token(
-            user_id=user.id, token=token, expires_at=expires_at  # type: ignore[arg-type]
-        )
+        self._reset_repo.create_token(user_id=user.id, token=token, expires_at=expires_at)  # type: ignore[arg-type]
 
         return ResetRequestResult(
             success=True,

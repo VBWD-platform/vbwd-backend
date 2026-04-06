@@ -12,7 +12,12 @@ class UserData:
     id: str
     email: str
     name: Optional[str] = None
-    roles: Optional[list] = None
+    role: Optional[str] = None
+    is_admin: Optional[bool] = None
+    access_levels: Optional[list] = None
+    permissions: Optional[list] = None
+    user_access_levels: Optional[list] = None
+    user_permissions: Optional[list] = None
 
 
 @dataclass
