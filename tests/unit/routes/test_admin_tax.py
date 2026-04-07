@@ -6,6 +6,8 @@ All routes require @require_permission('settings.manage').
 from unittest.mock import patch
 from uuid import uuid4
 
+from uuid import uuid4 as _uuid4
+
 from tests.fixtures.access import (
     make_user_with_permissions,
     make_user_no_permissions,
@@ -14,6 +16,14 @@ from tests.fixtures.access import (
 
 def _auth_headers():
     return {"Authorization": "Bearer valid"}
+
+
+def _unique_code(prefix: str = "TAX") -> str:
+    """Generate a unique code. Backend may uppercase or lowercase — match prefix case."""
+    suffix = _uuid4().hex[:6]
+    if prefix == prefix.lower():
+        return f"{prefix}_{suffix}"
+    return f"{prefix}_{suffix.upper()}"
 
 
 def _mock_auth(mock_repo_cls, mock_auth_cls, user):
@@ -63,11 +73,12 @@ class TestTaxRateCRUD:
     def test_create_rate(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
+        code = _unique_code("VAT_DE")
         response = client.post(
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT Germany",
-                "code": "VAT_DE",
+                "code": code,
                 "rate": 19.0,
                 "country_code": "DE",
                 "is_active": True,
@@ -77,7 +88,7 @@ class TestTaxRateCRUD:
         )
         assert response.status_code == 201
         data = response.get_json()
-        assert data["rate"]["code"] == "VAT_DE"
+        assert data["rate"]["code"] == code
         assert data["rate"]["rate"] == "19.00"
 
     @patch("vbwd.middleware.auth.AuthService")
@@ -89,7 +100,7 @@ class TestTaxRateCRUD:
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
         response = client.post(
             "/api/v1/admin/tax/rates",
-            json={"code": "VAT_TEST"},
+            json={"code": _unique_code("VAT_TEST")},
             headers=_auth_headers(),
         )
         assert response.status_code == 400
@@ -103,7 +114,7 @@ class TestTaxRateCRUD:
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
         response = client.post(
             "/api/v1/admin/tax/rates",
-            json={"name": "Test", "code": "TEST"},
+            json={"name": "Test", "code": _unique_code("TEST")},
             headers=_auth_headers(),
         )
         assert response.status_code == 400
@@ -116,11 +127,12 @@ class TestTaxRateCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        code = _unique_code("VAT_FR")
         create_response = client.post(
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT France",
-                "code": "VAT_FR",
+                "code": code,
                 "rate": 20.0,
                 "country_code": "FR",
             },
@@ -134,7 +146,7 @@ class TestTaxRateCRUD:
             headers=_auth_headers(),
         )
         assert get_response.status_code == 200
-        assert get_response.get_json()["rate"]["code"] == "VAT_FR"
+        assert get_response.get_json()["rate"]["code"] == code
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
@@ -144,11 +156,12 @@ class TestTaxRateCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        code = _unique_code("VAT_AT")
         create_response = client.post(
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT Austria",
-                "code": "VAT_AT",
+                "code": code,
                 "rate": 20.0,
                 "country_code": "AT",
             },
@@ -172,11 +185,12 @@ class TestTaxRateCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        code = _unique_code("VAT_DEL")
         create_response = client.post(
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT Delete",
-                "code": "VAT_DEL",
+                "code": code,
                 "rate": 15.0,
             },
             headers=_auth_headers(),
@@ -203,11 +217,12 @@ class TestTaxRateCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        code = _unique_code("VAT_DUP")
         client.post(
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT Dup",
-                "code": "VAT_DUP",
+                "code": code,
                 "rate": 10.0,
             },
             headers=_auth_headers(),
@@ -216,7 +231,7 @@ class TestTaxRateCRUD:
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT Dup Again",
-                "code": "VAT_DUP",
+                "code": code,
                 "rate": 12.0,
             },
             headers=_auth_headers(),
@@ -232,11 +247,13 @@ class TestTaxRateCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        code_es = _unique_code("VAT_ES")
+        code_it = _unique_code("VAT_IT")
         client.post(
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT ES",
-                "code": "VAT_ES",
+                "code": code_es,
                 "rate": 21.0,
                 "country_code": "ES",
             },
@@ -246,7 +263,7 @@ class TestTaxRateCRUD:
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT IT",
-                "code": "VAT_IT",
+                "code": code_it,
                 "rate": 22.0,
                 "country_code": "IT",
             },
@@ -272,11 +289,12 @@ class TestTaxClassCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        class_code = _unique_code("cls")
         response = client.post(
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Standard",
-                "code": "standard",
+                "code": class_code,
                 "description": "Standard tax rate",
                 "default_rate": 19.0,
                 "is_default": True,
@@ -285,7 +303,7 @@ class TestTaxClassCRUD:
         )
         assert response.status_code == 201
         data = response.get_json()
-        assert data["tax_class"]["code"] == "standard"
+        assert data["tax_class"]["code"] == class_code
         assert data["tax_class"]["is_default"] is True
 
     @patch("vbwd.middleware.auth.AuthService")
@@ -296,11 +314,12 @@ class TestTaxClassCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        class_code = _unique_code("cls")
         client.post(
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Zero Rate",
-                "code": "zero",
+                "code": class_code,
                 "default_rate": 0,
             },
             headers=_auth_headers(),
@@ -320,11 +339,12 @@ class TestTaxClassCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        class_code = _unique_code("cls")
         create_response = client.post(
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Reduced",
-                "code": "reduced",
+                "code": class_code,
                 "default_rate": 7.0,
             },
             headers=_auth_headers(),
@@ -350,11 +370,12 @@ class TestTaxClassCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        class_code = _unique_code("cls")
         create_response = client.post(
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Luxury",
-                "code": "luxury",
+                "code": class_code,
                 "default_rate": 25.0,
             },
             headers=_auth_headers(),
@@ -375,11 +396,12 @@ class TestTaxClassCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        class_code = _unique_code("cls")
         client.post(
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Dup Class",
-                "code": "dup_class",
+                "code": class_code,
                 "default_rate": 5.0,
             },
             headers=_auth_headers(),
@@ -388,7 +410,7 @@ class TestTaxClassCRUD:
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Dup Class Again",
-                "code": "dup_class",
+                "code": class_code,
                 "default_rate": 10.0,
             },
             headers=_auth_headers(),
@@ -404,11 +426,13 @@ class TestTaxClassCRUD:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        class_code_first = _unique_code("cls")
+        class_code_second = _unique_code("cls")
         first_response = client.post(
             "/api/v1/admin/tax/classes",
             json={
                 "name": "First Default",
-                "code": "first_default",
+                "code": class_code_first,
                 "default_rate": 19.0,
                 "is_default": True,
             },
@@ -420,7 +444,7 @@ class TestTaxClassCRUD:
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Second Default",
-                "code": "second_default",
+                "code": class_code_second,
                 "default_rate": 20.0,
                 "is_default": True,
             },
@@ -451,11 +475,13 @@ class TestTaxRateWithClass:
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
+        class_code = _unique_code("cls")
+        code = _unique_code("VAT_DE")
         class_response = client.post(
             "/api/v1/admin/tax/classes",
             json={
                 "name": "Standard Linked",
-                "code": "standard_linked",
+                "code": class_code,
                 "default_rate": 19.0,
             },
             headers=_auth_headers(),
@@ -466,7 +492,7 @@ class TestTaxRateWithClass:
             "/api/v1/admin/tax/rates",
             json={
                 "name": "VAT DE Linked",
-                "code": "VAT_DE_LINKED",
+                "code": code,
                 "rate": 19.0,
                 "country_code": "DE",
                 "tax_class_id": class_id,

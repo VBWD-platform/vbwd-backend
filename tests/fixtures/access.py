@@ -24,8 +24,10 @@ def make_user_with_permissions(*permissions):
     user.assigned_roles = [role]
     user.is_admin = True
 
+    # Bind internal methods so User.has_permission works on the mock
     from vbwd.models.user import User
 
+    user._get_access_levels = lambda: User._get_access_levels(user)
     user.has_permission = lambda pn: User.has_permission(user, pn)
     user.effective_permissions = [p for p in permissions]
     return user
@@ -53,6 +55,7 @@ def make_admin_user():
 
     from vbwd.models.user import User
 
+    user._get_access_levels = lambda: User._get_access_levels(user)
     user.has_permission = lambda pn: User.has_permission(user, pn)
     return user
 

@@ -55,9 +55,10 @@ class TestUserHasPermission:
     """Test User.has_permission with multi-role union."""
 
     def _make_user(self, roles_with_perms):
+        from vbwd.models.enums import UserRole
+
         user = MagicMock()
-        user.role = MagicMock()
-        user.role.value = "USER"  # Not legacy ADMIN
+        user.role = UserRole.USER
 
         assigned_roles = []
         for perm_names in roles_with_perms:
@@ -79,6 +80,7 @@ class TestUserHasPermission:
 
         from vbwd.models.user import User
 
+        user._get_access_levels = lambda: User._get_access_levels(user)
         user.has_permission = lambda perm: User.has_permission(user, perm)
         return user
 
@@ -109,16 +111,13 @@ class TestUserHasPermission:
 
     def test_legacy_admin_fallback(self):
         """Legacy ADMIN users (no RBAC roles) get all permissions."""
-        user = MagicMock()
-        user.role = MagicMock()
-        user.role.value = "ADMIN"
-        # Simulate UserRole.ADMIN comparison
         from vbwd.models.enums import UserRole
+        from vbwd.models.user import User
 
+        user = MagicMock()
         user.role = UserRole.ADMIN
         user.assigned_roles = []
 
-        from vbwd.models.user import User
-
+        user._get_access_levels = lambda: User._get_access_levels(user)
         user.has_permission = lambda perm: User.has_permission(user, perm)
         assert user.has_permission("anything")

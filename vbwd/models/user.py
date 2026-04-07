@@ -96,7 +96,11 @@ class User(BaseModel):
         """Check if user has a specific admin permission."""
         if self.role == UserRole.SUPER_ADMIN:
             return True
-        for access_level in self._get_access_levels():
+        access_levels = self._get_access_levels()
+        # Legacy fallback: ADMIN users with no RBAC roles get all permissions
+        if self.role == UserRole.ADMIN and not access_levels:
+            return True
+        for access_level in access_levels:
             if access_level.has_permission(permission_name):
                 return True
         return False

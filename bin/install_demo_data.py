@@ -595,26 +595,68 @@ try:
             "slug": "new",
             "description": "Anonymous or newly registered — minimal access",
             "linked_plan_slug": None,
+            "permissions": [
+                "user.profile.view",
+                "cms.content.view",
+            ],
         },
         {
             "name": "Logged In",
             "slug": "logged-in",
             "description": "Authenticated free user",
             "linked_plan_slug": "free",
+            "permissions": [
+                "user.profile.view",
+                "user.profile.manage",
+                "subscription.invoices.view",
+                "subscription.tokens.view",
+                "subscription.plans.view",
+                "cms.content.view",
+            ],
         },
         {
             "name": "Subscribed Basic",
             "slug": "subscribed-basic",
             "description": "User with Basic plan subscription",
             "linked_plan_slug": "basic",
+            "permissions": [
+                "user.profile.view",
+                "user.profile.manage",
+                "subscription.plans.view",
+                "subscription.manage",
+                "subscription.invoices.view",
+                "subscription.tokens.view",
+                "shop.catalog.view",
+                "shop.cart.manage",
+                "booking.calendar.view",
+                "cms.content.view",
+            ],
         },
         {
             "name": "Subscribed Pro",
             "slug": "subscribed-pro",
             "description": "User with Pro plan subscription",
             "linked_plan_slug": "pro",
+            "permissions": [
+                "user.profile.view",
+                "user.profile.manage",
+                "subscription.plans.view",
+                "subscription.manage",
+                "subscription.invoices.view",
+                "subscription.tokens.view",
+                "subscription.tokens.manage",
+                "shop.catalog.view",
+                "shop.cart.manage",
+                "shop.orders.view",
+                "booking.calendar.view",
+                "booking.bookings.manage",
+                "booking.bookings.view",
+                "cms.content.view",
+            ],
         },
     ]
+
+    from vbwd.models.role import Permission
 
     user_level_map = {}
     for level_data in USER_ACCESS_LEVELS:
@@ -632,10 +674,31 @@ try:
             )
             session.add(level)
             session.flush()
-            user_level_map[level_data["slug"]] = level
             print(f"  Created: {level_data['slug']}")
         else:
-            user_level_map[level_data["slug"]] = existing
+            level = existing
+
+        # Assign permissions to the level
+        perm_keys = level_data.get("permissions", [])
+        if perm_keys and not level.permissions:
+            for perm_key in perm_keys:
+                perm = session.query(Permission).filter_by(name=perm_key).first()
+                if not perm:
+                    parts = perm_key.rsplit(".", 1)
+                    perm = Permission(
+                        id=uuid.uuid4(),
+                        name=perm_key,
+                        resource=parts[0] if len(parts) > 1 else perm_key,
+                        action=parts[1] if len(parts) > 1 else "*",
+                        description=perm_key,
+                    )
+                    session.add(perm)
+                    session.flush()
+                level.permissions.append(perm)
+            session.flush()
+            print(f"    {level_data['slug']}: {len(perm_keys)} permissions assigned")
+
+        user_level_map[level_data["slug"]] = level
 
     # Assign user access levels to demo users based on plans
     for email, level_slug in [
