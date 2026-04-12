@@ -85,13 +85,9 @@ class UserDataSchema(Schema):
     name = fields.Str(allow_none=True)
     role = fields.Str(allow_none=True)
     is_admin = fields.Bool(allow_none=True)
-    access_levels = fields.List(
-        fields.Nested(RoleSchema), allow_none=True
-    )
+    access_levels = fields.List(fields.Nested(RoleSchema), allow_none=True)
     permissions = fields.List(fields.Str(), allow_none=True)
-    user_access_levels = fields.List(
-        fields.Nested(RoleSchema), allow_none=True
-    )
+    user_access_levels = fields.List(fields.Nested(RoleSchema), allow_none=True)
     user_permissions = fields.List(fields.Str(), allow_none=True)
 
 

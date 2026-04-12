@@ -49,25 +49,17 @@ class UserAccessLevel(BaseModel):
 
     __tablename__ = "vbwd_user_access_level"
 
-    name = db.Column(
-        db.String(100), unique=True, nullable=False, index=True
-    )
-    slug = db.Column(
-        db.String(100), unique=True, nullable=False, index=True
-    )
+    name = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    slug = db.Column(db.String(100), unique=True, nullable=False, index=True)
     description = db.Column(db.String(500))
     is_system = db.Column(db.Boolean, default=False, nullable=False)
-    linked_plan_slug = db.Column(
-        db.String(100), nullable=True, index=True
-    )
+    linked_plan_slug = db.Column(db.String(100), nullable=True, index=True)
 
     # Many-to-many: level <-> permissions
     permissions = db.relationship(
         "Permission",
         secondary=user_access_level_permissions,
-        backref=db.backref(
-            "user_access_levels", lazy="dynamic"
-        ),
+        backref=db.backref("user_access_levels", lazy="dynamic"),
         lazy="joined",
     )
 
@@ -75,9 +67,7 @@ class UserAccessLevel(BaseModel):
     users = db.relationship(
         "User",
         secondary=user_user_access_levels,
-        backref=db.backref(
-            "assigned_user_access_levels", lazy="joined"
-        ),
+        backref=db.backref("assigned_user_access_levels", lazy="joined"),
         lazy="dynamic",
     )
 
@@ -88,10 +78,7 @@ class UserAccessLevel(BaseModel):
                 return True
             if perm.name == permission_name:
                 return True
-            if (
-                perm.name.endswith(".*")
-                and permission_name.startswith(perm.name[:-1])
-            ):
+            if perm.name.endswith(".*") and permission_name.startswith(perm.name[:-1]):
                 return True
         return False
 

@@ -91,9 +91,7 @@ class Container(containers.DeclarativeContainer):
         SubscriptionRepository, session=db_session
     )
 
-    tarif_plan_repository = providers.Factory(
-        TarifPlanRepository, session=db_session
-    )
+    tarif_plan_repository = providers.Factory(TarifPlanRepository, session=db_session)
 
     tarif_plan_category_repository = providers.Factory(
         TarifPlanCategoryRepository, session=db_session

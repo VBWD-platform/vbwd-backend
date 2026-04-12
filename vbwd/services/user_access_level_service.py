@@ -62,20 +62,14 @@ class UserAccessLevelService:
             logger.warning("Cannot assign access level: level %s not found", level_id)
             return False
 
-        existing_level_ids = {
-            lvl.id for lvl in user.assigned_user_access_levels
-        }
+        existing_level_ids = {lvl.id for lvl in user.assigned_user_access_levels}
         if level.id in existing_level_ids:
-            logger.debug(
-                "User %s already has access level %s", user_id, level.slug
-            )
+            logger.debug("User %s already has access level %s", user_id, level.slug)
             return False
 
         user.assigned_user_access_levels.append(level)
         self._session.flush()
-        logger.info(
-            "Assigned access level '%s' to user %s", level.slug, user_id
-        )
+        logger.info("Assigned access level '%s' to user %s", level.slug, user_id)
         return True
 
     def revoke(self, user_id: UUID, level_id: UUID) -> bool:
@@ -98,16 +92,12 @@ class UserAccessLevelService:
 
         existing_levels = list(user.assigned_user_access_levels)
         if level not in existing_levels:
-            logger.debug(
-                "User %s does not have access level %s", user_id, level.slug
-            )
+            logger.debug("User %s does not have access level %s", user_id, level.slug)
             return False
 
         user.assigned_user_access_levels.remove(level)
         self._session.flush()
-        logger.info(
-            "Revoked access level '%s' from user %s", level.slug, user_id
-        )
+        logger.info("Revoked access level '%s' from user %s", level.slug, user_id)
         return True
 
     def revoke_plan_linked_levels(self, user_id: UUID, plan_slug: str) -> int:
@@ -119,7 +109,7 @@ class UserAccessLevelService:
         levels = self.find_all_by_linked_plan_slug(plan_slug)
         revoked_count = 0
         for level in levels:
-            if self.revoke(user_id, level.id):
+            if self.revoke(user_id, UUID(str(level.id))):
                 revoked_count += 1
         return revoked_count
 

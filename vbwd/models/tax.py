@@ -50,12 +50,8 @@ class TaxClass(BaseModel):
             "description": self.description,
             "default_rate": str(self.default_rate),
             "is_default": self.is_default,
-            "created_at": (
-                self.created_at.isoformat() if self.created_at else None
-            ),
-            "updated_at": (
-                self.updated_at.isoformat() if self.updated_at else None
-            ),
+            "created_at": (self.created_at.isoformat() if self.created_at else None),
+            "updated_at": (self.updated_at.isoformat() if self.updated_at else None),
         }
 
     def __repr__(self) -> str:
@@ -193,17 +189,11 @@ class Tax(BaseModel):
             "rate": str(self.rate),
             "country_code": self.country_code,
             "region_code": self.region_code,
-            "tax_class_id": (
-                str(self.tax_class_id) if self.tax_class_id else None
-            ),
+            "tax_class_id": (str(self.tax_class_id) if self.tax_class_id else None),
             "is_active": self.is_active,
             "is_inclusive": self.is_inclusive,
-            "created_at": (
-                self.created_at.isoformat() if self.created_at else None
-            ),
-            "updated_at": (
-                self.updated_at.isoformat() if self.updated_at else None
-            ),
+            "created_at": (self.created_at.isoformat() if self.created_at else None),
+            "updated_at": (self.updated_at.isoformat() if self.updated_at else None),
         }
 
     def __repr__(self) -> str:

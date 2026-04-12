@@ -45,9 +45,7 @@ class TestTaxRatePermissions:
     ):
         user = make_user_no_permissions()
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
-        response = client.get(
-            "/api/v1/admin/tax/rates", headers=_auth_headers()
-        )
+        response = client.get("/api/v1/admin/tax/rates", headers=_auth_headers())
         assert response.status_code == 403
 
     @patch("vbwd.middleware.auth.AuthService")
@@ -57,9 +55,7 @@ class TestTaxRatePermissions:
     ):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
-        response = client.get(
-            "/api/v1/admin/tax/rates", headers=_auth_headers()
-        )
+        response = client.get("/api/v1/admin/tax/rates", headers=_auth_headers())
         assert response.status_code == 200
         data = response.get_json()
         assert "rates" in data
@@ -93,9 +89,7 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_create_rate_missing_name(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_create_rate_missing_name(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
         response = client.post(
@@ -107,9 +101,7 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_create_rate_missing_rate(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_create_rate_missing_rate(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
         response = client.post(
@@ -121,9 +113,7 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_create_and_get_rate(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_create_and_get_rate(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -150,9 +140,7 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_update_rate(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_update_rate(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -179,9 +167,7 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_delete_rate(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_delete_rate(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -211,9 +197,7 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_duplicate_code_rejected(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_duplicate_code_rejected(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -241,9 +225,7 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_filter_by_country(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_filter_by_country(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -283,9 +265,7 @@ class TestTaxClassCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_create_class(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_create_class(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -308,9 +288,7 @@ class TestTaxClassCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_list_classes(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_list_classes(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -333,9 +311,7 @@ class TestTaxClassCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_update_class(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_update_class(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -357,16 +333,11 @@ class TestTaxClassCRUD:
             headers=_auth_headers(),
         )
         assert update_response.status_code == 200
-        assert (
-            update_response.get_json()["tax_class"]["default_rate"]
-            == "8.00"
-        )
+        assert update_response.get_json()["tax_class"]["default_rate"] == "8.00"
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_delete_class(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_delete_class(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -390,9 +361,7 @@ class TestTaxClassCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_duplicate_class_code_rejected(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_duplicate_class_code_rejected(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -457,9 +426,7 @@ class TestTaxClassCRUD:
             headers=_auth_headers(),
         )
         classes = response.get_json()["classes"]
-        first_class = next(
-            (c for c in classes if c["id"] == first_id), None
-        )
+        first_class = next((c for c in classes if c["id"] == first_id), None)
         if first_class:
             assert first_class["is_default"] is False
 
@@ -469,9 +436,7 @@ class TestTaxRateWithClass:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_create_rate_with_class(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
+    def test_create_rate_with_class(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
@@ -500,7 +465,4 @@ class TestTaxRateWithClass:
             headers=_auth_headers(),
         )
         assert rate_response.status_code == 201
-        assert (
-            rate_response.get_json()["rate"]["tax_class_id"]
-            == class_id
-        )
+        assert rate_response.get_json()["rate"]["tax_class_id"] == class_id

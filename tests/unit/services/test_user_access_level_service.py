@@ -29,9 +29,7 @@ class TestFindBySlug:
         assert result is expected_level
 
     def test_returns_none_when_not_found(self, service, mock_session):
-        mock_session.query.return_value.filter.return_value.first.return_value = (
-            None
-        )
+        mock_session.query.return_value.filter.return_value.first.return_value = None
 
         result = service.find_by_slug("nonexistent")
 
@@ -171,9 +169,7 @@ class TestRevokePlanLinkedLevels:
         user = MagicMock()
         user.assigned_user_access_levels = [level1, level2]
         mock_session.get.side_effect = lambda model, uid: (
-            user if uid == user_id else (
-                level1 if uid == level1.id else level2
-            )
+            user if uid == user_id else (level1 if uid == level1.id else level2)
         )
 
         result = service.revoke_plan_linked_levels(user_id, "basic")

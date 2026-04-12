@@ -6,9 +6,7 @@ from vbwd.extensions import db
 from vbwd.middleware.auth import require_auth, require_permission
 from vbwd.models.tax import Tax, TaxClass
 
-admin_tax_bp = Blueprint(
-    "admin_tax", __name__, url_prefix="/api/v1/admin/tax"
-)
+admin_tax_bp = Blueprint("admin_tax", __name__, url_prefix="/api/v1/admin/tax")
 
 
 # ── Tax Rates ──────────────────────────────────────────────────────────
@@ -102,9 +100,7 @@ def update_rate(rate_id):
         existing = db.session.query(Tax).filter_by(code=new_code).first()
         if existing and str(existing.id) != str(tax.id):
             return (
-                jsonify(
-                    {"error": f"Tax code '{new_code}' already exists"}
-                ),
+                jsonify({"error": f"Tax code '{new_code}' already exists"}),
                 400,
             )
         tax.code = new_code
@@ -114,9 +110,7 @@ def update_rate(rate_id):
         tax.rate = data["rate"]
     if "country_code" in data:
         tax.country_code = (
-            data["country_code"].upper()
-            if data["country_code"]
-            else None
+            data["country_code"].upper() if data["country_code"] else None
         )
     if "region_code" in data:
         tax.region_code = data["region_code"] or None
@@ -153,9 +147,7 @@ def delete_rate(rate_id):
 @require_permission("settings.manage")
 def list_classes():
     """List all tax classes."""
-    classes = (
-        db.session.query(TaxClass).order_by(TaxClass.name).all()
-    )
+    classes = db.session.query(TaxClass).order_by(TaxClass.name).all()
     return (
         jsonify({"classes": [tc.to_dict() for tc in classes]}),
         200,
@@ -176,9 +168,7 @@ def create_class():
 
     if db.session.query(TaxClass).filter_by(code=code).first():
         return (
-            jsonify(
-                {"error": f"Tax class code '{code}' already exists"}
-            ),
+            jsonify({"error": f"Tax class code '{code}' already exists"}),
             400,
         )
 
@@ -207,9 +197,7 @@ def create_class():
 @require_permission("settings.manage")
 def update_class(class_id):
     """Update a tax class."""
-    tax_class = (
-        db.session.query(TaxClass).filter_by(id=class_id).first()
-    )
+    tax_class = db.session.query(TaxClass).filter_by(id=class_id).first()
     if not tax_class:
         return jsonify({"error": "Tax class not found"}), 404
 
@@ -219,18 +207,10 @@ def update_class(class_id):
         tax_class.name = data["name"].strip()
     if "code" in data:
         new_code = data["code"].strip().lower()
-        existing = (
-            db.session.query(TaxClass).filter_by(code=new_code).first()
-        )
+        existing = db.session.query(TaxClass).filter_by(code=new_code).first()
         if existing and str(existing.id) != str(tax_class.id):
             return (
-                jsonify(
-                    {
-                        "error": (
-                            f"Tax class code '{new_code}' already exists"
-                        )
-                    }
-                ),
+                jsonify({"error": (f"Tax class code '{new_code}' already exists")}),
                 400,
             )
         tax_class.code = new_code
@@ -240,9 +220,9 @@ def update_class(class_id):
         tax_class.default_rate = data["default_rate"]
     if "is_default" in data:
         if data["is_default"] and not tax_class.is_default:
-            db.session.query(TaxClass).filter_by(
-                is_default=True
-            ).update({"is_default": False})
+            db.session.query(TaxClass).filter_by(is_default=True).update(
+                {"is_default": False}
+            )
         tax_class.is_default = data["is_default"]
 
     db.session.commit()
@@ -254,9 +234,7 @@ def update_class(class_id):
 @require_permission("settings.manage")
 def delete_class(class_id):
     """Delete a tax class. Unlinks associated tax rates."""
-    tax_class = (
-        db.session.query(TaxClass).filter_by(id=class_id).first()
-    )
+    tax_class = db.session.query(TaxClass).filter_by(id=class_id).first()
     if not tax_class:
         return jsonify({"error": "Tax class not found"}), 404
 

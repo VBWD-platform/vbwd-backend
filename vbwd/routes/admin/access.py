@@ -384,7 +384,9 @@ def update_user_level(level_id):
     if "name" in data:
         level.name = data["name"]
     if "slug" in data and data["slug"] != level.slug:
-        existing = db.session.query(UserAccessLevel).filter_by(slug=data["slug"]).first()
+        existing = (
+            db.session.query(UserAccessLevel).filter_by(slug=data["slug"]).first()
+        )
         if existing:
             return jsonify({"error": f"Slug '{data['slug']}' already exists"}), 400
         level.slug = data["slug"]
@@ -443,23 +445,27 @@ def get_user_level_content(level_id):
         for page in all_pages:
             required_ids = page.required_access_level_ids or []
             if level_id in required_ids:
-                pages.append({
-                    "id": str(page.id),
-                    "name": page.name,
-                    "slug": page.slug,
-                })
+                pages.append(
+                    {
+                        "id": str(page.id),
+                        "name": page.name,
+                        "slug": page.slug,
+                    }
+                )
 
         # Widget assignments restricted to this level
         all_assignments = db.session.query(CmsLayoutWidget).all()
         for assignment in all_assignments:
             required_ids = assignment.required_access_level_ids or []
             if level_id in required_ids:
-                widgets.append({
-                    "id": str(assignment.id),
-                    "area_name": assignment.area_name,
-                    "widget_id": str(assignment.widget_id),
-                    "layout_id": str(assignment.layout_id),
-                })
+                widgets.append(
+                    {
+                        "id": str(assignment.id),
+                        "area_name": assignment.area_name,
+                        "widget_id": str(assignment.widget_id),
+                        "layout_id": str(assignment.layout_id),
+                    }
+                )
     except ImportError:
         pass
 
@@ -504,9 +510,7 @@ def import_user_levels():
     data = request.get_json()
     if not data or "user_access_levels" not in data:
         return (
-            jsonify(
-                {"error": "Invalid format — expected {user_access_levels: [...]}"}
-            ),
+            jsonify({"error": "Invalid format — expected {user_access_levels: [...]}"}),
             400,
         )
 
@@ -579,9 +583,7 @@ def assign_user_access_level(user_id):
     return jsonify({"message": "User access level assigned"}), 200
 
 
-@access_bp.route(
-    "/users/<user_id>/user-access-levels/<level_id>", methods=["DELETE"]
-)
+@access_bp.route("/users/<user_id>/user-access-levels/<level_id>", methods=["DELETE"])
 @require_auth
 @require_permission("settings.system")
 def revoke_user_access_level(user_id, level_id):
