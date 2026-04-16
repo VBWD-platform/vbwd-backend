@@ -155,9 +155,10 @@ class TestRoleCRUDBulletproof:
         mock_auth_cls.return_value.verify_token.return_value = str(uuid4())
 
         # Create a role first (CI has empty DB)
+        suffix = uuid4().hex[:6]
         client.post(
             "/api/v1/admin/access/levels",
-            json={"name": "Export Test", "slug": f"export-test-{uuid4().hex[:6]}"},
+            json={"name": f"Export Test {suffix}", "slug": f"export-test-{suffix}"},
             headers={"Authorization": "Bearer valid"},
         )
 
