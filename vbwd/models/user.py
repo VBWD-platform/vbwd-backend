@@ -86,8 +86,12 @@ class User(BaseModel):
         """Get effective permissions based on role."""
         if self.role == UserRole.SUPER_ADMIN:
             return ["*"]
+        access_levels = self._get_access_levels()
+        # Legacy fallback: ADMIN with no RBAC roles gets all permissions
+        if self.role == UserRole.ADMIN and not access_levels:
+            return ["*"]
         permissions: set[str] = set()
-        for access_level in self._get_access_levels():
+        for access_level in access_levels:
             for perm in list(access_level.permissions):
                 permissions.add(perm.name)
         return sorted(permissions)
