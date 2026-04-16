@@ -88,6 +88,23 @@ jobs:
             git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git plugins/${plugin}
           done
 
+      - name: Create plugins.json
+        run: |
+          python3 -c "
+          import json, os
+          plugins = {}
+          for d in os.listdir('plugins'):
+              if os.path.isfile(os.path.join('plugins', d, '__init__.py')):
+                  plugins[d] = {'enabled': True, 'version': '1.0.0', 'source': 'local'}
+          json.dump({'plugins': plugins}, open('plugins/plugins.json', 'w'))
+          "
+
+      - name: Run database migrations
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          DATABASE_URL: postgresql://vbwd:vbwd@localhost:5432/vbwd_test
+        run: alembic upgrade heads
+
       - name: Run unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
