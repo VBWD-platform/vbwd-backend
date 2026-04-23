@@ -19,8 +19,26 @@ services:
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-VBWD}
       # Enable mock GitHub client for local dev/test — never set this in production
       - GHRM_USE_MOCK_GITHUB=${GHRM_USE_MOCK_GITHUB:-true}
+      # Server-side plugin management — the backend owns the authoritative
+      # manifest for every VBWD app (its own plugins, fe-admin, fe-user).
+      # Paths below live inside the container under /app/var, which is
+      # bind-mounted from ${VBWD_VAR_DIR} on the host — the same directory
+      # is mounted into fe-admin and fe-user so all three containers read
+      # the same files. No plugin state is kept in container images or in
+      # browser localStorage.
+      - VBWD_VAR_DIR=/app/var
+      - VBWD_BACKEND_PLUGINS_JSON=/app/var/plugins/backend-plugins.json
+      - VBWD_BACKEND_PLUGINS_CONFIG_JSON=/app/var/plugins/backend-plugins-config.json
+      - VBWD_FE_ADMIN_PLUGINS_JSON=/app/var/plugins/fe-admin-plugins.json
+      - VBWD_FE_ADMIN_PLUGINS_CONFIG_JSON=/app/var/plugins/fe-admin-plugins-config.json
+      - VBWD_FE_USER_PLUGINS_JSON=/app/var/plugins/fe-user-plugins.json
+      - VBWD_FE_USER_PLUGINS_CONFIG_JSON=/app/var/plugins/fe-user-plugins-config.json
     volumes:
       - .:/app
+      # Shared plugin state directory (default: ../var relative to
+      # vbwd-backend/). Override by exporting VBWD_VAR_DIR before running
+      # docker compose up. Must match whatever fe-admin / fe-user mount.
+      - ${VBWD_VAR_DIR:-../var}:/app/var
     depends_on:
       postgres:
         condition: service_healthy
