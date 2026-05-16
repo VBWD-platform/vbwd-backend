@@ -205,6 +205,114 @@ class TestAdminGetUser:
         assert response.status_code == 404
 
 
+class TestAdminCreateUser:
+    """Tests for admin create user endpoint."""
+
+    def _mock_admin_auth(self, mock_auth_user_repo_class, mock_auth_class, admin_id):
+        mock_admin = MagicMock()
+        mock_admin.id = admin_id
+        mock_admin.status.value = "ACTIVE"
+        mock_admin.role = UserRole.ADMIN
+        mock_admin.is_admin = True
+        mock_auth_user_repo = MagicMock()
+        mock_auth_user_repo.find_by_id.return_value = mock_admin
+        mock_auth_user_repo_class.return_value = mock_auth_user_repo
+
+        mock_auth = MagicMock()
+        mock_auth.verify_token.return_value = str(admin_id)
+        mock_auth_class.return_value = mock_auth
+
+    @patch("vbwd.routes.admin.users.UserRepository")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_create_user_accepts_lowercase_status(
+        self, mock_auth_user_repo_class, mock_auth_class, mock_user_repo_class, client
+    ):
+        """The reported bug: lowercase 'active' from the admin UI must work."""
+        admin_id = uuid4()
+        self._mock_admin_auth(mock_auth_user_repo_class, mock_auth_class, admin_id)
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.find_by_email.return_value = None
+        # save() returns the user it was given, with the route-set enums.
+        mock_user_repo.save.side_effect = lambda user: user
+        mock_user_repo_class.return_value = mock_user_repo
+
+        response = client.post(
+            "/api/v1/admin/users/",
+            json={
+                "email": "test@dev.vbwd.cc",
+                "password": "soempassword123",
+                "status": "active",
+                "role": "ADMIN",
+            },
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 201, response.get_json()
+        data = response.get_json()
+        assert data["status"] == "ACTIVE"
+        assert data["role"] == "ADMIN"
+
+    @patch("vbwd.routes.admin.users.UserRepository")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_create_user_accepts_uppercase_status(
+        self, mock_auth_user_repo_class, mock_auth_class, mock_user_repo_class, client
+    ):
+        """Existing uppercase callers keep working (no regression)."""
+        admin_id = uuid4()
+        self._mock_admin_auth(mock_auth_user_repo_class, mock_auth_class, admin_id)
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.find_by_email.return_value = None
+        mock_user_repo.save.side_effect = lambda user: user
+        mock_user_repo_class.return_value = mock_user_repo
+
+        response = client.post(
+            "/api/v1/admin/users/",
+            json={
+                "email": "upper@dev.vbwd.cc",
+                "password": "soempassword123",
+                "status": "SUSPENDED",
+                "role": "USER",
+            },
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 201, response.get_json()
+        assert response.get_json()["status"] == "SUSPENDED"
+
+    @patch("vbwd.routes.admin.users.UserRepository")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_create_user_rejects_unknown_status(
+        self, mock_auth_user_repo_class, mock_auth_class, mock_user_repo_class, client
+    ):
+        """Unknown status still 400 — error contract preserved."""
+        admin_id = uuid4()
+        self._mock_admin_auth(mock_auth_user_repo_class, mock_auth_class, admin_id)
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.find_by_email.return_value = None
+        mock_user_repo.save.side_effect = lambda user: user
+        mock_user_repo_class.return_value = mock_user_repo
+
+        response = client.post(
+            "/api/v1/admin/users/",
+            json={
+                "email": "bad@dev.vbwd.cc",
+                "password": "soempassword123",
+                "status": "not-a-status",
+                "role": "USER",
+            },
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 400
+        assert "Invalid status" in response.get_json()["error"]
+
+
 class TestAdminUpdateUser:
     """Tests for admin update user endpoint."""
 

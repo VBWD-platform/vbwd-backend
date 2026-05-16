@@ -2,7 +2,29 @@
 import enum
 
 
-class UserStatus(enum.Enum):
+class CaseInsensitiveEnum(enum.Enum):
+    """An ``enum.Enum`` whose value lookup tolerates any string casing.
+
+    Canonical member values stay UPPERCASE (the on-disk DB column value
+    and the JSON wire contract are unchanged); only the *parse* boundary
+    becomes case-insensitive. ``_missing_`` returns an *existing* member,
+    so identity and membership semantics are preserved
+    (``Cls("active") is Cls.ACTIVE``) — a true Liskov substitute for
+    ``enum.Enum``. Unknown values return ``None`` here, which makes the
+    enum raise ``ValueError`` exactly as before.
+    """
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            normalized_value = value.strip().upper()
+            for member in cls:
+                if member.value == normalized_value:
+                    return member
+        return None
+
+
+class UserStatus(CaseInsensitiveEnum):
     """User account status."""
 
     PENDING = "PENDING"
@@ -11,7 +33,7 @@ class UserStatus(enum.Enum):
     DELETED = "DELETED"
 
 
-class UserRole(enum.Enum):
+class UserRole(CaseInsensitiveEnum):
     """User role — determines app access level."""
 
     SUPER_ADMIN = "SUPER_ADMIN"
