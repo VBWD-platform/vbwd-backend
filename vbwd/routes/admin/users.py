@@ -495,7 +495,10 @@ def delete_user(user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    data = request.get_json() or {}
+    # DELETE often arrives without a body / JSON content-type. Use
+    # silent=True so a missing or non-JSON body yields {} instead of
+    # Flask raising 415 Unsupported Media Type before `or {}` applies.
+    data = request.get_json(silent=True) or {}
     force_delete = data.get("force", False)
 
     # Check if user has invoices or subscriptions

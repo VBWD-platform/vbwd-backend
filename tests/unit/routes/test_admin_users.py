@@ -436,3 +436,133 @@ class TestAdminUpdateUser:
         )
 
         assert response.status_code == 200
+
+
+class TestAdminDeleteUser:
+    """Tests for admin delete user endpoint.
+
+    Regression: a browser DELETE arrives with no body and no
+    application/json content-type. The route used
+    ``request.get_json() or {}`` which made Flask raise
+    415 Unsupported Media Type *before* the ``or {}`` fallback,
+    so deletion failed with "UNSUPPORTED MEDIA TYPE".
+    """
+
+    def _admin(self, mock_auth_user_repo_class, mock_auth_class):
+        admin_id = uuid4()
+        mock_admin = MagicMock()
+        mock_admin.id = admin_id
+        mock_admin.status.value = "ACTIVE"
+        mock_admin.role = UserRole.ADMIN
+        mock_admin.is_admin = True
+        mock_auth_user_repo = MagicMock()
+        mock_auth_user_repo.find_by_id.return_value = mock_admin
+        mock_auth_user_repo_class.return_value = mock_auth_user_repo
+
+        mock_auth = MagicMock()
+        mock_auth.verify_token.return_value = str(admin_id)
+        mock_auth_class.return_value = mock_auth
+
+    @patch("vbwd.repositories.subscription_repository.SubscriptionRepository")
+    @patch("vbwd.repositories.invoice_repository.InvoiceRepository")
+    @patch("vbwd.routes.admin.users.UserRepository")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_delete_user_without_body_succeeds(
+        self,
+        mock_auth_user_repo_class,
+        mock_auth_class,
+        mock_user_repo_class,
+        mock_invoice_repo_class,
+        mock_sub_repo_class,
+        client,
+    ):
+        """DELETE with no body / no JSON content-type must NOT 415."""
+        self._admin(mock_auth_user_repo_class, mock_auth_class)
+        user_id = uuid4()
+
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user_repo = MagicMock()
+        mock_user_repo.find_by_id.return_value = mock_user
+        mock_user_repo_class.return_value = mock_user_repo
+
+        mock_invoice_repo_class.return_value.find_by_user.return_value = []
+        mock_sub_repo_class.return_value.find_by_user.return_value = []
+
+        # No json=, no Content-Type — exactly how the browser sent it.
+        response = client.delete(
+            f"/api/v1/admin/users/{user_id}",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 200
+        mock_user_repo.delete.assert_called_once_with(str(user_id))
+
+    @patch("vbwd.repositories.subscription_repository.SubscriptionRepository")
+    @patch("vbwd.repositories.invoice_repository.InvoiceRepository")
+    @patch("vbwd.routes.admin.users.UserRepository")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_delete_user_with_dependencies_blocked_without_force(
+        self,
+        mock_auth_user_repo_class,
+        mock_auth_class,
+        mock_user_repo_class,
+        mock_invoice_repo_class,
+        mock_sub_repo_class,
+        client,
+    ):
+        """User with transaction history → 409 unless force given."""
+        self._admin(mock_auth_user_repo_class, mock_auth_class)
+        user_id = uuid4()
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.find_by_id.return_value = MagicMock(id=user_id)
+        mock_user_repo_class.return_value = mock_user_repo
+
+        mock_invoice_repo_class.return_value.find_by_user.return_value = [MagicMock()]
+        mock_sub_repo_class.return_value.find_by_user.return_value = []
+
+        response = client.delete(
+            f"/api/v1/admin/users/{user_id}",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 409
+        assert response.get_json()["has_dependencies"] is True
+        mock_user_repo.delete.assert_not_called()
+
+    @patch("vbwd.repositories.subscription_repository.SubscriptionRepository")
+    @patch("vbwd.repositories.invoice_repository.InvoiceRepository")
+    @patch("vbwd.routes.admin.users.UserRepository")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_delete_user_with_force_cascades(
+        self,
+        mock_auth_user_repo_class,
+        mock_auth_class,
+        mock_user_repo_class,
+        mock_invoice_repo_class,
+        mock_sub_repo_class,
+        client,
+    ):
+        """force=true in the JSON body cascades past dependencies."""
+        self._admin(mock_auth_user_repo_class, mock_auth_class)
+        user_id = uuid4()
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.find_by_id.return_value = MagicMock(id=user_id)
+        mock_user_repo_class.return_value = mock_user_repo
+
+        mock_invoice_repo_class.return_value.find_by_user.return_value = [MagicMock()]
+        mock_sub_repo_class.return_value.find_by_user.return_value = [MagicMock()]
+
+        response = client.delete(
+            f"/api/v1/admin/users/{user_id}",
+            headers={"Authorization": "Bearer valid_token"},
+            json={"force": True},
+        )
+
+        assert response.status_code == 200
+        mock_user_repo.delete.assert_called_once_with(str(user_id))
