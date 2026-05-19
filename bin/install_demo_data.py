@@ -166,6 +166,16 @@ try:
 
     users_data = [
         {
+            'email': 'admin@example.com',
+            'password': 'AdminPass123@',
+            'plan_slug': 'free',
+            'role': 'SUPER_ADMIN',
+            'details': {
+                'first_name': 'Admin',
+                'last_name': 'User',
+            },
+        },
+        {
             'email': 'test@example.com',
             'password': 'TestPass123@',
             'plan_slug': 'free',
