@@ -462,7 +462,9 @@ try:
 
     # ── Countries ─────────────────────────────────────────────────
     print("\n=== Countries ===")
-    ENABLED_CODES = {"DE", "FR", "AT", "IT", "PL", "ES", "TH"}
+    # DACH = DE, AT, CH — all three must be enabled by default
+    # (test_admin_countries.test_list_includes_dach_enabled asserts this).
+    ENABLED_CODES = {"DE", "AT", "CH", "FR", "IT", "PL", "ES", "TH"}
     COUNTRIES = [
         ("AT", "Austria"), ("BE", "Belgium"), ("BG", "Bulgaria"),
         ("HR", "Croatia"), ("CY", "Cyprus"), ("CZ", "Czechia"),
