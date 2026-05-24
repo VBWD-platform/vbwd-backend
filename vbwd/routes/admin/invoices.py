@@ -80,13 +80,12 @@ def get_invoice(invoice_id):
         200: Invoice details with user, plan, subscription info
         404: Invoice not found
     """
-    from vbwd.repositories.tarif_plan_repository import TarifPlanRepository
-    from vbwd.repositories.subscription_repository import SubscriptionRepository
+    from vbwd.services.subscription_read_model import (
+        resolve_subscription_read_model,
+    )
 
     invoice_repo = InvoiceRepository(db.session)
     user_repo = UserRepository(db.session)
-    plan_repo = TarifPlanRepository(db.session)
-    subscription_repo = SubscriptionRepository(db.session)
 
     invoice = invoice_repo.find_by_id(invoice_id)
 
@@ -105,36 +104,9 @@ def get_invoice(invoice_id):
             else ""
         )
 
-    # Enrich with tariff plan info
-    if invoice.tarif_plan_id:
-        plan = plan_repo.find_by_id(str(invoice.tarif_plan_id))
-        if plan:
-            inv_dict["plan_name"] = plan.name
-            inv_dict["plan_description"] = plan.description
-            inv_dict["plan_billing_period"] = (
-                plan.billing_period.value if plan.billing_period else None
-            )
-            inv_dict["plan_price"] = str(plan.price) if plan.price else None
-
-    # Enrich with subscription info
-    if invoice.subscription_id:
-        subscription = subscription_repo.find_by_id(str(invoice.subscription_id))
-        if subscription:
-            inv_dict["subscription_status"] = (
-                subscription.status.value if subscription.status else None
-            )
-            inv_dict["subscription_start_date"] = (
-                subscription.started_at.isoformat() if subscription.started_at else None
-            )
-            inv_dict["subscription_end_date"] = (
-                subscription.expires_at.isoformat() if subscription.expires_at else None
-            )
-            inv_dict["subscription_is_trial"] = subscription.trial_end_at is not None
-            inv_dict["subscription_trial_end"] = (
-                subscription.trial_end_at.isoformat()
-                if subscription.trial_end_at
-                else None
-            )
+    # Enrich with plan / subscription info (subscription plugin owns this;
+    # empty when the plugin is disabled).
+    inv_dict.update(resolve_subscription_read_model().enrich_invoice(invoice))
 
     # Add due_date and created_at
     inv_dict["due_date"] = (

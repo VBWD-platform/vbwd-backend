@@ -1,7 +1,6 @@
 """Tests for email service."""
 import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime
 
 
 class TestEmailServiceConfiguration:
@@ -263,67 +262,6 @@ class TestEmailServiceConvenienceMethods:
         assert result.success is True
 
     @patch("vbwd.services.email_service.smtplib.SMTP")
-    def test_send_subscription_activated_email(self, mock_smtp_class, email_service):
-        """Send subscription activation email."""
-        mock_smtp = MagicMock()
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_smtp)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
-
-        result = email_service.send_subscription_activated(
-            to_email="user@example.com",
-            first_name="John",
-            plan_name="Premium",
-            expires_at=datetime(2025, 12, 31),
-        )
-
-        assert result.success is True
-
-    @patch("vbwd.services.email_service.smtplib.SMTP")
-    def test_send_subscription_cancelled_email(self, mock_smtp_class, email_service):
-        """Send subscription cancellation email."""
-        mock_smtp = MagicMock()
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_smtp)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
-
-        result = email_service.send_subscription_cancelled(
-            to_email="user@example.com", first_name="John", plan_name="Premium"
-        )
-
-        assert result.success is True
-
-    @patch("vbwd.services.email_service.smtplib.SMTP")
-    def test_send_payment_receipt_email(self, mock_smtp_class, email_service):
-        """Send payment receipt email."""
-        mock_smtp = MagicMock()
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_smtp)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
-
-        result = email_service.send_payment_receipt(
-            to_email="user@example.com",
-            first_name="John",
-            invoice_number="INV-2025-001",
-            amount="99.99 EUR",
-        )
-
-        assert result.success is True
-
-    @patch("vbwd.services.email_service.smtplib.SMTP")
-    def test_send_payment_failed_email(self, mock_smtp_class, email_service):
-        """Send payment failed notification."""
-        mock_smtp = MagicMock()
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_smtp)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
-
-        result = email_service.send_payment_failed(
-            to_email="user@example.com",
-            first_name="John",
-            plan_name="Premium",
-            retry_url="https://example.com/retry",
-        )
-
-        assert result.success is True
-
-    @patch("vbwd.services.email_service.smtplib.SMTP")
     def test_send_invoice_email(self, mock_smtp_class, email_service):
         """Send invoice email."""
         mock_smtp = MagicMock()
@@ -336,22 +274,6 @@ class TestEmailServiceConvenienceMethods:
             invoice_number="INV-2025-001",
             amount="99.99 EUR",
             due_date="2025-01-31",
-        )
-
-        assert result.success is True
-
-    @patch("vbwd.services.email_service.smtplib.SMTP")
-    def test_send_renewal_reminder_email(self, mock_smtp_class, email_service):
-        """Send renewal reminder email."""
-        mock_smtp = MagicMock()
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_smtp)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
-
-        result = email_service.send_renewal_reminder(
-            to_email="user@example.com",
-            first_name="John",
-            plan_name="Premium",
-            days_until_renewal=7,
         )
 
         assert result.success is True

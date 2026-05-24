@@ -28,9 +28,14 @@ def _register_event_handlers(app: Flask, container) -> None:
         # Create a mock email service for now if not configured
         # In production, this should be properly configured
         class MockEmailService:
-            def send_template(self, to: str, template: str, context: dict) -> object:
+            def send_template(
+                self, to: str, template: str, context: dict, subject=None
+            ) -> object:
                 logger.info(f"[MockEmail] Would send '{template}' to {to}")
                 return type("EmailResult", (), {"success": True})()
+
+            def register_template_path(self, template_dir: str) -> None:
+                pass
 
         email_service: Any = MockEmailService()
 

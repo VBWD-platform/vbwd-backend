@@ -18,17 +18,23 @@ Usage:
     # CLI
     flask seed-test-data
     flask cleanup-test-data
+
+Core seeds the test user + admin. Subscription test data (plan +
+subscription for the test user) is owned by the subscription plugin and
+contributed via the demo-data registry — no-op when the plugin is
+disabled. Core no longer imports subscription models.
 """
 import os
 from typing import Optional
-from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 import bcrypt
 
 from vbwd.models.user import User
-from vbwd.models.enums import UserStatus, UserRole, SubscriptionStatus, BillingPeriod
-from vbwd.models.tarif_plan import TarifPlan
-from vbwd.models.subscription import Subscription
+from vbwd.models.enums import UserStatus, UserRole
+from vbwd.services.demo_data_registry import (
+    run_test_data_seeders,
+    run_test_data_cleaners,
+)
 
 
 class TestDataSeeder:
@@ -73,8 +79,9 @@ class TestDataSeeder:
         """
         Seed test data into the database.
 
-        Creates test user, admin, tariff plan, and subscription if
-        TEST_DATA_SEED environment variable is 'true'.
+        Creates test user + admin (core). Subscription plan/subscription
+        for the test user is contributed by the subscription plugin via
+        the demo-data registry. Runs only if TEST_DATA_SEED is 'true'.
 
         Returns:
             bool: True if seeding was performed, False if skipped.
@@ -88,12 +95,10 @@ class TestDataSeeder:
         # Create test admin
         self._create_test_admin()
 
-        # Create test tariff plan
-        test_plan = self._create_test_plan()
-
-        # Create test subscription for user
-        if test_user and test_plan:
-            self._create_test_subscription(test_user, test_plan)
+        # Plugin-contributed test data (e.g. subscription plan +
+        # subscription for the test user). No-op if no plugin registered.
+        if test_user:
+            run_test_data_seeders(self.session, test_user)
 
         self.session.commit()
         return True
@@ -102,8 +107,8 @@ class TestDataSeeder:
         """
         Remove test data from the database.
 
-        Deletes test users, subscriptions, and plans if
-        TEST_DATA_CLEANUP environment variable is 'true'.
+        Plugin-contributed test data is cleaned first (FK order), then the
+        core test users. Runs only if TEST_DATA_CLEANUP is 'true'.
 
         Returns:
             bool: True if cleanup was performed, False if skipped.
@@ -111,10 +116,9 @@ class TestDataSeeder:
         if not self.should_cleanup():
             return False
 
-        # Delete in reverse order of dependencies
-        self._cleanup_subscriptions()
+        # Plugin-owned test data first (children before the user rows).
+        run_test_data_cleaners(self.session)
         self._cleanup_users()
-        self._cleanup_plans()
 
         self.session.commit()
         return True
@@ -182,76 +186,6 @@ class TestDataSeeder:
         self.session.flush()
         return admin
 
-    def _create_test_plan(self) -> Optional[TarifPlan]:
-        """
-        Create test tariff plan if not exists.
-
-        Returns:
-            Created or existing TarifPlan, or None on error.
-        """
-        plan_name = f"{self.TEST_DATA_MARKER}Basic Plan"
-        plan_slug = "test-data-basic-plan"
-
-        existing = self.session.query(TarifPlan).filter_by(slug=plan_slug).first()
-        if existing:
-            return existing
-
-        plan = TarifPlan(
-            name=plan_name,
-            slug=plan_slug,
-            description="Test plan for integration tests",
-            price_float=9.99,
-            price=9.99,
-            currency="EUR",
-            is_active=True,
-            billing_period=BillingPeriod.MONTHLY,
-            features={"api_calls": 1000, "storage_gb": 5},
-            sort_order=999,  # Put at the end
-        )
-        self.session.add(plan)
-        self.session.flush()
-        return plan
-
-    def _create_test_subscription(
-        self, user: User, plan: TarifPlan
-    ) -> Optional[Subscription]:
-        """
-        Create test subscription for user.
-
-        Args:
-            user: User to create subscription for.
-            plan: TarifPlan to subscribe to.
-
-        Returns:
-            Created or existing Subscription, or None on error.
-        """
-        existing = self.session.query(Subscription).filter_by(user_id=user.id).first()
-        if existing:
-            return existing
-
-        subscription = Subscription(
-            user_id=user.id,
-            tarif_plan_id=plan.id,
-            status=SubscriptionStatus.ACTIVE,
-            started_at=datetime.now(timezone.utc),
-            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
-        )
-        self.session.add(subscription)
-        self.session.flush()
-        return subscription
-
-    def _cleanup_subscriptions(self) -> None:
-        """Remove test subscriptions."""
-        test_emails = [
-            os.getenv("TEST_USER_EMAIL", "test@example.com"),
-            os.getenv("TEST_ADMIN_EMAIL", "admin@example.com"),
-        ]
-        users = self.session.query(User).filter(User.email.in_(test_emails)).all()
-        for user in users:
-            self.session.query(Subscription).filter_by(user_id=user.id).delete(
-                synchronize_session=False
-            )
-
     def _cleanup_users(self) -> None:
         """Remove test users."""
         test_emails = [
@@ -261,9 +195,3 @@ class TestDataSeeder:
         self.session.query(User).filter(User.email.in_(test_emails)).delete(
             synchronize_session=False
         )
-
-    def _cleanup_plans(self) -> None:
-        """Remove test plans (identified by marker prefix or slug)."""
-        self.session.query(TarifPlan).filter(
-            TarifPlan.slug == "test-data-basic-plan"
-        ).delete(synchronize_session=False)

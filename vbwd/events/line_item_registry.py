@@ -71,6 +71,24 @@ class ILineItemHandler(ABC):
     ) -> LineItemResult:
         """Restore a line item on refund reversal."""
 
+    def resolve_catalog_item_id(self, line_item: Any) -> Optional[str]:
+        """Resolve the catalog entity id for a line item this handler owns.
+
+        Non-abstract (ISP): handlers with no catalog mapping inherit the
+        None default. A handler must return None for line items it does not
+        own, so the registry can poll handlers without a processing context.
+        """
+        return None
+
+    def is_recurring_line_item(self, line_item: Any) -> bool:
+        """Whether this line item represents a recurring charge.
+
+        Non-abstract (ISP): non-recurring concerns (e.g. token bundles)
+        inherit the False default. A handler returns False for line items
+        it does not own.
+        """
+        return False
+
 
 class LineItemHandlerRegistry:
     """Registry of line item handlers. First matching handler wins."""
@@ -107,6 +125,44 @@ class LineItemHandlerRegistry:
     ) -> LineItemResult:
         """Delegate line item restoration to the first matching handler."""
         return self._dispatch(line_item, context, "restore_line_item")
+
+    def resolve_catalog_item_id(self, line_item: Any) -> Optional[str]:
+        """First handler that owns this line item resolves its catalog id.
+
+        Context-free (called from serialization, not payment processing).
+        Each handler self-filters by item type and returns None when the
+        line item is not its own.
+        """
+        for handler in self._handlers:
+            try:
+                resolved = handler.resolve_catalog_item_id(line_item)
+            except Exception as exception:
+                logger.warning(
+                    "[line-item-registry] %s.resolve_catalog_item_id raised %s: %s",
+                    type(handler).__name__,
+                    type(exception).__name__,
+                    exception,
+                )
+                continue
+            if resolved is not None:
+                return resolved
+        return None
+
+    def is_recurring_line_item(self, line_item: Any) -> bool:
+        """True if any handler considers this line item a recurring charge."""
+        for handler in self._handlers:
+            try:
+                if handler.is_recurring_line_item(line_item):
+                    return True
+            except Exception as exception:
+                logger.warning(
+                    "[line-item-registry] %s.is_recurring_line_item raised %s: %s",
+                    type(handler).__name__,
+                    type(exception).__name__,
+                    exception,
+                )
+                continue
+        return False
 
     def _dispatch(
         self, line_item: Any, context: LineItemContext, method_name: str

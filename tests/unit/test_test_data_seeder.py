@@ -6,6 +6,21 @@ TDD: These tests are written BEFORE the implementation.
 from unittest.mock import MagicMock, patch
 import os
 
+import pytest
+
+from vbwd.services.demo_data_registry import (
+    register_test_data_seeder,
+    clear_demo_data_hooks,
+)
+
+
+@pytest.fixture(autouse=True)
+def _reset_demo_hooks():
+    """Registry is module-global — isolate every test."""
+    clear_demo_data_hooks()
+    yield
+    clear_demo_data_hooks()
+
 
 class TestTestDataSeeder:
     """Test the test data seeder service."""
@@ -112,18 +127,31 @@ class TestTestDataSeeder:
             seeder.seed()
             assert mock_session.add.called
 
-    def test_seeder_creates_test_tariff_plan(self):
-        """Seeder should create test tariff plan."""
+    def test_seeder_invokes_registered_plugin_test_data_hook(self):
+        """Core seeds user+admin then delegates plugin test data (plan +
+        subscription) to the registered hook with (session, test_user)."""
         from vbwd.testing.test_data_seeder import TestDataSeeder
 
         mock_session = MagicMock()
         mock_session.query.return_value.filter_by.return_value.first.return_value = None
 
+        called = {}
+
+        def _hook(session, test_user):
+            called["session"] = session
+            called["test_user"] = test_user
+
+        register_test_data_seeder(_hook)
+
         with patch.dict(os.environ, {"TEST_DATA_SEED": "true"}, clear=False):
             seeder = TestDataSeeder(db_session=mock_session)
             seeder.seed()
-            # Should create multiple entities (user, admin, plan, subscription)
-            assert mock_session.add.call_count >= 3
+
+            # user + admin created by core
+            assert mock_session.add.call_count == 2
+            # plugin hook invoked with the live session + the test user
+            assert called["session"] is mock_session
+            assert called["test_user"] is not None
 
     def test_seeder_skips_existing_user(self):
         """Seeder should not duplicate existing test user."""

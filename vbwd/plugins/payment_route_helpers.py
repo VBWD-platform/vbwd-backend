@@ -9,10 +9,6 @@ from uuid import UUID
 from flask import current_app, jsonify
 
 from vbwd.events.payment_events import PaymentCapturedEvent, PaymentAuthorizedEvent
-from vbwd.models.enums import LineItemType
-from vbwd.models.subscription import Subscription
-from vbwd.models.addon_subscription import AddOnSubscription
-from vbwd.extensions import db
 
 logger = logging.getLogger(__name__)
 
@@ -166,16 +162,13 @@ def determine_capture_method(invoice):
 def determine_session_mode(invoice):
     """Check invoice line items to determine payment mode.
 
-    Returns "subscription" if any line item is recurring, "payment" otherwise.
-    Used by all payment provider plugins.
+    Returns "subscription" if any line item is recurring, "payment"
+    otherwise. Recurrence is owned by the line-item handler registry —
+    core no longer knows what a subscription is.
     """
+    from vbwd.events.line_item_registry import line_item_registry
+
     for item in invoice.line_items:
-        if item.item_type == LineItemType.SUBSCRIPTION:
-            sub = db.session.get(Subscription, item.item_id)
-            if sub and sub.tarif_plan and sub.tarif_plan.is_recurring:
-                return "subscription"
-        elif item.item_type == LineItemType.ADD_ON:
-            addon_sub = db.session.get(AddOnSubscription, item.item_id)
-            if addon_sub and addon_sub.addon and addon_sub.addon.is_recurring:
-                return "subscription"
+        if line_item_registry.is_recurring_line_item(item):
+            return "subscription"
     return "payment"

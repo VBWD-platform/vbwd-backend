@@ -3,71 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 
-# Demo catalog definition
-DEMO_PLANS = [
-    {
-        "name": "Basic",
-        "slug": "basic",
-        "description": "Essential features for individuals and small teams.",
-        "price_float": 9.99,
-        "price": 9.99,
-        "currency": "EUR",
-        "billing_period": "MONTHLY",
-        "is_active": True,
-        "sort_order": 1,
-        "features": {"api_calls": 1000, "storage_gb": 5, "users": 1},
-    },
-    {
-        "name": "Pro",
-        "slug": "pro",
-        "description": "Advanced features for growing businesses.",
-        "price_float": 29.99,
-        "price": 29.99,
-        "currency": "EUR",
-        "billing_period": "MONTHLY",
-        "is_active": True,
-        "sort_order": 2,
-        "features": {"api_calls": 10000, "storage_gb": 50, "users": 10},
-    },
-    {
-        "name": "Enterprise",
-        "slug": "enterprise",
-        "description": "Full platform access with premium support.",
-        "price_float": 99.99,
-        "price": 99.99,
-        "currency": "EUR",
-        "billing_period": "MONTHLY",
-        "is_active": True,
-        "sort_order": 3,
-        "features": {"api_calls": -1, "storage_gb": 500, "users": -1},
-    },
-]
-
-DEMO_ADDONS = [
-    {
-        "name": "Priority Support",
-        "slug": "priority-support",
-        "description": "24/7 priority email and chat support with 1-hour response time.",
-        "price": 15.00,
-        "currency": "EUR",
-        "billing_period": "MONTHLY",
-        "is_active": True,
-        "sort_order": 1,
-        "config": {"response_time_hours": 1, "channels": ["email", "chat"]},
-    },
-    {
-        "name": "Premium Analytics",
-        "slug": "premium-analytics",
-        "description": "Advanced analytics dashboard with custom reports and data export.",
-        "price": 25.00,
-        "currency": "EUR",
-        "billing_period": "MONTHLY",
-        "is_active": True,
-        "sort_order": 2,
-        "config": {"custom_reports": True, "data_export": True, "retention_days": 365},
-    },
-]
-
+# Demo catalog definition. Plan/addon demo data is owned by the
+# subscription plugin (plugins/subscription/subscription/demo_seed.py);
+# core only seeds token bundles.
 DEMO_TOKEN_BUNDLES = [
     {
         "name": "Starter Pack (500)",
@@ -145,40 +83,10 @@ class DemoSeeder:
         return counts
 
     def _seed_catalog(self) -> dict:
-        """Insert demo plans, addons, and token bundles."""
-        from vbwd.models.tarif_plan import TarifPlan
-        from vbwd.models.addon import AddOn
+        """Insert demo token bundles (core); delegate plan/addon catalog to
+        feature plugins via the demo-data registry."""
         from vbwd.models.token_bundle import TokenBundle
-        from vbwd.models.enums import BillingPeriod
-
-        for p in DEMO_PLANS:
-            plan = TarifPlan(
-                name=p["name"],
-                slug=p["slug"],
-                description=p["description"],
-                price_float=p["price_float"],
-                price=p["price"],
-                currency=p["currency"],
-                billing_period=BillingPeriod(p["billing_period"]),
-                is_active=p["is_active"],
-                sort_order=p["sort_order"],
-                features=p["features"],
-            )
-            self.session.add(plan)
-
-        for a in DEMO_ADDONS:
-            addon = AddOn(
-                name=a["name"],
-                slug=a["slug"],
-                description=a["description"],
-                price=a["price"],
-                currency=a["currency"],
-                billing_period=a["billing_period"],
-                is_active=a["is_active"],
-                sort_order=a["sort_order"],
-                config=a["config"],
-            )
-            self.session.add(addon)
+        from vbwd.services.demo_data_registry import run_catalog_seeders
 
         for b in DEMO_TOKEN_BUNDLES:
             bundle = TokenBundle(
@@ -193,8 +101,11 @@ class DemoSeeder:
 
         self.session.flush()
 
+        # Subscription (plans/addons) catalog is owned by the subscription
+        # plugin; no-op when the plugin is disabled.
+        run_catalog_seeders(self.session)
+        self.session.flush()
+
         return {
-            "seeded_plans": len(DEMO_PLANS),
-            "seeded_addons": len(DEMO_ADDONS),
             "seeded_token_bundles": len(DEMO_TOKEN_BUNDLES),
         }

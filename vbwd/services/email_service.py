@@ -10,6 +10,7 @@ from datetime import datetime
 from jinja2 import (
     Environment,
     FileSystemLoader,
+    ChoiceLoader,
     TemplateNotFound as Jinja2TemplateNotFound,
 )
 
@@ -86,13 +87,29 @@ class EmailService:
         self._from_email = from_email
         self._from_name = from_name
 
+        # Core template dir + any plugin-contributed dirs (ChoiceLoader so
+        # feature plugins own their own email templates without core knowing
+        # them — e.g. the subscription plugin's activation/cancellation mails).
+        self._template_dirs: list = [template_dir]
         self._template_env: Optional[Environment] = None
+        self._build_template_env()
+
+    def _build_template_env(self) -> None:
         try:
             self._template_env = Environment(
-                loader=FileSystemLoader(template_dir), autoescape=True
+                loader=ChoiceLoader([FileSystemLoader(d) for d in self._template_dirs]),
+                autoescape=True,
             )
         except Exception as e:
-            logger.warning(f"Could not load template directory: {e}")
+            logger.warning(f"Could not load template directories: {e}")
+
+    def register_template_path(self, template_dir: str) -> None:
+        """Add a (plugin) template directory. Later registrations are searched
+        after the core dir. Plugins call this on enable so their own email
+        templates resolve through the generic render/send primitives."""
+        if template_dir not in self._template_dirs:
+            self._template_dirs.append(template_dir)
+            self._build_template_env()
 
     def _validate_config(
         self,
@@ -258,155 +275,6 @@ class EmailService:
             logger.error(f"Template error: {e}")
             return EmailResult(success=False, error=str(e))
 
-    def send_subscription_activated(
-        self, to_email: str, first_name: str, plan_name: str, expires_at: datetime
-    ) -> EmailResult:
-        """
-        Send subscription activation confirmation.
-
-        Args:
-            to_email: Recipient email address.
-            first_name: User's first name.
-            plan_name: Name of the subscription plan.
-            expires_at: Subscription expiration date.
-
-        Returns:
-            EmailResult with success status.
-        """
-        try:
-            context = {
-                "first_name": first_name,
-                "plan_name": plan_name,
-                "expires_at": expires_at.strftime("%Y-%m-%d"),
-                "year": datetime.now().year,
-            }
-            text_body, html_body = self.render_template(
-                "subscription_activated", context
-            )
-
-            return self.send_email(
-                to_email=to_email,
-                subject=f"Your {plan_name} subscription is now active!",
-                body_text=text_body,
-                body_html=html_body,
-            )
-        except TemplateNotFoundError as e:
-            logger.error(f"Template error: {e}")
-            return EmailResult(success=False, error=str(e))
-
-    def send_subscription_cancelled(
-        self, to_email: str, first_name: str, plan_name: str
-    ) -> EmailResult:
-        """
-        Send subscription cancellation confirmation.
-
-        Args:
-            to_email: Recipient email address.
-            first_name: User's first name.
-            plan_name: Name of the subscription plan.
-
-        Returns:
-            EmailResult with success status.
-        """
-        try:
-            context = {
-                "first_name": first_name,
-                "plan_name": plan_name,
-                "year": datetime.now().year,
-            }
-            text_body, html_body = self.render_template(
-                "subscription_cancelled", context
-            )
-
-            return self.send_email(
-                to_email=to_email,
-                subject=f"Your {plan_name} subscription has been cancelled",
-                body_text=text_body,
-                body_html=html_body,
-            )
-        except TemplateNotFoundError as e:
-            logger.error(f"Template error: {e}")
-            return EmailResult(success=False, error=str(e))
-
-    def send_payment_receipt(
-        self,
-        to_email: str,
-        first_name: str,
-        invoice_number: str,
-        amount: str,
-        pdf_bytes: Optional[bytes] = None,
-    ) -> EmailResult:
-        """
-        Send payment receipt with optional PDF.
-
-        Args:
-            to_email: Recipient email address.
-            first_name: User's first name.
-            invoice_number: Invoice number.
-            amount: Payment amount with currency.
-            pdf_bytes: Optional PDF receipt bytes.
-
-        Returns:
-            EmailResult with success status.
-        """
-        try:
-            context = {
-                "first_name": first_name,
-                "invoice_number": invoice_number,
-                "amount": amount,
-                "year": datetime.now().year,
-            }
-            text_body, html_body = self.render_template("payment_receipt", context)
-
-            attachments = None
-            if pdf_bytes:
-                attachments = [(f"{invoice_number}.pdf", pdf_bytes, "application/pdf")]
-
-            return self.send_email(
-                to_email=to_email,
-                subject=f"Payment Receipt - {invoice_number}",
-                body_text=text_body,
-                body_html=html_body,
-                attachments=attachments,
-            )
-        except TemplateNotFoundError as e:
-            logger.error(f"Template error: {e}")
-            return EmailResult(success=False, error=str(e))
-
-    def send_payment_failed(
-        self, to_email: str, first_name: str, plan_name: str, retry_url: str
-    ) -> EmailResult:
-        """
-        Send payment failure notification.
-
-        Args:
-            to_email: Recipient email address.
-            first_name: User's first name.
-            plan_name: Name of the subscription plan.
-            retry_url: URL to retry payment.
-
-        Returns:
-            EmailResult with success status.
-        """
-        try:
-            context = {
-                "first_name": first_name,
-                "plan_name": plan_name,
-                "retry_url": retry_url,
-                "year": datetime.now().year,
-            }
-            text_body, html_body = self.render_template("payment_failed", context)
-
-            return self.send_email(
-                to_email=to_email,
-                subject="Payment Failed - Action Required",
-                body_text=text_body,
-                body_html=html_body,
-            )
-        except TemplateNotFoundError as e:
-            logger.error(f"Template error: {e}")
-            return EmailResult(success=False, error=str(e))
-
     def send_invoice(
         self,
         to_email: str,
@@ -455,40 +323,6 @@ class EmailService:
             logger.error(f"Template error: {e}")
             return EmailResult(success=False, error=str(e))
 
-    def send_renewal_reminder(
-        self, to_email: str, first_name: str, plan_name: str, days_until_renewal: int
-    ) -> EmailResult:
-        """
-        Send renewal reminder.
-
-        Args:
-            to_email: Recipient email address.
-            first_name: User's first name.
-            plan_name: Name of the subscription plan.
-            days_until_renewal: Days until subscription renews.
-
-        Returns:
-            EmailResult with success status.
-        """
-        try:
-            context = {
-                "first_name": first_name,
-                "plan_name": plan_name,
-                "days_until_renewal": days_until_renewal,
-                "year": datetime.now().year,
-            }
-            text_body, html_body = self.render_template("renewal_reminder", context)
-
-            return self.send_email(
-                to_email=to_email,
-                subject=f"Your {plan_name} subscription renews in {days_until_renewal} days",
-                body_text=text_body,
-                body_html=html_body,
-            )
-        except TemplateNotFoundError as e:
-            logger.error(f"Template error: {e}")
-            return EmailResult(success=False, error=str(e))
-
     def send_template(
         self,
         to: str,
@@ -515,8 +349,6 @@ class EmailService:
             "password_reset": "Reset Your Password",
             "password_changed": "Your Password Has Been Changed",
             "welcome": "Welcome to VBWD!",
-            "subscription_activated": "Subscription Activated",
-            "subscription_cancelled": "Subscription Cancelled",
         }
 
         try:

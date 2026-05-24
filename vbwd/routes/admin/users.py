@@ -1,6 +1,5 @@
 """Admin user management routes."""
 import bcrypt
-from uuid import UUID
 from flask import Blueprint, jsonify, request, current_app
 from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.user_repository import UserRepository
@@ -448,22 +447,25 @@ def get_deletion_info(user_id):
 
     # Check what will be deleted
     from vbwd.repositories.invoice_repository import InvoiceRepository
-    from vbwd.repositories.subscription_repository import SubscriptionRepository
+    from vbwd.services.subscription_read_model import (
+        resolve_subscription_read_model,
+    )
 
     invoice_repo = InvoiceRepository(db.session)
-    subscription_repo = SubscriptionRepository(db.session)
 
     invoices = invoice_repo.find_by_user(user_id)
-    subscriptions = subscription_repo.find_by_user(user_id)
+    subscription_count = resolve_subscription_read_model().count_user_subscriptions(
+        user_id
+    )
 
     return (
         jsonify(
             {
                 "user_id": str(user.id),
                 "email": user.email,
-                "has_cascade_dependencies": len(invoices) > 0 or len(subscriptions) > 0,
+                "has_cascade_dependencies": len(invoices) > 0 or subscription_count > 0,
                 "invoice_count": len(invoices),
-                "subscription_count": len(subscriptions),
+                "subscription_count": subscription_count,
             }
         ),
         200,
@@ -503,28 +505,32 @@ def delete_user(user_id):
 
     # Check if user has invoices or subscriptions
     from vbwd.repositories.invoice_repository import InvoiceRepository
-    from vbwd.repositories.subscription_repository import SubscriptionRepository
+    from vbwd.services.subscription_read_model import (
+        resolve_subscription_read_model,
+    )
 
     invoice_repo = InvoiceRepository(db.session)
-    subscription_repo = SubscriptionRepository(db.session)
 
     invoices = invoice_repo.find_by_user(user_id)
-    subscriptions = subscription_repo.find_by_user(user_id)
+    invoice_count = len(invoices)
+    subscription_count = resolve_subscription_read_model().count_user_subscriptions(
+        user_id
+    )
 
-    has_dependencies = len(invoices) > 0 or len(subscriptions) > 0
+    has_dependencies = invoice_count > 0 or subscription_count > 0
 
     if has_dependencies and not force_delete:
         error_msg = (
-            f"Cannot delete user with {len(invoices)} invoice(s) and "
-            f"{len(subscriptions)} subscription(s). User has transaction history."
+            f"Cannot delete user with {invoice_count} invoice(s) and "
+            f"{subscription_count} subscription(s). User has transaction history."
         )
         return (
             jsonify(
                 {
                     "error": error_msg,
                     "has_dependencies": True,
-                    "invoice_count": len(invoices),
-                    "subscription_count": len(subscriptions),
+                    "invoice_count": invoice_count,
+                    "subscription_count": subscription_count,
                 }
             ),
             409,
@@ -557,49 +563,11 @@ def get_user_addons(user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    container = current_app.container
-    addon_sub_repo = container.addon_subscription_repository()
-    invoice_repo = container.invoice_repository()
-
-    addon_subs = addon_sub_repo.find_by_user(
-        UUID(user_id) if isinstance(user_id, str) else user_id
+    from vbwd.services.subscription_read_model import (
+        resolve_subscription_read_model,
     )
 
-    result = []
-    for addon_sub in addon_subs:
-        data = {
-            "id": str(addon_sub.id),
-            "addon_name": addon_sub.addon.name if addon_sub.addon else "Unknown",
-            "status": addon_sub.status.value,
-            "starts_at": addon_sub.starts_at.isoformat()
-            if addon_sub.starts_at
-            else None,
-            "expires_at": addon_sub.expires_at.isoformat()
-            if addon_sub.expires_at
-            else None,
-            "created_at": addon_sub.created_at.isoformat()
-            if addon_sub.created_at
-            else None,
-            "invoice_status": None,
-            "first_invoice": None,
-            "last_invoice": None,
-        }
-
-        if addon_sub.invoice_id:
-            invoice = invoice_repo.find_by_id(addon_sub.invoice_id)
-            if invoice:
-                invoice_data = {
-                    "id": str(invoice.id),
-                    "invoice_number": invoice.invoice_number,
-                    "created_at": invoice.invoiced_at.isoformat()
-                    if invoice.invoiced_at
-                    else None,
-                }
-                data["invoice_status"] = invoice.status.value
-                data["first_invoice"] = invoice_data
-                data["last_invoice"] = invoice_data
-
-        result.append(data)
+    result = resolve_subscription_read_model().user_addon_subscriptions(user_id)
 
     return jsonify({"addon_subscriptions": result}), 200
 

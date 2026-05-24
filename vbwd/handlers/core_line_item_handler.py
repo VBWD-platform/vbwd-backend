@@ -42,6 +42,21 @@ class CoreLineItemHandler(ILineItemHandler):
     def restore_line_item(self, line_item, context: LineItemContext) -> LineItemResult:
         return self._restore_token_bundle(line_item, context)
 
+    def resolve_catalog_item_id(self, line_item):
+        """TOKEN_BUNDLE → its bundle id. None for any other type."""
+        if line_item.item_type != LineItemType.TOKEN_BUNDLE:
+            return None
+        from vbwd.models.token_bundle_purchase import TokenBundlePurchase
+
+        purchase = self._db_session().get(TokenBundlePurchase, line_item.item_id)
+        return str(purchase.bundle_id) if purchase else None
+
+    @staticmethod
+    def _db_session():
+        from vbwd.extensions import db
+
+        return db.session
+
     # ── Activation ────────────────────────────────────────────────────────
 
     def _activate_token_bundle(

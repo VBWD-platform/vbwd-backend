@@ -157,9 +157,11 @@ def require_feature(feature_name: str) -> Callable:
             verify_jwt_in_request()
             user_id = get_jwt_identity()
 
-            guard = getattr(current_app, "container").feature_guard()
+            from vbwd.services.entitlement import resolve_entitlement_provider
 
-            if not guard.can_access_feature(user_id, feature_name):
+            guard = resolve_entitlement_provider()
+
+            if not guard.is_feature_allowed(user_id, feature_name):
                 return (
                     jsonify(
                         {
@@ -202,7 +204,9 @@ def check_usage_limit(feature_name: str, amount: int = 1) -> Callable:
             verify_jwt_in_request()
             user_id = get_jwt_identity()
 
-            guard = getattr(current_app, "container").feature_guard()
+            from vbwd.services.entitlement import resolve_entitlement_provider
+
+            guard = resolve_entitlement_provider()
             allowed, remaining = guard.check_usage_limit(user_id, feature_name, amount)
 
             if not allowed:

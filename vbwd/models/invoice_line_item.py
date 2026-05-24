@@ -43,24 +43,18 @@ class InvoiceLineItem(BaseModel):
     extra_data = db.Column("metadata", db.JSON, nullable=True, default=dict)
 
     def _resolve_catalog_item_id(self) -> str | None:
-        """Resolve the catalog item ID from the purchase record."""
-        from vbwd.models.subscription import Subscription
-        from vbwd.models.token_bundle_purchase import TokenBundlePurchase
-        from vbwd.models.addon_subscription import AddOnSubscription
+        """Resolve the catalog item id via the line-item handler registry.
+
+        Core no longer knows subscription/token specifics — each owner
+        (token economy = core handler, subscription = plugin handler)
+        resolves its own types.
+        """
+        from vbwd.events.line_item_registry import line_item_registry
 
         try:
-            if self.item_type == LineItemType.SUBSCRIPTION:
-                sub = db.session.get(Subscription, self.item_id)
-                return str(sub.tarif_plan_id) if sub else None
-            elif self.item_type == LineItemType.TOKEN_BUNDLE:
-                purchase = db.session.get(TokenBundlePurchase, self.item_id)
-                return str(purchase.bundle_id) if purchase else None
-            elif self.item_type == LineItemType.ADD_ON:
-                addon_sub = db.session.get(AddOnSubscription, self.item_id)
-                return str(addon_sub.addon_id) if addon_sub else None
+            return line_item_registry.resolve_catalog_item_id(self)
         except Exception:
-            pass
-        return None
+            return None
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""

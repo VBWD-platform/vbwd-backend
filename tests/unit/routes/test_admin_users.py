@@ -463,7 +463,7 @@ class TestAdminDeleteUser:
         mock_auth.verify_token.return_value = str(admin_id)
         mock_auth_class.return_value = mock_auth
 
-    @patch("vbwd.repositories.subscription_repository.SubscriptionRepository")
+    @patch("vbwd.services.subscription_read_model.resolve_subscription_read_model")
     @patch("vbwd.repositories.invoice_repository.InvoiceRepository")
     @patch("vbwd.routes.admin.users.UserRepository")
     @patch("vbwd.middleware.auth.AuthService")
@@ -474,7 +474,7 @@ class TestAdminDeleteUser:
         mock_auth_class,
         mock_user_repo_class,
         mock_invoice_repo_class,
-        mock_sub_repo_class,
+        mock_resolve_read_model,
         client,
     ):
         """DELETE with no body / no JSON content-type must NOT 415."""
@@ -488,7 +488,7 @@ class TestAdminDeleteUser:
         mock_user_repo_class.return_value = mock_user_repo
 
         mock_invoice_repo_class.return_value.find_by_user.return_value = []
-        mock_sub_repo_class.return_value.find_by_user.return_value = []
+        mock_resolve_read_model.return_value.count_user_subscriptions.return_value = 0
 
         # No json=, no Content-Type — exactly how the browser sent it.
         response = client.delete(
@@ -499,7 +499,7 @@ class TestAdminDeleteUser:
         assert response.status_code == 200
         mock_user_repo.delete.assert_called_once_with(str(user_id))
 
-    @patch("vbwd.repositories.subscription_repository.SubscriptionRepository")
+    @patch("vbwd.services.subscription_read_model.resolve_subscription_read_model")
     @patch("vbwd.repositories.invoice_repository.InvoiceRepository")
     @patch("vbwd.routes.admin.users.UserRepository")
     @patch("vbwd.middleware.auth.AuthService")
@@ -510,7 +510,7 @@ class TestAdminDeleteUser:
         mock_auth_class,
         mock_user_repo_class,
         mock_invoice_repo_class,
-        mock_sub_repo_class,
+        mock_resolve_read_model,
         client,
     ):
         """User with transaction history → 409 unless force given."""
@@ -522,7 +522,7 @@ class TestAdminDeleteUser:
         mock_user_repo_class.return_value = mock_user_repo
 
         mock_invoice_repo_class.return_value.find_by_user.return_value = [MagicMock()]
-        mock_sub_repo_class.return_value.find_by_user.return_value = []
+        mock_resolve_read_model.return_value.count_user_subscriptions.return_value = 0
 
         response = client.delete(
             f"/api/v1/admin/users/{user_id}",
@@ -533,7 +533,7 @@ class TestAdminDeleteUser:
         assert response.get_json()["has_dependencies"] is True
         mock_user_repo.delete.assert_not_called()
 
-    @patch("vbwd.repositories.subscription_repository.SubscriptionRepository")
+    @patch("vbwd.services.subscription_read_model.resolve_subscription_read_model")
     @patch("vbwd.repositories.invoice_repository.InvoiceRepository")
     @patch("vbwd.routes.admin.users.UserRepository")
     @patch("vbwd.middleware.auth.AuthService")
@@ -544,7 +544,7 @@ class TestAdminDeleteUser:
         mock_auth_class,
         mock_user_repo_class,
         mock_invoice_repo_class,
-        mock_sub_repo_class,
+        mock_resolve_read_model,
         client,
     ):
         """force=true in the JSON body cascades past dependencies."""
@@ -556,7 +556,7 @@ class TestAdminDeleteUser:
         mock_user_repo_class.return_value = mock_user_repo
 
         mock_invoice_repo_class.return_value.find_by_user.return_value = [MagicMock()]
-        mock_sub_repo_class.return_value.find_by_user.return_value = [MagicMock()]
+        mock_resolve_read_model.return_value.count_user_subscriptions.return_value = 1
 
         response = client.delete(
             f"/api/v1/admin/users/{user_id}",
