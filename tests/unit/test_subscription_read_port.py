@@ -87,6 +87,9 @@ def test_registered_read_model_takes_precedence():
         def count_user_subscriptions(self, user_id):
             return 3
 
+        def active_subscription_count(self):
+            return 7
+
         def user_addon_subscriptions(self, user_id):
             return [{"id": "a"}]
 
@@ -94,4 +97,5 @@ def test_registered_read_model_takes_precedence():
     rm = resolve_subscription_read_model()
     assert rm.enrich_invoice(object()) == {"plan_name": "Pro"}
     assert rm.count_user_subscriptions("u") == 3
+    assert rm.active_subscription_count() == 7
     assert rm.user_addon_subscriptions("u") == [{"id": "a"}]

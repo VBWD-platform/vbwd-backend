@@ -4,6 +4,8 @@ from uuid import UUID
 from vbwd.utils.datetime_utils import utcnow
 from vbwd.repositories.base import BaseRepository
 from vbwd.models import UserInvoice, InvoiceStatus
+from vbwd.models.invoice_line_item import InvoiceLineItem
+from vbwd.models.enums import LineItemType
 
 
 class InvoiceRepository(BaseRepository[UserInvoice]):
@@ -32,11 +34,20 @@ class InvoiceRepository(BaseRepository[UserInvoice]):
     def find_by_subscription(
         self, subscription_id: Union[UUID, str]
     ) -> List[UserInvoice]:
-        """Find all invoices for a subscription."""
+        """Find all invoices for a subscription.
+
+        The link lives in the invoice's SUBSCRIPTION line item
+        (item_id == subscription id); core carries no subscription FK column.
+        """
         return (
             self._session.query(UserInvoice)
-            .filter(UserInvoice.subscription_id == subscription_id)
+            .join(InvoiceLineItem, InvoiceLineItem.invoice_id == UserInvoice.id)
+            .filter(
+                InvoiceLineItem.item_type == LineItemType.SUBSCRIPTION,
+                InvoiceLineItem.item_id == subscription_id,
+            )
             .order_by(UserInvoice.created_at.desc())
+            .distinct()
             .all()
         )
 

@@ -26,6 +26,10 @@ class ISubscriptionReadModel(ABC):
     def user_addon_subscriptions(self, user_id: UUID) -> List[Dict[str, Any]]:
         """Serialised add-on subscriptions for the admin user view."""
 
+    @abstractmethod
+    def active_subscription_count(self) -> int:
+        """Total active subscriptions (admin analytics metric). 0 if none."""
+
 
 class _NullSubscriptionReadModel(ISubscriptionReadModel):
     """Used when the subscription plugin is disabled — empty enrichment."""
@@ -38,6 +42,9 @@ class _NullSubscriptionReadModel(ISubscriptionReadModel):
 
     def user_addon_subscriptions(self, user_id: UUID) -> List[Dict[str, Any]]:
         return []
+
+    def active_subscription_count(self) -> int:
+        return 0
 
 
 _read_model: Optional[ISubscriptionReadModel] = None

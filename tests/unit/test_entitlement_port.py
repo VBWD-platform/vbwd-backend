@@ -53,11 +53,29 @@ def test_registered_provider_takes_precedence():
         def check_usage_limit(self, user_id, feature_name, amount=1):
             return (True, 7)
 
+        def get_feature_value(self, user_id, feature_name, default=None):
+            return 42 if feature_name == "lim" else default
+
+        def current_plan_name(self, user_id):
+            return "Pro"
+
     register_entitlement_provider(_Allow())
     provider = resolve_entitlement_provider()
     assert provider.is_feature_allowed("u", "ok") is True
     assert provider.is_feature_allowed("u", "no") is False
     assert provider.check_usage_limit("u", "x") == (True, 7)
+    assert provider.get_feature_value("u", "lim", 3) == 42
+    assert provider.get_feature_value("u", "other", 3) == 3
+    assert provider.current_plan_name("u") == "Pro"
+
+
+def test_default_provider_feature_value_and_plan_name():
+    """D3 default: no plan → caller's default + no plan name."""
+    from vbwd.services.entitlement import _DefaultEntitlementProvider
+
+    provider = _DefaultEntitlementProvider()
+    assert provider.get_feature_value("u", "daily_taro_limit", 3) == 3
+    assert provider.current_plan_name("u") is None
 
 
 def test_permission_decorators_use_the_port_not_a_container_factory():

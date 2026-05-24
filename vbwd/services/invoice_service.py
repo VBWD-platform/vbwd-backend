@@ -47,8 +47,6 @@ class InvoiceService:
     def create_invoice(
         self,
         user_id: str,
-        subscription_id: str,
-        tarif_plan_id: str,
         amount: Decimal,
         currency: str = "EUR",
         due_days: int = 30,
@@ -56,10 +54,11 @@ class InvoiceService:
         """
         Create a new invoice.
 
+        Core invoices carry no subscription/plan linkage; callers that need one
+        attach a SUBSCRIPTION line item (item_id == subscription id).
+
         Args:
             user_id: ID of the user.
-            subscription_id: ID of the subscription.
-            tarif_plan_id: ID of the tariff plan.
             amount: Invoice amount.
             currency: Currency code (default EUR).
             due_days: Days until invoice expires (default 30).
@@ -70,12 +69,6 @@ class InvoiceService:
         try:
             invoice = UserInvoice(
                 user_id=UUID(user_id) if isinstance(user_id, str) else user_id,
-                subscription_id=UUID(subscription_id)
-                if isinstance(subscription_id, str)
-                else subscription_id,
-                tarif_plan_id=UUID(tarif_plan_id)
-                if isinstance(tarif_plan_id, str)
-                else tarif_plan_id,
                 invoice_number=UserInvoice.generate_invoice_number(),
                 amount=amount,
                 currency=currency,

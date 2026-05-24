@@ -18,13 +18,17 @@ from vbwd.models.user import User
 from vbwd.models.user_details import UserDetails
 from vbwd.models.currency import Currency
 from vbwd.models.price import Price
-from vbwd.models.tarif_plan import TarifPlan
-from vbwd.models.tarif_plan_category import TarifPlanCategory
-from vbwd.models.subscription import Subscription
+from plugins.subscription.subscription.models.tarif_plan import TarifPlan
+from plugins.subscription.subscription.models.tarif_plan_category import (
+    TarifPlanCategory,
+)
+from plugins.subscription.subscription.models.subscription import Subscription
 from vbwd.models.invoice import UserInvoice
 from vbwd.models.invoice_line_item import InvoiceLineItem
-from vbwd.models.addon import AddOn
-from vbwd.models.addon_subscription import AddOnSubscription
+from plugins.subscription.subscription.models.addon import AddOn
+from plugins.subscription.subscription.models.addon_subscription import (
+    AddOnSubscription,
+)
 from vbwd.models.token_bundle import TokenBundle
 from vbwd.models.payment_method import PaymentMethod
 from vbwd.models.invoice_line_item import InvoiceLineItem, LineItemType

@@ -22,16 +22,6 @@ class UserInvoice(BaseModel):
         nullable=False,
         index=True,
     )
-    tarif_plan_id = db.Column(
-        UUID(as_uuid=True),
-        db.ForeignKey("vbwd_tarif_plan.id"),
-        nullable=True,
-    )
-    subscription_id = db.Column(
-        UUID(as_uuid=True),
-        db.ForeignKey("vbwd_subscription.id"),
-        nullable=True,
-    )
     invoice_number = db.Column(
         db.String(50),
         unique=True,
@@ -141,10 +131,6 @@ class UserInvoice(BaseModel):
         return {
             "id": str(self.id),
             "user_id": str(self.user_id),
-            "tarif_plan_id": str(self.tarif_plan_id) if self.tarif_plan_id else None,
-            "subscription_id": str(self.subscription_id)
-            if self.subscription_id
-            else None,
             "invoice_number": self.invoice_number,
             "amount": str(self.amount),
             "subtotal": str(self.subtotal) if self.subtotal else str(self.amount),

@@ -7,7 +7,7 @@ registered (subscription plugin disabled), the default honours decision D3:
 **allow** unless the core config flag `ENTITLEMENT_DEFAULT_ALLOW` is False.
 """
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from uuid import UUID
 
 from flask import current_app
@@ -25,6 +25,20 @@ class IEntitlementProvider(ABC):
         self, user_id: UUID, feature_name: str, amount: int = 1
     ) -> Tuple[bool, Optional[int]]:
         """(within_limit, remaining). remaining is None for unlimited."""
+
+    @abstractmethod
+    def get_feature_value(
+        self, user_id: UUID, feature_name: str, default: Any = None
+    ) -> Any:
+        """Value of a plan feature for the user's active plan, or ``default``.
+
+        Lets feature plugins (e.g. taro) read plan-driven limits without
+        importing the subscription model. ``default`` is returned when no
+        provider / active plan supplies the feature (D3-friendly)."""
+
+    @abstractmethod
+    def current_plan_name(self, user_id: UUID) -> Optional[str]:
+        """Display name of the user's active plan, or None (no plan/plugin)."""
 
 
 class _DefaultEntitlementProvider(IEntitlementProvider):
@@ -49,6 +63,16 @@ class _DefaultEntitlementProvider(IEntitlementProvider):
         self, user_id: UUID, feature_name: str, amount: int = 1
     ) -> Tuple[bool, Optional[int]]:
         return (self._default_allows(), None if self._default_allows() else 0)
+
+    def get_feature_value(
+        self, user_id: UUID, feature_name: str, default: Any = None
+    ) -> Any:
+        # No plan concept without the subscription plugin — the caller's
+        # default (e.g. taro's free-tier limit) applies.
+        return default
+
+    def current_plan_name(self, user_id: UUID) -> Optional[str]:
+        return None
 
 
 _provider: Optional[IEntitlementProvider] = None

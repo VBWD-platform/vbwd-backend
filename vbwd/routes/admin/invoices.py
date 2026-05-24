@@ -142,6 +142,7 @@ def duplicate_invoice(invoice_id):
         404: Source invoice not found
     """
     from vbwd.models.invoice import UserInvoice
+    from vbwd.models.invoice_line_item import InvoiceLineItem
 
     invoice_repo = InvoiceRepository(db.session)
     source_invoice = invoice_repo.find_by_id(invoice_id)
@@ -149,17 +150,29 @@ def duplicate_invoice(invoice_id):
     if not source_invoice:
         return jsonify({"error": "Invoice not found"}), 404
 
-    # Create new invoice with same data but new number and date
+    # Create new invoice with same data but new number and date. Line items are
+    # copied so the subscription/plan linkage (carried by the SUBSCRIPTION line
+    # item, not a column) is preserved on the duplicate.
     new_invoice = UserInvoice(
         user_id=source_invoice.user_id,
-        tarif_plan_id=source_invoice.tarif_plan_id,
-        subscription_id=source_invoice.subscription_id,
         invoice_number=UserInvoice.generate_invoice_number(),
         amount=source_invoice.amount,
         currency=source_invoice.currency,
         invoiced_at=utcnow(),
         expires_at=utcnow() + timedelta(days=30),
     )
+    for source_item in source_invoice.line_items:
+        new_invoice.line_items.append(
+            InvoiceLineItem(
+                item_type=source_item.item_type,
+                item_id=source_item.item_id,
+                description=source_item.description,
+                quantity=source_item.quantity,
+                unit_price=source_item.unit_price,
+                total_price=source_item.total_price,
+                extra_data=source_item.extra_data,
+            )
+        )
 
     db.session.add(new_invoice)
     db.session.commit()

@@ -14,6 +14,18 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class RecurringBillingSpec:
+    """How a payment provider should set up a recurring charge for a line item.
+
+    Provider-agnostic: ``billing_period`` is a domain term (e.g. "MONTHLY")
+    each provider maps to its own interval vocabulary.
+    """
+
+    name: str
+    billing_period: str
+
+
+@dataclass
 class LineItemContext:
     """Context passed to line item handlers during processing."""
 
@@ -89,6 +101,16 @@ class ILineItemHandler(ABC):
         """
         return False
 
+    def recurring_billing_spec(self, line_item: Any) -> Optional[RecurringBillingSpec]:
+        """Billing spec for a recurring line item this handler owns, else None.
+
+        Lets a payment provider set up the recurring charge (display name +
+        billing period) without knowing the line item's domain. Non-abstract
+        (ISP): one-off concerns inherit None; a handler that owns the item but
+        treats it as one-off also returns None (so providers charge it once).
+        """
+        return None
+
 
 class LineItemHandlerRegistry:
     """Registry of line item handlers. First matching handler wins."""
@@ -163,6 +185,27 @@ class LineItemHandlerRegistry:
                 )
                 continue
         return False
+
+    def recurring_billing_spec(self, line_item: Any) -> Optional[RecurringBillingSpec]:
+        """First handler that owns this recurring line item supplies its spec.
+
+        Returns None for one-off line items (token bundles, shop items, …) so
+        payment providers charge them once instead of as a subscription.
+        """
+        for handler in self._handlers:
+            try:
+                spec = handler.recurring_billing_spec(line_item)
+            except Exception as exception:
+                logger.warning(
+                    "[line-item-registry] %s.recurring_billing_spec raised %s: %s",
+                    type(handler).__name__,
+                    type(exception).__name__,
+                    exception,
+                )
+                continue
+            if spec is not None:
+                return spec
+        return None
 
     def _dispatch(
         self, line_item: Any, context: LineItemContext, method_name: str

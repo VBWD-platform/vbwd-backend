@@ -45,12 +45,9 @@ class User(BaseModel):
         lazy="joined",
         cascade="all, delete-orphan",
     )
-    subscriptions = db.relationship(
-        "Subscription",
-        backref="user",
-        lazy="dynamic",
-        cascade="all, delete-orphan",
-    )
+    # Subscriptions are plugin-owned (Sprint 11 / S5); core User holds no ORM
+    # relationship to them. User deletion still cascades to vbwd_subscription
+    # via that table's ondelete="CASCADE" FK at the database level.
     invoices = db.relationship(
         "UserInvoice",
         backref="user",

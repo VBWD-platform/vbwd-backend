@@ -1,17 +1,33 @@
-"""Sprint 09 — backend agnosticism oracle (the extraction's exit gate).
+"""Sprint 09/11 — backend agnosticism oracle (the extraction's exit gate).
 
-Aggregates the per-slice guards (S1–S8) into one authoritative contract:
-core owns NO subscription routes / repositories / services / DI /
-feature-gating / line-item coupling / seeder imports. Per decision (A) the
-subscription model *classes* remain core-defined (shared domain — 6 plugins
-depend on them); per (A1) the plugin owns its Alembic migration branch.
+Aggregates the per-slice guards into one authoritative contract: core owns NO
+subscription routes / repositories / services / DI / feature-gating / line-item
+coupling / seeder imports, **and no subscription model classes** (Sprint 11
+supersedes decision A — the 5 model classes now live in the subscription
+plugin, and the core invoice carries no subscription/plan FK). Per (A1) the
+plugin owns its Alembic migration branch.
 
 If any assertion here goes red, the subscription extraction has regressed.
 """
 import importlib.util
 import inspect
+import os
 
 import pytest
+
+
+# The 5 model classes that left core for the subscription plugin (Sprint 11).
+MOVED_MODEL_MODULES = [
+    "vbwd.models.subscription",
+    "vbwd.models.tarif_plan",
+    "vbwd.models.tarif_plan_category",
+    "vbwd.models.addon",
+    "vbwd.models.addon_subscription",
+]
+
+# Peer plugins that must reach subscription data via ports/registries, never by
+# importing the (now plugin-owned) model classes from the old core path.
+PEER_PLUGIN_DIRS = ["stripe", "paypal", "yookassa", "taro", "analytics", "ghrm"]
 
 
 # ── Modules core must NOT contain (deleted in S1/S4) ─────────────────────────
@@ -119,6 +135,16 @@ def test_core_seeders_do_not_import_subscription_models():
         assert "from vbwd.models.addon import" not in source
 
 
+def test_core_deletion_info_is_generic():
+    """S6 — core deletion-info reports a generic dependencies[] via the
+    registry; it names no subscription domain."""
+    from vbwd.routes.admin import users as users_routes
+
+    source = inspect.getsource(users_routes.get_deletion_info)
+    assert "resolve_deletion_dependencies" in source
+    assert "subscription_count" not in source
+
+
 def test_core_has_generic_subscription_ports():
     """Core exposes the generic ports the plugin implements (S3/S4)."""
     from vbwd.services.entitlement import IEntitlementProvider  # noqa: F401
@@ -167,9 +193,63 @@ def test_core_has_no_subscription_email_templates_or_methods():
     assert hasattr(EmailService, "register_template_path")
 
 
-def test_subscription_models_stay_in_core_per_decision_A():
-    """Decision A — the 5 model classes remain core-defined (shared domain;
-    6 plugins depend on them). This is an intentional deviation from a full
-    leaf extraction, recorded in reports/02 R3."""
-    from vbwd.models.subscription import Subscription  # noqa: F401
-    from vbwd.models.tarif_plan import TarifPlan  # noqa: F401
+@pytest.mark.parametrize("module_path", MOVED_MODEL_MODULES)
+def test_subscription_model_modules_left_core(module_path):
+    """Sprint 11 (supersedes A) — the 5 model classes now live in the
+    subscription plugin; their old core modules are gone."""
+    assert (
+        importlib.util.find_spec(module_path) is None
+    ), f"{module_path} must not exist in core (owned by the subscription plugin)"
+
+
+def test_core_models_init_exports_none_of_the_five():
+    import vbwd.models as models
+
+    for name in (
+        "Subscription",
+        "TarifPlan",
+        "TarifPlanCategory",
+        "AddOn",
+        "AddOnSubscription",
+        "addon_tarif_plans",
+        "tarif_plan_category_plans",
+    ):
+        assert not hasattr(models, name), f"core vbwd.models still exports {name}"
+
+
+def test_core_invoice_has_no_subscription_or_plan_fk():
+    """S4 — the subscription↔invoice link is the SUBSCRIPTION line item, not a
+    core column."""
+    from vbwd.models.invoice import UserInvoice
+
+    columns = {column.name for column in UserInvoice.__table__.columns}
+    assert "subscription_id" not in columns
+    assert "tarif_plan_id" not in columns
+
+
+def test_peer_plugins_do_not_import_core_subscription_models():
+    """The payment + read-model peers reach subscription data via ports, never
+    by importing the moved model classes from the old `vbwd.models.*` path."""
+    plugins_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    plugins_root = os.path.join(plugins_root, "plugins")
+    forbidden = tuple(MOVED_MODEL_MODULES)
+    offenders = []
+    for plugin in PEER_PLUGIN_DIRS:
+        plugin_dir = os.path.join(plugins_root, plugin)
+        for dirpath, _dirs, files in os.walk(plugin_dir):
+            if "__pycache__" in dirpath:
+                continue
+            for filename in files:
+                if not filename.endswith(".py"):
+                    continue
+                path = os.path.join(dirpath, filename)
+                with open(path, encoding="utf-8") as handle:
+                    source = handle.read()
+                for module_path in forbidden:
+                    if module_path in source:
+                        offenders.append(f"{plugin}: {filename} -> {module_path}")
+    assert not offenders, "peer plugins import core subscription models:\n" + "\n".join(
+        offenders
+    )

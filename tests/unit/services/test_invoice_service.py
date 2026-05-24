@@ -24,8 +24,6 @@ class TestInvoiceServiceCreation:
         service = InvoiceService(invoice_repository=mock_repo)
         result = service.create_invoice(
             user_id=str(uuid4()),
-            subscription_id=str(uuid4()),
-            tarif_plan_id=str(uuid4()),
             amount=Decimal("99.99"),
             currency="USD",
         )
@@ -53,39 +51,11 @@ class TestInvoiceServiceCreation:
         service = InvoiceService(invoice_repository=mock_repo)
         service.create_invoice(
             user_id=str(uuid4()),
-            subscription_id=str(uuid4()),
-            tarif_plan_id=str(uuid4()),
             amount=Decimal("50.00"),
         )
 
         assert saved_invoice is not None
         assert saved_invoice.invoice_number.startswith("INV-")
-
-    def test_create_invoice_links_to_subscription(self):
-        """Create invoice links to subscription."""
-        from vbwd.services.invoice_service import InvoiceService
-
-        mock_repo = MagicMock()
-        saved_invoice = None
-
-        def capture_save(invoice):
-            nonlocal saved_invoice
-            saved_invoice = invoice
-            invoice.id = uuid4()
-            return invoice
-
-        mock_repo.save.side_effect = capture_save
-
-        subscription_id = str(uuid4())
-        service = InvoiceService(invoice_repository=mock_repo)
-        service.create_invoice(
-            user_id=str(uuid4()),
-            subscription_id=subscription_id,
-            tarif_plan_id=str(uuid4()),
-            amount=Decimal("50.00"),
-        )
-
-        assert str(saved_invoice.subscription_id) == subscription_id
 
     def test_create_invoice_sets_due_date(self):
         """Create invoice sets default due date (30 days)."""
@@ -105,8 +75,6 @@ class TestInvoiceServiceCreation:
         service = InvoiceService(invoice_repository=mock_repo)
         service.create_invoice(
             user_id=str(uuid4()),
-            subscription_id=str(uuid4()),
-            tarif_plan_id=str(uuid4()),
             amount=Decimal("50.00"),
             due_days=30,
         )

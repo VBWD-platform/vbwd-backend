@@ -445,27 +445,31 @@ def get_deletion_info(user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    # Check what will be deleted
+    # Check what will be deleted. Core contributes its own dependencies
+    # (invoices); plugins contribute theirs (e.g. subscriptions) via the
+    # deletion-dependency registry, so core names no plugin domain.
     from vbwd.repositories.invoice_repository import InvoiceRepository
-    from vbwd.services.subscription_read_model import (
-        resolve_subscription_read_model,
+    from vbwd.services.deletion_dependency_registry import (
+        resolve_deletion_dependencies,
     )
 
     invoice_repo = InvoiceRepository(db.session)
 
     invoices = invoice_repo.find_by_user(user_id)
-    subscription_count = resolve_subscription_read_model().count_user_subscriptions(
-        user_id
-    )
+    dependencies = []
+    if len(invoices) > 0:
+        dependencies.append(
+            {"type": "invoice", "count": len(invoices), "label": "Invoices"}
+        )
+    dependencies.extend(resolve_deletion_dependencies(user.id))
 
     return (
         jsonify(
             {
                 "user_id": str(user.id),
                 "email": user.email,
-                "has_cascade_dependencies": len(invoices) > 0 or subscription_count > 0,
-                "invoice_count": len(invoices),
-                "subscription_count": subscription_count,
+                "has_cascade_dependencies": len(dependencies) > 0,
+                "dependencies": dependencies,
             }
         ),
         200,
