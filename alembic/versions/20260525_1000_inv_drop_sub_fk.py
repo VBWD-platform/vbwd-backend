@@ -14,8 +14,16 @@ preserved. Downgrade is reversible: it re-adds the columns + FKs and backfills
 them from the SUBSCRIPTION line item (and the subscription's plan).
 
 Revision ID: 20260525_1000_inv_drop_sub_fk
-Revises: 20260523_1000_sub_baseline
+Revises: 20260412_1000
 Create Date: 2026-05-25
+
+NOTE: this is a CORE migration, so it anchors to a CORE revision
+(`20260412_1000`) — NOT the subscription plugin's `sub_baseline`. Core CI runs
+alembic without the subscription plugin's migration path, so depending on a
+plugin revision breaks the graph ("Revision ... is not present"). The invoice's
+subscription_id / tarif_plan_id columns are created by the monolithic `vbwd_001`
+baseline (an ancestor of `20260412_1000`), so the column drop is valid even when
+the subscription plugin is not loaded.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -23,7 +31,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 
 revision = "20260525_1000_inv_drop_sub_fk"
-down_revision = "20260523_1000_sub_baseline"
+down_revision = "20260412_1000"
 branch_labels = None
 depends_on = None
 
