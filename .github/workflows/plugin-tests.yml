@@ -58,7 +58,9 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Install ALL plugins (full SDK)
         run: |
-          for plugin in analytics booking chat cms email ghrm mailchimp paypal stripe taro yookassa; do
+          # subscription is included: ghrm's model FKs to vbwd_tarif_plan, so the
+          # full-app boot needs subscription's models loaded (mapper config).
+          for plugin in analytics booking chat cms email ghrm mailchimp paypal stripe subscription taro yookassa; do
             git clone --depth=1 -q https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git plugins/${plugin} 2>/dev/null || true
           done
       - name: Create plugins.json (enable all plugins)
