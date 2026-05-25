@@ -3,6 +3,9 @@ from flask import Blueprint, jsonify, request
 from decimal import Decimal
 from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.token_bundle_repository import TokenBundleRepository
+from vbwd.repositories.token_bundle_purchase_repository import (
+    TokenBundlePurchaseRepository,
+)
 from vbwd.extensions import db
 from vbwd.models import TokenBundle
 
@@ -233,12 +236,32 @@ def delete_token_bundle(bundle_id):
     Returns:
         200: Token bundle deleted
         404: Token bundle not found
+        400: Cannot delete a bundle that has purchases (deactivate instead)
     """
     bundle_repo = TokenBundleRepository(db.session)
     bundle = bundle_repo.find_by_id(bundle_id)
 
     if not bundle:
         return jsonify({"error": "Token bundle not found"}), 404
+
+    # A bundle with purchase history must not be hard-deleted: the FK from
+    # vbwd_token_bundle_purchase.bundle_id is NOT NULL, so a delete would either
+    # fail or orphan financial records. Mirror the plan-delete guard and tell the
+    # admin to deactivate instead (the bundle stays out of the catalog but the
+    # purchase history is preserved).
+    purchase_count = TokenBundlePurchaseRepository(db.session).count_by_bundle(
+        bundle_id
+    )
+    if purchase_count > 0:
+        return (
+            jsonify(
+                {
+                    "error": "Cannot delete a token bundle that has purchases. "
+                    "Deactivate it instead."
+                }
+            ),
+            400,
+        )
 
     bundle_repo.delete(bundle_id)
 

@@ -29,6 +29,18 @@ class TokenBundlePurchaseRepository(BaseRepository[TokenBundlePurchase]):
             .all()
         )
 
+    def count_by_bundle(self, bundle_id: UUID) -> int:
+        """Count purchases that reference a given token bundle.
+
+        Used to guard bundle deletion: a bundle with purchase history must not
+        be hard-deleted (it would orphan financial records).
+        """
+        return (
+            self._session.query(TokenBundlePurchase)
+            .filter(TokenBundlePurchase.bundle_id == bundle_id)
+            .count()
+        )
+
     def find_pending_by_user(self, user_id: UUID) -> List[TokenBundlePurchase]:
         """Find all pending purchases for a user."""
         return (
