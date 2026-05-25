@@ -115,16 +115,34 @@ class User(BaseModel):
 
     @property
     def effective_user_permissions(self) -> list[str]:
-        """Get all user-facing permissions from assigned user access levels."""
+        """Get all user-facing permissions from assigned user access levels.
+
+        Admins implicitly hold every user-facing permission (mirrors
+        ``effective_permissions``), so the fe-user app is fully navigable for
+        them even with no user access level assigned — otherwise a SUPER_ADMIN
+        logging into fe-user gets an empty permission set and every guarded
+        route silently bounces back to the dashboard.
+        """
+        if self.role == UserRole.SUPER_ADMIN:
+            return ["*"]
+        user_access_levels = self._get_user_access_levels()
+        # Legacy fallback: ADMIN with no user access levels gets all.
+        if self.role == UserRole.ADMIN and not user_access_levels:
+            return ["*"]
         permissions: set[str] = set()
-        for level in self._get_user_access_levels():
+        for level in user_access_levels:
             for perm in list(level.permissions):
                 permissions.add(perm.name)
         return sorted(permissions)
 
     def has_user_permission(self, permission_name: str) -> bool:
         """Check if user has a specific user-facing permission."""
-        for level in self._get_user_access_levels():
+        if self.role == UserRole.SUPER_ADMIN:
+            return True
+        user_access_levels = self._get_user_access_levels()
+        if self.role == UserRole.ADMIN and not user_access_levels:
+            return True
+        for level in user_access_levels:
             if level.has_permission(permission_name):
                 return True
         return False
