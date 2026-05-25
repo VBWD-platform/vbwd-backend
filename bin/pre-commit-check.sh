@@ -167,10 +167,13 @@ run_static_analysis() {
     echo ""
     echo -e "${YELLOW}[A.2] Running Flake8 (code style checker)...${NC}"
     local flake_failed=0
+    # Exclude docs/ (build/codegen scripts, e.g. cms's CSS-string generator) and
+    # CI/cache dirs — consistent with each plugin's own CI flake8 scope.
+    local flake_exclude=".git,.github,__pycache__,.pytest_cache,docs"
     if $IN_DOCKER; then
-        flake8 $LINT_PATHS --max-line-length=120 --extend-ignore=E203,W503 2>&1 || flake_failed=1
+        flake8 $LINT_PATHS --max-line-length=120 --extend-ignore=E203,W503 --exclude=$flake_exclude 2>&1 || flake_failed=1
     else
-        docker compose run --rm -T test flake8 $LINT_PATHS --max-line-length=120 --extend-ignore=E203,W503 2>&1 || flake_failed=1
+        docker compose run --rm -T test flake8 $LINT_PATHS --max-line-length=120 --extend-ignore=E203,W503 --exclude=$flake_exclude 2>&1 || flake_failed=1
     fi
     print_result "Flake8 style check" $flake_failed
     [ $flake_failed -ne 0 ] && failed=1
