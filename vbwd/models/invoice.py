@@ -1,7 +1,7 @@
 """UserInvoice domain model."""
 from vbwd.utils.datetime_utils import utcnow
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from vbwd.extensions import db
 from vbwd.models.base import BaseModel
 from vbwd.models.enums import InvoiceStatus
@@ -57,6 +57,17 @@ class UserInvoice(BaseModel):
         db.String(255), unique=True, nullable=True, index=True
     )
     payment_intent_id = db.Column(db.String(255), nullable=True, index=True)
+    # Free-form JSON, written by payment plugins under their own top-level key
+    # (e.g. ``{"stripe": {"transaction_id": "..."}, "tokens_paid": {"amount": 600}}``)
+    # so the invoice detail can render plugin-specific captured-payment info
+    # without core knowing any method's shape. Python attribute name differs
+    # from the column name to avoid SQLAlchemy's ``metadata`` reserved attribute.
+    # JSONB (not JSON): Postgres has no equality operator for ``json``, so any
+    # ``SELECT DISTINCT`` involving this table (e.g. admin subscription detail
+    # joining invoices via line items) throws "could not identify an equality
+    # operator for type json". JSONB has the operator and is also faster to
+    # query, so it's the right default here.
+    payment_metadata = db.Column("metadata", JSONB, nullable=True, default=dict)
 
     # Relationships
     line_items = db.relationship(
@@ -151,6 +162,7 @@ class UserInvoice(BaseModel):
             "invoiced_at": self.invoiced_at.isoformat() if self.invoiced_at else None,
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "metadata": self.payment_metadata or {},
         }
 
     def __repr__(self) -> str:

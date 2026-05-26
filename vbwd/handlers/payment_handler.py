@@ -43,11 +43,28 @@ class PaymentCapturedHandler(IEventHandler):
             #    home for the PAID transition, DRY) and record the CAPTURING
             #    provider in payment_method, falling back to the invoice's
             #    existing method when the event has no provider set.
+            invoice_dirty = False
             if invoice.status.value != "PAID":
                 invoice.mark_paid(
                     event.payment_reference,
                     event.provider or invoice.payment_method or "",
                 )
+                invoice_dirty = True
+
+            # 2b. Merge plugin-contributed metadata into invoice.metadata
+            #     (agnostic seam): each plugin owns its top-level namespace
+            #     key — core never names the inner shape. Reassign the dict
+            #     so SQLAlchemy detects the JSON change. Runs even when the
+            #     invoice was already PAID (webhooks may arrive after the
+            #     synchronous capture has flipped the status).
+            if event.metadata:
+                existing = dict(invoice.payment_metadata or {})
+                for namespace_key, payload in event.metadata.items():
+                    existing[namespace_key] = payload
+                invoice.payment_metadata = existing
+                invoice_dirty = True
+
+            if invoice_dirty:
                 repos["invoice"].save(invoice)
 
             # 3. Delegate line item processing to registered handlers

@@ -70,13 +70,25 @@ def validate_invoice_for_payment(invoice_id_str, user_id):
 
 
 def emit_payment_captured(
-    invoice_id, payment_reference, amount, currency, provider, transaction_id=""
+    invoice_id,
+    payment_reference,
+    amount,
+    currency,
+    provider,
+    transaction_id="",
+    metadata=None,
 ):
     """Emit PaymentCapturedEvent -- the ONLY action a webhook handler should take.
 
     Event-driven: the webhook route emits this event and returns 200.
     PaymentCapturedHandler handles all activation (invoice->PAID, subscription->ACTIVE, etc.)
     The payment plugin NEVER acts directly on domain objects.
+
+    ``metadata``: optional ``{namespace: {...}}`` payload merged into the
+    invoice's free-form ``metadata`` JSON column by the handler. Each plugin
+    owns its own top-level namespace key (e.g. ``{"stripe": {...}}``,
+    ``{"paypal": {...}}``, ``{"tokens_paid": {...}}``) — the core handler
+    does not interpret the inner shape.
 
     Returns:
         EventResult from the handler chain
@@ -95,6 +107,7 @@ def emit_payment_captured(
         currency=currency,
         provider=provider,
         transaction_id=transaction_id,
+        metadata=metadata or {},
     )
     container = current_app.container
     result = container.event_dispatcher().emit(event)
