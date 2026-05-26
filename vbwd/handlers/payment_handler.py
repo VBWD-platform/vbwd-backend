@@ -39,11 +39,15 @@ class PaymentCapturedHandler(IEventHandler):
             if not invoice:
                 return EventResult.error_result(f"Invoice {event.invoice_id} not found")
 
-            # 2. Mark invoice as paid
+            # 2. Mark invoice as paid — route through invoice.mark_paid (single
+            #    home for the PAID transition, DRY) and record the CAPTURING
+            #    provider in payment_method, falling back to the invoice's
+            #    existing method when the event has no provider set.
             if invoice.status.value != "PAID":
-                invoice.status = invoice.status.__class__("PAID")
-                invoice.payment_ref = event.payment_reference
-                invoice.paid_at = utcnow()
+                invoice.mark_paid(
+                    event.payment_reference,
+                    event.provider or invoice.payment_method or "",
+                )
                 repos["invoice"].save(invoice)
 
             # 3. Delegate line item processing to registered handlers
