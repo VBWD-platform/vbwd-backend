@@ -24,8 +24,13 @@ COPY . .
 
 EXPOSE 5000
 
-# Migrations are NOT run here (S03) — they live in a separate one-shot
-# `vbwd_migrate` compose service / `make migrate` step, so a hung or failed
-# migration cannot block container readiness or strand a rollout mid-deploy.
-# This CMD only ensures `plugins.json` exists and launches gunicorn.
-CMD ["sh", "-c", "[ -f /app/plugins/plugins.json ] || cp /app/plugins/plugins.json.dist /app/plugins/plugins.json && gunicorn --config gunicorn.conf.py 'vbwd.app:create_app()'"]
+# Migrations are opt-in via RUN_MIGRATIONS_ON_START (S03 + 2026-05-27 hotfix).
+# Default (unset / "false"): gunicorn launches directly — production-managed
+#   deploys run `alembic upgrade heads` as a separate one-shot step (the
+#   `vbwd_migrate` compose service or `make migrate-once`) so a hung migration
+#   cannot block container readiness or strand a rollout mid-deploy.
+# "true": migrations run inline before gunicorn — for compose-up-only flows
+#   (e.g. demo-instances) that don't run a separate migrate step.
+# Either way, if migrations fail the container exits non-zero (set -e) so
+# the failure is observable, not silent.
+CMD ["sh", "-c", "set -e; [ -f /app/plugins/plugins.json ] || cp /app/plugins/plugins.json.dist /app/plugins/plugins.json; if [ \"${RUN_MIGRATIONS_ON_START:-false}\" = \"true\" ]; then echo '[entrypoint] RUN_MIGRATIONS_ON_START=true — running alembic upgrade heads'; alembic upgrade heads; fi; exec gunicorn --config gunicorn.conf.py 'vbwd.app:create_app()'"]

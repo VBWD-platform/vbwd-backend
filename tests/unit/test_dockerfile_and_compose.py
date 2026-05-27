@@ -16,8 +16,16 @@ def _backend_root() -> str:
     return os.path.dirname(os.path.dirname(here))
 
 
-def test_dockerfile_cmd_does_not_run_alembic():
-    """The image's CMD launches gunicorn only; migrations live elsewhere."""
+def test_dockerfile_cmd_does_not_unconditionally_run_alembic():
+    """The CMD must not unconditionally run alembic — production-managed
+    deploys want migrations as a separate one-shot step so a hung migration
+    can't block container readiness.
+
+    The conditional opt-in (``if [ "$RUN_MIGRATIONS_ON_START" = "true" ]; then
+    alembic upgrade heads; fi``) is allowed: it's off by default and only on
+    for compose-up-only flows (e.g. demo-instances) that don't run a
+    separate migrate step.
+    """
     dockerfile = os.path.join(_backend_root(), "container", "python", "Dockerfile")
     with open(dockerfile) as handle:
         content = handle.read()
@@ -26,10 +34,15 @@ def test_dockerfile_cmd_does_not_run_alembic():
     ]
     assert cmd_lines, "Dockerfile must have a CMD line"
     for line in cmd_lines:
-        assert "alembic" not in line, (
-            f"Dockerfile CMD must not run alembic (found in `{line.strip()}`); "
-            "migrations belong in a separate one-shot step so a failed/hung "
-            "migration cannot block container readiness."
+        if "alembic" not in line:
+            continue
+        # alembic appears — verify it's inside the conditional opt-in branch
+        # and NOT an unconditional pre-gunicorn step.
+        assert "RUN_MIGRATIONS_ON_START" in line, (
+            f"Dockerfile CMD runs alembic unconditionally (`{line.strip()}`). "
+            'Gate it behind `if [ "$RUN_MIGRATIONS_ON_START" = "true" ]; '
+            "then alembic upgrade heads; fi` so production-managed deploys "
+            "(which run a separate `vbwd_migrate` step) get the safe default."
         )
 
 
