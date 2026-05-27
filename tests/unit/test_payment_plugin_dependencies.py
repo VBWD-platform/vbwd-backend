@@ -55,6 +55,17 @@ def _plugin_calls_subscription_lifecycle(plugin_name: str) -> bool:
     return False
 
 
+def _plugin_is_installed(plugin_name: str) -> bool:
+    """True if the plugin source is present in ``plugins/<name>/__init__.py``.
+
+    CI runs that clone only a subset of plugins (the lean matrix) skip
+    this test for plugins that aren't installed.
+    """
+    return os.path.isfile(
+        os.path.join(_backend_root(), "plugins", plugin_name, "__init__.py")
+    )
+
+
 def _plugin_declared_dependencies(plugin_name: str) -> list[str]:
     """Parse the plugin's ``__init__.py`` and return the declared
     ``PluginMetadata.dependencies`` list (string-literal extraction)."""
@@ -73,6 +84,8 @@ def _plugin_declared_dependencies(plugin_name: str) -> list[str]:
 def test_plugin_dep_matches_subscription_usage(plugin_name):
     """If a plugin calls ``resolve_subscription_lifecycle``, it MUST declare
     ``subscription`` in ``PluginMetadata.dependencies``."""
+    if not _plugin_is_installed(plugin_name):
+        pytest.skip(f"plugin '{plugin_name}' not installed in this CI matrix")
     uses_subscription = _plugin_calls_subscription_lifecycle(plugin_name)
     declared = _plugin_declared_dependencies(plugin_name)
     if uses_subscription:

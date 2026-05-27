@@ -83,6 +83,17 @@ def test_unregister_repositories_removes_attrs_and_is_idempotent():
 # ── Per-plugin: the audit-flagged trio (shop / booking / meinchat) ──────────
 
 
+def _plugin_is_installed(plugin_name: str) -> bool:
+    """Check if plugin source is cloned (CI matrix may exclude some plugins)."""
+    import os
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    backend_root = os.path.dirname(os.path.dirname(here))
+    return os.path.isfile(
+        os.path.join(backend_root, "plugins", plugin_name, "__init__.py")
+    )
+
+
 @pytest.mark.parametrize(
     "plugin_name, provider_attr, expected_class_name",
     EXPECTED_PROVIDERS,
@@ -93,6 +104,9 @@ def test_plugin_repos_resolvable_from_container_after_enable(
 ):
     """The expected provider exists on app.container and resolves to an
     instance of the named class."""
+    if not _plugin_is_installed(plugin_name):
+        pytest.skip(f"plugin '{plugin_name}' not installed in this CI matrix")
+
     container = app.container
 
     assert hasattr(container, provider_attr), (

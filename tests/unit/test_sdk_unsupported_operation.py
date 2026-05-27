@@ -70,6 +70,11 @@ def test_unsupported_operation_error_is_importable():
 # Per-adapter contract checks ------------------------------------------------
 
 
+def _plugin_installed(plugin_name: str) -> bool:
+    """Skip per-plugin contract tests when the plugin isn't cloned in CI."""
+    return os.path.isdir(os.path.join(_backend_root(), "plugins", plugin_name))
+
+
 def _build_mercado_adapter():
     from plugins.mercado_pago.mercado_pago.sdk_adapter import MercadoPagoSDKAdapter
     from vbwd.sdk.interface import SDKConfig
@@ -89,13 +94,17 @@ def _build_truemoney_adapter():
 
 
 @pytest.mark.parametrize(
-    "factory",
-    [_build_mercado_adapter, _build_truemoney_adapter],
-    ids=["mercado_pago", "truemoney"],
+    "plugin_name, factory",
+    [
+        ("mercado_pago", _build_mercado_adapter),
+        ("truemoney", _build_truemoney_adapter),
+    ],
 )
-def test_release_authorization_raises_when_unsupported(factory):
+def test_release_authorization_raises_when_unsupported(plugin_name, factory):
     """``release_authorization`` raises ``UnsupportedOperationError`` on
     providers that structurally don't support it."""
+    if not _plugin_installed(plugin_name):
+        pytest.skip(f"plugin '{plugin_name}' not installed in this CI matrix")
     adapter = factory()
     with pytest.raises(UnsupportedOperationError):
         adapter.release_authorization("dummy-intent")
@@ -104,6 +113,8 @@ def test_release_authorization_raises_when_unsupported(factory):
 def test_mercado_pago_capture_payment_raises():
     """Mercado Pago captures happen on user redirect; the adapter must
     flag this as structurally unsupported."""
+    if not _plugin_installed("mercado_pago"):
+        pytest.skip("plugin 'mercado_pago' not installed in this CI matrix")
     adapter = _build_mercado_adapter()
     with pytest.raises(UnsupportedOperationError):
         adapter.capture_payment("dummy-intent")
