@@ -4,6 +4,7 @@ import logging
 from vbwd.events.bus import event_bus
 from vbwd.models.enums import InvoiceStatus
 from vbwd.plugins.payment_route_helpers import emit_payment_captured
+from vbwd.sdk.errors import UnsupportedOperationError
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,12 @@ class CaptureService:
             return CaptureResult(success=False, error="No payment_intent_id on invoice")
 
         adapter = self._sdk_registry.get(invoice.payment_method)
-        result = adapter.capture_payment(invoice.payment_intent_id)
+        try:
+            result = adapter.capture_payment(invoice.payment_intent_id)
+        except UnsupportedOperationError as unsupported:
+            # S11 — provider structurally cannot capture (e.g. Mercado Pago
+            # captures on redirect). Surface as a clean failure, no retry.
+            return CaptureResult(success=False, error=str(unsupported))
 
         if not result.success:
             return CaptureResult(success=False, error=result.error)
@@ -79,7 +85,11 @@ class CaptureService:
             return CaptureResult(success=False, error="No payment_intent_id on invoice")
 
         adapter = self._sdk_registry.get(invoice.payment_method)
-        result = adapter.release_authorization(invoice.payment_intent_id)
+        try:
+            result = adapter.release_authorization(invoice.payment_intent_id)
+        except UnsupportedOperationError as unsupported:
+            # S11 — provider doesn't support auth holds; surface cleanly.
+            return CaptureResult(success=False, error=str(unsupported))
 
         if not result.success:
             return CaptureResult(success=False, error=result.error)

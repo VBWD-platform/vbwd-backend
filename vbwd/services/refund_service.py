@@ -124,11 +124,16 @@ class RefundService:
             items_reversed=items_reversed,
         )
 
-    def _calculate_tokens_to_debit(self, invoice) -> int:
+    def calculate_tokens_to_debit(self, invoice) -> int:
         """Calculate total tokens that need to be deducted for this refund.
 
         Only counts TOKEN_BUNDLE items (core). Subscription default_tokens
         are handled by the subscription plugin's line item handler.
+
+        Public for the admin refund pre-check (S23). Callers use this to
+        validate the user has enough tokens BEFORE invoking the payment
+        provider so the provider isn't charged for a refund that will
+        then fail at token-debit time.
         """
         total = 0
         for line_item in invoice.line_items:
@@ -137,3 +142,8 @@ class RefundService:
                 if purchase and purchase.status == PurchaseStatus.COMPLETED:
                     total += purchase.token_amount
         return total
+
+    # Backward-compat alias — the underscore-private form was used by the
+    # admin refund route inline. Kept so external callers don't break;
+    # delete when no callers remain.
+    _calculate_tokens_to_debit = calculate_tokens_to_debit

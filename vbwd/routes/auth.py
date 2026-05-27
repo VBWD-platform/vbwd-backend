@@ -6,9 +6,7 @@ from vbwd.schemas.auth_schemas import (
     LoginRequestSchema,
     AuthResponseSchema,
 )
-from vbwd.services.auth_service import AuthService
-from vbwd.repositories.user_repository import UserRepository
-from vbwd.extensions import db, limiter
+from vbwd.extensions import limiter
 from vbwd.events.security_events import (
     PasswordResetRequestEvent,
     PasswordResetExecuteEvent,
@@ -52,9 +50,8 @@ def register():
     except ValidationError as err:
         return jsonify({"success": False, "error": str(err.messages)}), 400
 
-    # Initialize service
-    user_repo = UserRepository(db.session)
-    auth_service = AuthService(user_repository=user_repo)
+    # S08 — pull service from container, not inline construction.
+    auth_service = current_app.container.auth_service()
 
     # Register user
     result = auth_service.register(email=data["email"], password=data["password"])
@@ -95,9 +92,8 @@ def login():
     except ValidationError as err:
         return jsonify({"success": False, "error": str(err.messages)}), 400
 
-    # Initialize service
-    user_repo = UserRepository(db.session)
-    auth_service = AuthService(user_repository=user_repo)
+    # S08 — pull service from container, not inline construction.
+    auth_service = current_app.container.auth_service()
 
     # Login user
     result = auth_service.login(email=data["email"], password=data["password"])
@@ -140,7 +136,8 @@ def check_email():
     if not email:
         return jsonify({"error": "Email required"}), 400
 
-    user_repo = UserRepository(db.session)
+    # S08 — pull repo from container, not inline construction.
+    user_repo = current_app.container.user_repository()
     user = user_repo.find_by_email(email)
 
     return jsonify({"exists": user is not None})

@@ -9,11 +9,6 @@ from vbwd.schemas.user_schemas import (
     UserDetailsUpdateSchema,
     UserProfileSchema,
 )
-from vbwd.services.user_service import UserService
-from vbwd.services.auth_service import AuthService
-from vbwd.repositories.user_repository import UserRepository
-from vbwd.repositories.user_details_repository import UserDetailsRepository
-from vbwd.extensions import db
 
 # Create blueprint
 user_bp = Blueprint("user", __name__, url_prefix="/api/v1/user")
@@ -53,12 +48,8 @@ def get_profile():
     """
     user_id = g.user_id
 
-    # Initialize services
-    user_repo = UserRepository(db.session)
-    user_details_repo = UserDetailsRepository(db.session)
-    user_service = UserService(
-        user_repository=user_repo, user_details_repository=user_details_repo
-    )
+    # S08 — pull service from container.
+    user_service = current_app.container.user_service()
 
     # Get user and details
     user = user_service.get_user(user_id)
@@ -84,12 +75,8 @@ def get_details():
     """
     user_id = g.user_id
 
-    # Initialize services
-    user_repo = UserRepository(db.session)
-    user_details_repo = UserDetailsRepository(db.session)
-    user_service = UserService(
-        user_repository=user_repo, user_details_repository=user_details_repo
-    )
+    # S08 — pull service from container.
+    user_service = current_app.container.user_service()
 
     # Get details — return empty object if not yet created (normal for new users)
     details = user_service.get_user_details(user_id)
@@ -145,12 +132,8 @@ def update_details():
     except ValidationError as err:
         return jsonify({"error": err.messages}), 400
 
-    # Initialize services
-    user_repo = UserRepository(db.session)
-    user_details_repo = UserDetailsRepository(db.session)
-    user_service = UserService(
-        user_repository=user_repo, user_details_repository=user_details_repo
-    )
+    # S08 — pull service from container.
+    user_service = current_app.container.user_service()
 
     # Update details
     details = user_service.update_user_details(user_id, data)
@@ -184,9 +167,9 @@ def change_password():
     if not current_password or not new_password:
         return jsonify({"error": "Current password and new password are required"}), 400
 
-    # Initialize services
-    user_repo = UserRepository(db.session)
-    auth_service = AuthService(user_repository=user_repo)
+    # S08 — pull from container.
+    user_repo = current_app.container.user_repository()
+    auth_service = current_app.container.auth_service()
 
     # Get user
     user = user_repo.find_by_id(user_id)

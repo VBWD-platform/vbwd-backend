@@ -17,6 +17,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # S03 — One-shot migration runner. Pulls the same image as the backend
+  # and runs `alembic upgrade heads` once, then exits. Deploy script (or
+  # `make migrate-once`) invokes this BEFORE bringing the backend up so a
+  # failed migration cannot strand a half-migrated production.
+  vbwd_migrate:
+    image: ghcr.io/dantweb/vbwd_backend:latest
+    restart: "no"
+    command: ["alembic", "upgrade", "heads"]
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: "postgresql://vbwd:${VBWD_DB_PASSWORD:?VBWD_DB_PASSWORD must be set (see: make secrets)}@vbwd_postgres:5432/vbwd"
+    depends_on:
+      vbwd_postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   vbwd_backend:
     image: ghcr.io/dantweb/vbwd_backend:latest
     restart: always
@@ -24,10 +44,16 @@ services:
       - "127.0.0.1:5001:5000"           # local-only, for migrations/debug
     environment:
       FLASK_ENV: production
-      FLASK_SECRET_KEY: "${VBWD_FLASK_SECRET}"
-      JWT_SECRET_KEY: "${VBWD_JWT_SECRET}"
-      DATABASE_URL: "postgresql://vbwd:${VBWD_DB_PASSWORD}@vbwd_postgres:5432/vbwd"
+      # S04 — required-substitution form aborts `docker compose up` with a
+      # clear message if any of these aren't set; `make secrets` shows how
+      # to generate them.
+      FLASK_SECRET_KEY: "${VBWD_FLASK_SECRET:?VBWD_FLASK_SECRET must be set (see: make secrets)}"
+      JWT_SECRET_KEY: "${VBWD_JWT_SECRET:?VBWD_JWT_SECRET must be set (see: make secrets)}"
+      DATABASE_URL: "postgresql://vbwd:${VBWD_DB_PASSWORD:?VBWD_DB_PASSWORD must be set (see: make secrets)}@vbwd_postgres:5432/vbwd"
       REDIS_URL: "redis://vbwd_redis:6379/0"
+      # S05 — at-rest encryption key for plugin tokens (GHRM OAuth/deploy
+      # tokens, etc.). Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      VBWD_TOKEN_ENCRYPTION_KEY: "${VBWD_TOKEN_ENCRYPTION_KEY:?VBWD_TOKEN_ENCRYPTION_KEY must be set; see vbwd/utils/crypto.py docstring for rotation runbook}"
     depends_on:
       vbwd_postgres:
         condition: service_healthy
@@ -74,7 +100,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: vbwd
-      POSTGRES_PASSWORD: "${VBWD_DB_PASSWORD}"
+      POSTGRES_PASSWORD: "${VBWD_DB_PASSWORD:?VBWD_DB_PASSWORD must be set (see: make secrets)}"
       POSTGRES_DB: vbwd
     volumes:
       - vbwd_postgres_data:/var/lib/postgresql/data

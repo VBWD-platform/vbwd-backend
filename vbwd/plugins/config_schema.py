@@ -55,11 +55,14 @@ class PluginConfigSchemaReader:
             init_path = os.path.join(dir_path, "__init__.py")
             if os.path.exists(init_path):
                 try:
-                    with open(init_path, "r") as f:
-                        content = f.read()
+                    with open(init_path, "r") as file_handle:
+                        content = file_handle.read()
                     if f'name="{plugin_name}"' in content:
                         return dir_path
-                except Exception:
+                except OSError:
+                    # S24 — narrow exception: skip unreadable __init__.py
+                    # (permission denied, broken symlink, etc.); don't swallow
+                    # programming errors.
                     continue
 
         return None

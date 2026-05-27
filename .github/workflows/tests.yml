@@ -83,9 +83,17 @@ jobs:
           pip install -r requirements.txt
 
       - name: Install plugins
+        # S15 — fail fast on any clone failure. Without this, a deleted
+        # or private plugin repo would let CI proceed against a half-cloned
+        # plugin tree and report green even though tests ran on an incomplete
+        # state.
         run: |
+          set -euo pipefail
           for plugin in analytics chat cms email ghrm mailchimp paypal stripe taro yookassa; do
-            git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git plugins/${plugin}
+            git clone --depth=1 \
+              "https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git" \
+              "plugins/${plugin}" \
+              || { echo "::error::Failed to clone plugin ${plugin}"; exit 1; }
           done
 
       - name: Create plugins.json
@@ -175,9 +183,17 @@ jobs:
           pip install -r requirements.txt
 
       - name: Install plugins
+        # S15 — fail fast on any clone failure. Without this, a deleted
+        # or private plugin repo would let CI proceed against a half-cloned
+        # plugin tree and report green even though tests ran on an incomplete
+        # state.
         run: |
+          set -euo pipefail
           for plugin in analytics chat cms email ghrm mailchimp paypal stripe taro yookassa; do
-            git clone --depth=1 https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git plugins/${plugin}
+            git clone --depth=1 \
+              "https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git" \
+              "plugins/${plugin}" \
+              || { echo "::error::Failed to clone plugin ${plugin}"; exit 1; }
           done
 
       - name: Run database migrations

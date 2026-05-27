@@ -275,53 +275,9 @@ class EmailService:
             logger.error(f"Template error: {e}")
             return EmailResult(success=False, error=str(e))
 
-    def send_invoice(
-        self,
-        to_email: str,
-        first_name: str,
-        invoice_number: str,
-        amount: str,
-        due_date: str,
-        pdf_bytes: Optional[bytes] = None,
-    ) -> EmailResult:
-        """
-        Send invoice with optional PDF attachment.
-
-        Args:
-            to_email: Recipient email address.
-            first_name: User's first name.
-            invoice_number: Invoice number.
-            amount: Invoice amount with currency.
-            due_date: Payment due date.
-            pdf_bytes: Optional PDF invoice bytes.
-
-        Returns:
-            EmailResult with success status.
-        """
-        try:
-            context = {
-                "first_name": first_name,
-                "invoice_number": invoice_number,
-                "amount": amount,
-                "due_date": due_date,
-                "year": datetime.now().year,
-            }
-            text_body, html_body = self.render_template("invoice", context)
-
-            attachments = None
-            if pdf_bytes:
-                attachments = [(f"{invoice_number}.pdf", pdf_bytes, "application/pdf")]
-
-            return self.send_email(
-                to_email=to_email,
-                subject=f"Invoice {invoice_number}",
-                body_text=text_body,
-                body_html=html_body,
-                attachments=attachments,
-            )
-        except TemplateNotFoundError as e:
-            logger.error(f"Template error: {e}")
-            return EmailResult(success=False, error=str(e))
+    # S25 — removed ``send_invoice``: no callers (grep proves it), and
+    # ``send_template("invoice", context)`` covers any future invoice mail
+    # path with attachments via ``send_email`` directly.
 
     def send_template(
         self,

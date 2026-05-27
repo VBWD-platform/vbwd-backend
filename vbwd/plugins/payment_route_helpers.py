@@ -185,3 +185,51 @@ def determine_session_mode(invoice):
         if line_item_registry.is_recurring_line_item(item):
             return "subscription"
     return "payment"
+
+
+# ── Redirect-URL builder (S21) ────────────────────────────────────────────
+
+
+def resolve_frontend_base(request) -> str:
+    """Derive the web frontend's base URL from request headers.
+
+    Stripe/PayPal/YooKassa all need the same fallback chain:
+    Origin → Referer's pre-``/pay`` segment → ``request.host_url``.
+    """
+    return (
+        request.headers.get("Origin")
+        or request.headers.get("Referer", "").rstrip("/").rsplit("/pay", 1)[0]
+        or request.host_url.rstrip("/")
+    )
+
+
+def build_provider_redirect_urls(
+    request,
+    provider: str,
+    success_query: str = "",
+    *,
+    ios_deep_link: bool = False,
+) -> tuple[str, str]:
+    """Build ``(success_url, cancel_url)`` for a payment provider's checkout.
+
+    Honours ``X-Client-Platform: ios|macos`` (when ``ios_deep_link=True``)
+    to emit a ``vbwd://<provider>-callback/...`` deep link that the iOS /
+    macOS app can intercept via ``ASWebAuthenticationSession``. Otherwise
+    falls back to the web base from :func:`resolve_frontend_base`.
+
+    ``success_query`` is appended verbatim to the success URL — pass the
+    provider-specific session-id placeholder (e.g.
+    ``"?session_id={CHECKOUT_SESSION_ID}"`` for Stripe).
+    """
+    if ios_deep_link:
+        platform = request.headers.get("X-Client-Platform", "").lower()
+        if platform in ("ios", "macos"):
+            return (
+                f"vbwd://{provider}-callback/success{success_query}",
+                f"vbwd://{provider}-callback/cancel",
+            )
+    base = resolve_frontend_base(request)
+    return (
+        f"{base}/pay/{provider}/success{success_query}",
+        f"{base}/pay/{provider}/cancel",
+    )

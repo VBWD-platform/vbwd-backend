@@ -1,21 +1,31 @@
 """Tests for invoice routes."""
-from unittest.mock import patch, MagicMock
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
+
+from dependency_injector import providers
+
+
+@contextmanager
+def override_invoice_service(client, mock_service):
+    """S08 — invoice routes pull from container; tests override the provider."""
+    container = client.application.container
+    container.invoice_service.override(providers.Object(mock_service))
+    try:
+        yield
+    finally:
+        container.invoice_service.reset_override()
 
 
 class TestInvoiceRoutes:
     """Tests for invoice route endpoints."""
 
-    @patch("vbwd.routes.invoices.InvoiceService")
-    @patch("vbwd.routes.invoices.InvoiceRepository")
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
     def test_get_invoices_authenticated(
         self,
         mock_user_repo_class,
         mock_auth_class,
-        mock_invoice_repo_class,
-        mock_service_class,
         client,
     ):
         """Get invoices returns list for authenticated user."""
@@ -38,11 +48,12 @@ class TestInvoiceRoutes:
         ]
         mock_service = MagicMock()
         mock_service.get_user_invoices.return_value = mock_invoices
-        mock_service_class.return_value = mock_service
 
-        response = client.get(
-            "/api/v1/user/invoices/", headers={"Authorization": "Bearer valid_token"}
-        )
+        with override_invoice_service(client, mock_service):
+            response = client.get(
+                "/api/v1/user/invoices/",
+                headers={"Authorization": "Bearer valid_token"},
+            )
 
         assert response.status_code == 200
         data = response.get_json()
@@ -55,16 +66,12 @@ class TestInvoiceRoutes:
 
         assert response.status_code == 401
 
-    @patch("vbwd.routes.invoices.InvoiceService")
-    @patch("vbwd.routes.invoices.InvoiceRepository")
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
     def test_get_invoice_detail(
         self,
         mock_user_repo_class,
         mock_auth_class,
-        mock_invoice_repo_class,
-        mock_service_class,
         client,
     ):
         """Get invoice detail returns invoice."""
@@ -94,28 +101,24 @@ class TestInvoiceRoutes:
 
         mock_service = MagicMock()
         mock_service.get_invoice.return_value = mock_invoice
-        mock_service_class.return_value = mock_service
 
-        response = client.get(
-            f"/api/v1/user/invoices/{invoice_id}",
-            headers={"Authorization": "Bearer valid_token"},
-        )
+        with override_invoice_service(client, mock_service):
+            response = client.get(
+                f"/api/v1/user/invoices/{invoice_id}",
+                headers={"Authorization": "Bearer valid_token"},
+            )
 
         assert response.status_code == 200
         data = response.get_json()
         assert "invoice" in data
         assert data["invoice"]["id"] == str(invoice_id)
 
-    @patch("vbwd.routes.invoices.InvoiceService")
-    @patch("vbwd.routes.invoices.InvoiceRepository")
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
     def test_get_invoice_not_found(
         self,
         mock_user_repo_class,
         mock_auth_class,
-        mock_invoice_repo_class,
-        mock_service_class,
         client,
     ):
         """Get invoice returns 404 when not found."""
@@ -135,7 +138,6 @@ class TestInvoiceRoutes:
 
         mock_service = MagicMock()
         mock_service.get_invoice.return_value = None
-        mock_service_class.return_value = mock_service
 
         response = client.get(
             f"/api/v1/user/invoices/{uuid4()}",
@@ -144,16 +146,12 @@ class TestInvoiceRoutes:
 
         assert response.status_code == 404
 
-    @patch("vbwd.routes.invoices.InvoiceService")
-    @patch("vbwd.routes.invoices.InvoiceRepository")
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
     def test_get_invoice_not_owned(
         self,
         mock_user_repo_class,
         mock_auth_class,
-        mock_invoice_repo_class,
-        mock_service_class,
         client,
     ):
         """Get invoice returns 403 when user doesn't own it."""
@@ -178,12 +176,12 @@ class TestInvoiceRoutes:
 
         mock_service = MagicMock()
         mock_service.get_invoice.return_value = mock_invoice
-        mock_service_class.return_value = mock_service
 
-        response = client.get(
-            f"/api/v1/user/invoices/{invoice_id}",
-            headers={"Authorization": "Bearer valid_token"},
-        )
+        with override_invoice_service(client, mock_service):
+            response = client.get(
+                f"/api/v1/user/invoices/{invoice_id}",
+                headers={"Authorization": "Bearer valid_token"},
+            )
 
         assert response.status_code == 403
 
@@ -198,16 +196,12 @@ class TestInvoicePdfRoute:
         return mock_user
 
     @patch("vbwd.routes.invoices.get_pdf_service")
-    @patch("vbwd.routes.invoices.InvoiceService")
-    @patch("vbwd.routes.invoices.InvoiceRepository")
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
     def test_download_invoice_pdf_returns_pdf_bytes(
         self,
         mock_user_repo_class,
         mock_auth_class,
-        mock_invoice_repo_class,
-        mock_service_class,
         mock_get_pdf_service,
         client,
     ):
@@ -248,17 +242,17 @@ class TestInvoicePdfRoute:
 
         mock_service = MagicMock()
         mock_service.get_invoice.return_value = mock_invoice
-        mock_service_class.return_value = mock_service
 
         fake_pdf = b"%PDF-1.7\n...bytes..."
         mock_pdf_service = MagicMock()
         mock_pdf_service.render.return_value = fake_pdf
         mock_get_pdf_service.return_value = mock_pdf_service
 
-        response = client.get(
-            f"/api/v1/user/invoices/{invoice_id}/pdf",
-            headers={"Authorization": "Bearer valid_token"},
-        )
+        with override_invoice_service(client, mock_service):
+            response = client.get(
+                f"/api/v1/user/invoices/{invoice_id}/pdf",
+                headers={"Authorization": "Bearer valid_token"},
+            )
 
         assert response.status_code == 200
         assert response.content_type == "application/pdf"
@@ -271,16 +265,12 @@ class TestInvoicePdfRoute:
         assert rendered_ctx["invoice"]["invoice_number"] == "INV-0001"
 
     @patch("vbwd.routes.invoices.get_pdf_service")
-    @patch("vbwd.routes.invoices.InvoiceService")
-    @patch("vbwd.routes.invoices.InvoiceRepository")
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
     def test_download_invoice_pdf_not_found(
         self,
         mock_user_repo_class,
         mock_auth_class,
-        mock_invoice_repo_class,
-        mock_service_class,
         mock_get_pdf_service,
         client,
     ):
@@ -296,7 +286,6 @@ class TestInvoicePdfRoute:
 
         mock_service = MagicMock()
         mock_service.get_invoice.return_value = None
-        mock_service_class.return_value = mock_service
 
         response = client.get(
             f"/api/v1/user/invoices/{uuid4()}/pdf",
@@ -307,16 +296,12 @@ class TestInvoicePdfRoute:
         mock_get_pdf_service.assert_not_called()
 
     @patch("vbwd.routes.invoices.get_pdf_service")
-    @patch("vbwd.routes.invoices.InvoiceService")
-    @patch("vbwd.routes.invoices.InvoiceRepository")
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
     def test_download_invoice_pdf_not_owned(
         self,
         mock_user_repo_class,
         mock_auth_class,
-        mock_invoice_repo_class,
-        mock_service_class,
         mock_get_pdf_service,
         client,
     ):
@@ -335,12 +320,12 @@ class TestInvoicePdfRoute:
         mock_invoice.user_id = other_user_id
         mock_service = MagicMock()
         mock_service.get_invoice.return_value = mock_invoice
-        mock_service_class.return_value = mock_service
 
-        response = client.get(
-            f"/api/v1/user/invoices/{uuid4()}/pdf",
-            headers={"Authorization": "Bearer valid_token"},
-        )
+        with override_invoice_service(client, mock_service):
+            response = client.get(
+                f"/api/v1/user/invoices/{uuid4()}/pdf",
+                headers={"Authorization": "Bearer valid_token"},
+            )
 
         assert response.status_code == 403
         mock_get_pdf_service.assert_not_called()

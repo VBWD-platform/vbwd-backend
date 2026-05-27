@@ -3,7 +3,7 @@ import importlib
 import inspect
 import logging
 import pkgutil
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from vbwd.plugins.base import BasePlugin, PluginStatus
 from vbwd.plugins.config_store import PluginConfigStore
 from vbwd.events.dispatcher import EventDispatcher, Event
@@ -166,14 +166,10 @@ class PluginManager:
         event = Event(name="plugin.enabled", data={"plugin_name": name})
         self._event_dispatcher.dispatch(event)
 
-    def get_plugin_blueprints(self) -> List[Tuple]:
-        """Get blueprints from all enabled plugins that provide routes."""
-        result = []
-        for plugin in self.get_enabled_plugins():
-            bp = plugin.get_blueprint()
-            if bp:
-                result.append((bp, plugin.get_url_prefix()))
-        return result
+    # S25 — removed ``get_plugin_blueprints``: zero production callers.
+    # ``vbwd/app.py`` iterates ``get_all_plugins()`` directly and calls
+    # ``plugin.get_blueprint()`` itself, so this helper only existed to
+    # satisfy its own dedicated test file (now deleted with it).
 
     def disable_plugin(self, name: str) -> None:
         """

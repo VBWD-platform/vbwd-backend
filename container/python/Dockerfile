@@ -24,4 +24,8 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "[ -f /app/plugins/plugins.json ] || cp /app/plugins/plugins.json.dist /app/plugins/plugins.json && alembic upgrade heads && gunicorn --config gunicorn.conf.py 'vbwd.app:create_app()'"]
+# Migrations are NOT run here (S03) — they live in a separate one-shot
+# `vbwd_migrate` compose service / `make migrate` step, so a hung or failed
+# migration cannot block container readiness or strand a rollout mid-deploy.
+# This CMD only ensures `plugins.json` exists and launches gunicorn.
+CMD ["sh", "-c", "[ -f /app/plugins/plugins.json ] || cp /app/plugins/plugins.json.dist /app/plugins/plugins.json && gunicorn --config gunicorn.conf.py 'vbwd.app:create_app()'"]

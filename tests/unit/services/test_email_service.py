@@ -261,19 +261,6 @@ class TestEmailServiceConvenienceMethods:
 
         assert result.success is True
 
-    @patch("vbwd.services.email_service.smtplib.SMTP")
-    def test_send_invoice_email(self, mock_smtp_class, email_service):
-        """Send invoice email."""
-        mock_smtp = MagicMock()
-        mock_smtp_class.return_value.__enter__ = MagicMock(return_value=mock_smtp)
-        mock_smtp_class.return_value.__exit__ = MagicMock(return_value=False)
-
-        result = email_service.send_invoice(
-            to_email="user@example.com",
-            first_name="John",
-            invoice_number="INV-2025-001",
-            amount="99.99 EUR",
-            due_date="2025-01-31",
-        )
-
-        assert result.success is True
+    # S25 — removed `test_send_invoice_email`: the `send_invoice` helper
+    # had zero production callers and was deleted; this test only kept it
+    # alive. Future invoice email work goes through `send_template`.

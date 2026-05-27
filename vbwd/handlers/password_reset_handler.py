@@ -1,19 +1,24 @@
-"""Password reset event handlers."""
-from vbwd.events.domain import IEventHandler, DomainEvent, EventResult
+"""Password reset event handlers (S13 — SRP/OCP split).
+
+Two single-purpose handlers, one per event type. Adding a future
+``PasswordResetConfirmedEvent`` becomes additive (a third handler
+class) rather than a modification to ``handle()`` (OCP win).
+"""
+from vbwd.events.domain import DomainEvent, EventResult, IEventHandler
 from vbwd.events.security_events import (
-    PasswordResetRequestEvent,
     PasswordResetExecuteEvent,
+    PasswordResetRequestEvent,
 )
-from vbwd.services.password_reset_service import PasswordResetService
 from vbwd.services.email_service import EmailService
+from vbwd.services.password_reset_service import PasswordResetService
 
 
-class PasswordResetHandler(IEventHandler):
-    """
-    Handles password reset events.
+class PasswordResetRequestHandler(IEventHandler):
+    """Handles ``security.password_reset.request`` events.
 
-    Flow:
-    1. Route emits event → 2. This handler receives it → 3. Calls service → 4. Side effects
+    Flow: route emits event → this handler → service creates token →
+    email sent if user exists → activity logged. Always returns success
+    (don't reveal whether the email is registered).
     """
 
     def __init__(
@@ -22,125 +27,138 @@ class PasswordResetHandler(IEventHandler):
         email_service: EmailService,
         activity_logger,
         reset_url_base: str = "https://app.example.com/reset-password",
-    ):
-        """
-        Initialize handler with dependencies.
-
-        Args:
-            password_reset_service: Service for password reset logic
-            email_service: Service for sending emails
-            activity_logger: Logger for activity tracking
-            reset_url_base: Base URL for reset links
-        """
+    ) -> None:
         self._reset_service = password_reset_service
         self._email_service = email_service
         self._activity_logger = activity_logger
         self._reset_url_base = reset_url_base
 
     def can_handle(self, event: DomainEvent) -> bool:
-        """Check if this handler can handle the event."""
-        return isinstance(event, (PasswordResetRequestEvent, PasswordResetExecuteEvent))
+        return isinstance(event, PasswordResetRequestEvent)
 
     def handle(self, event: DomainEvent) -> EventResult:
-        """
-        Handle the event by routing to appropriate method.
+        # narrowed by can_handle, but keep the type guard for safety
+        if not isinstance(event, PasswordResetRequestEvent):
+            return EventResult.error_result("Unexpected event type")
+        return self._do(event)
 
-        Args:
-            event: The event to handle
-
-        Returns:
-            EventResult with success/failure status
-        """
-        if isinstance(event, PasswordResetRequestEvent):
-            return self.handle_reset_request(event)
-        elif isinstance(event, PasswordResetExecuteEvent):
-            return self.handle_reset_execute(event)
-        else:
-            return EventResult.error_result("Unknown event type")
-
-    def handle_reset_request(self, event: PasswordResetRequestEvent) -> EventResult:
-        """
-        Handle password reset request.
-
-        1. Call service to create token
-        2. Send email if user exists
-        3. Log activity
-
-        Args:
-            event: PasswordResetRequestEvent with email and request_ip
-
-        Returns:
-            EventResult (always success to not reveal if email exists)
-        """
-        # Call service
+    def _do(self, event: PasswordResetRequestEvent) -> EventResult:
         result = self._reset_service.create_reset_token(event.email)
 
         if result.success and result.token:
-            # User exists - send email
             reset_url = f"{self._reset_url_base}?token={result.token}"
-
             self._email_service.send_template(
                 to=result.email or "",
                 template="password_reset",
-                context={
-                    "reset_url": reset_url,
-                    "expires_in": "1 hour",
-                },
+                context={"reset_url": reset_url, "expires_in": "1 hour"},
             )
-
             self._activity_logger.log(
                 action="password_reset_requested",
                 user_id=result.user_id,
                 metadata={"ip": event.request_ip},
             )
 
-        # Always return success (don't reveal if email exists)
+        # Always success to not reveal email existence.
         return EventResult.success_result(
             {"message": "If email exists, reset link sent"}
         )
 
-    def handle_reset_execute(self, event: PasswordResetExecuteEvent) -> EventResult:
-        """
-        Handle password reset execution.
 
-        1. Call service to reset password
-        2. Send confirmation or log failure
+class PasswordResetExecuteHandler(IEventHandler):
+    """Handles ``security.password_reset.execute`` events.
 
-        Args:
-            event: PasswordResetExecuteEvent with token and new_password
+    Flow: route emits event → this handler → service resets password →
+    confirmation email + success log, OR failure log + error result.
+    """
 
-        Returns:
-            EventResult with success/failure
-        """
+    def __init__(
+        self,
+        password_reset_service: PasswordResetService,
+        email_service: EmailService,
+        activity_logger,
+    ) -> None:
+        self._reset_service = password_reset_service
+        self._email_service = email_service
+        self._activity_logger = activity_logger
+
+    def can_handle(self, event: DomainEvent) -> bool:
+        return isinstance(event, PasswordResetExecuteEvent)
+
+    def handle(self, event: DomainEvent) -> EventResult:
+        if not isinstance(event, PasswordResetExecuteEvent):
+            return EventResult.error_result("Unexpected event type")
+        return self._do(event)
+
+    def _do(self, event: PasswordResetExecuteEvent) -> EventResult:
         result = self._reset_service.reset_password(event.token, event.new_password)
 
         if result.success:
-            # Send confirmation email
             self._email_service.send_template(
                 to=result.email or "", template="password_changed", context={}
             )
-
             self._activity_logger.log(
                 action="password_reset_completed",
                 user_id=result.user_id,
                 metadata={"ip": event.reset_ip},
             )
-
             return EventResult.success_result({"message": "Password reset successful"})
-        else:
-            # Log failed attempt
-            self._activity_logger.log(
-                action="password_reset_failed",
-                metadata={
-                    "reason": result.failure_reason,
-                    "ip": event.reset_ip,
-                    "token_prefix": event.token[:8] + "..."
-                    if len(event.token) > 8
-                    else event.token,
-                },
-            )
 
-            return EventResult.error_result(
-                error=result.error or "Unknown error",
-                error_type=result.failure_reason or "unknown",
-            )
+        # Log failed attempt.
+        self._activity_logger.log(
+            action="password_reset_failed",
+            metadata={
+                "reason": result.failure_reason,
+                "ip": event.reset_ip,
+                "token_prefix": (
+                    event.token[:8] + "..." if len(event.token) > 8 else event.token
+                ),
+            },
+        )
+        return EventResult.error_result(
+            error=result.error or "Unknown error",
+            error_type=result.failure_reason or "unknown",
+        )
+
+
+# Backward-compat shim: tests and callers that imported ``PasswordResetHandler``
+# get a class that dispatches to whichever sub-handler matches. New code
+# should register the two sub-handlers directly. Removed after the next
+# transitive caller sweep.
+class PasswordResetHandler(IEventHandler):
+    """Legacy combined handler — delegates to the split sub-handlers (S13)."""
+
+    def __init__(
+        self,
+        password_reset_service: PasswordResetService,
+        email_service: EmailService,
+        activity_logger,
+        reset_url_base: str = "https://app.example.com/reset-password",
+    ) -> None:
+        self._request_handler = PasswordResetRequestHandler(
+            password_reset_service,
+            email_service,
+            activity_logger,
+            reset_url_base,
+        )
+        self._execute_handler = PasswordResetExecuteHandler(
+            password_reset_service, email_service, activity_logger
+        )
+
+    def can_handle(self, event: DomainEvent) -> bool:
+        return self._request_handler.can_handle(
+            event
+        ) or self._execute_handler.can_handle(event)
+
+    def handle(self, event: DomainEvent) -> EventResult:
+        if self._request_handler.can_handle(event):
+            return self._request_handler.handle(event)
+        if self._execute_handler.can_handle(event):
+            return self._execute_handler.handle(event)
+        return EventResult.error_result("Unknown event type")
+
+    # Expose the original method names so existing tests keep working.
+    def handle_reset_request(self, event: PasswordResetRequestEvent) -> EventResult:
+        return self._request_handler._do(event)
+
+    def handle_reset_execute(self, event: PasswordResetExecuteEvent) -> EventResult:
+        return self._execute_handler._do(event)

@@ -15,7 +15,10 @@ def _register_event_handlers(app: Flask, container) -> None:
         app: Flask application instance
         container: DI container
     """
-    from vbwd.handlers.password_reset_handler import PasswordResetHandler
+    from vbwd.handlers.password_reset_handler import (
+        PasswordResetExecuteHandler,
+        PasswordResetRequestHandler,
+    )
     from vbwd.handlers.payment_handler import PaymentCapturedHandler
     from vbwd.handlers.refund_handler import PaymentRefundedHandler
     from vbwd.handlers.restore_handler import RefundReversedHandler
@@ -39,19 +42,23 @@ def _register_event_handlers(app: Flask, container) -> None:
 
         email_service: Any = MockEmailService()
 
-        # Create password reset handler
-        password_reset_handler = PasswordResetHandler(
+        # S13 — split into two single-purpose handlers (SRP/OCP).
+        reset_url_base = app.config.get(
+            "RESET_URL_BASE", "http://localhost:5173/reset-password"
+        )
+        request_handler = PasswordResetRequestHandler(
             password_reset_service=container.password_reset_service(),
             email_service=email_service,
             activity_logger=container.activity_logger(),
-            reset_url_base=app.config.get(
-                "RESET_URL_BASE", "http://localhost:5173/reset-password"
-            ),
+            reset_url_base=reset_url_base,
         )
-
-        # Register handlers for security events
-        dispatcher.register("security.password_reset.request", password_reset_handler)
-        dispatcher.register("security.password_reset.execute", password_reset_handler)
+        execute_handler = PasswordResetExecuteHandler(
+            password_reset_service=container.password_reset_service(),
+            email_service=email_service,
+            activity_logger=container.activity_logger(),
+        )
+        dispatcher.register("security.password_reset.request", request_handler)
+        dispatcher.register("security.password_reset.execute", execute_handler)
 
         # Register core line item handler (TOKEN_BUNDLE only)
         # Must be registered BEFORE plugins so core handlers have priority
@@ -203,29 +210,39 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     # Auto-discover plugins from user plugins dir
     plugin_manager.discover("plugins")
 
-    # Load persisted state from DB; default-enable analytics on first run
+    # Load persisted state from DB; if nothing is enabled (fresh install),
+    # bootstrap from plugins/plugins.json.dist so any plugin can be a
+    # default just by editing that file — no hardcoded names in core (S06).
     with app.app_context():
         plugin_manager.load_persisted_state()
         if not plugin_manager.get_enabled_plugins():
-            try:
-                plugin_manager.enable_plugin("analytics")
-            except ValueError:
-                # Analytics plugin may not exist, skip if unavailable
-                pass
+            import json
 
-    # Register ALL plugin blueprints at startup (route handlers check enabled status)
-    analytics_plugin = None
+            dist_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "plugins",
+                "plugins.json.dist",
+            )
+            if os.path.exists(dist_path):
+                with open(dist_path) as dist_handle:
+                    dist_config = json.load(dist_handle)
+                for default_name, default_cfg in dist_config.get("plugins", {}).items():
+                    if not default_cfg.get("enabled"):
+                        continue
+                    try:
+                        plugin_manager.enable_plugin(default_name)
+                    except ValueError:
+                        # plugin listed in dist but not installed — skip silently
+                        pass
+
+    # Register regular + admin blueprints for every plugin — agnostic loop;
+    # plugins with no admin BP inherit BasePlugin.get_admin_blueprint() = None.
     for plugin in plugin_manager.get_all_plugins():
-        if plugin.metadata.name == "analytics":
-            analytics_plugin = plugin
         bp = plugin.get_blueprint()
         if bp:
             csrf.exempt(bp)
             app.register_blueprint(bp, url_prefix=plugin.get_url_prefix())
-
-    # Register analytics admin blueprint from plugin (for /admin/analytics routes)
-    if analytics_plugin:
-        admin_bp = analytics_plugin.get_admin_blueprint()
+        admin_bp = plugin.get_admin_blueprint()
         if admin_bp:
             csrf.exempt(admin_bp)
             app.register_blueprint(admin_bp)
@@ -251,11 +268,29 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(settings_bp)
     app.register_blueprint(webhooks_bp)
 
-    # Health check endpoint
+    # Health check endpoint — cheap liveness (process alive); no I/O.
     @app.route("/api/v1/health")
     def health():
         """Health check endpoint."""
         return jsonify({"status": "ok", "service": "vbwd-api", "version": "0.1.0"}), 200
+
+    # S14 — readiness probe (DB connectivity); used by load balancers /
+    # k8s readiness probes so traffic is routed away when the DB is down,
+    # without the container restart loop a liveness failure would trigger.
+    @app.route("/api/v1/ready")
+    def ready():
+        """Readiness probe — verifies DB is reachable."""
+        from vbwd.extensions import db
+        from sqlalchemy import text
+
+        try:
+            db.session.execute(text("SELECT 1"))
+            return jsonify({"db": True}), 200
+        except Exception as probe_error:  # noqa: BLE001 — broad by design
+            return (
+                jsonify({"db": False, "error": str(probe_error)}),
+                503,
+            )
 
     # Root endpoint
     @app.route("/")
@@ -318,10 +353,5 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(cleanup_test_data_command)
     app.cli.add_command(reset_demo_command)
     app.cli.add_command(plugins_cli)
-
-    if not app.config.get("TESTING"):
-        from vbwd.scheduler import start_booking_scheduler
-
-        start_booking_scheduler(app)
 
     return app

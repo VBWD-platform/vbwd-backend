@@ -429,47 +429,33 @@ def list_user_permissions():
 @require_auth
 @require_permission("settings.system")
 def get_user_level_content(level_id):
-    """Get CMS content restricted to a specific user access level."""
+    """List content (across all plugins) restricted to a specific user level.
+
+    Iterates every registered ``IAccessLevelContentProvider`` (S01) and
+    merges their categorised results. Empty mapping when no content-owning
+    plugin is enabled — Liskov-safe null default at the registry.
+    """
     level = db.session.query(UserAccessLevel).filter_by(id=level_id).first()
     if not level:
         return jsonify({"error": "User access level not found"}), 404
 
-    pages = []
-    widgets = []
-    try:
-        from plugins.cms.src.models.cms_page import CmsPage
-        from plugins.cms.src.models.cms_layout_widget import CmsLayoutWidget
+    from vbwd.services.access_level_content_provider import (
+        resolve_access_level_content_providers,
+    )
 
-        # Pages restricted to this level
-        all_pages = db.session.query(CmsPage).all()
-        for page in all_pages:
-            required_ids = page.required_access_level_ids or []
-            if level_id in required_ids:
-                pages.append(
-                    {
-                        "id": str(page.id),
-                        "name": page.name,
-                        "slug": page.slug,
-                    }
-                )
+    merged: dict[str, list] = {}
+    for provider in resolve_access_level_content_providers():
+        for category, items in provider.list_restricted_content_for_level(
+            level_id
+        ).items():
+            merged.setdefault(category, []).extend(items)
 
-        # Widget assignments restricted to this level
-        all_assignments = db.session.query(CmsLayoutWidget).all()
-        for assignment in all_assignments:
-            required_ids = assignment.required_access_level_ids or []
-            if level_id in required_ids:
-                widgets.append(
-                    {
-                        "id": str(assignment.id),
-                        "area_name": assignment.area_name,
-                        "widget_id": str(assignment.widget_id),
-                        "layout_id": str(assignment.layout_id),
-                    }
-                )
-    except ImportError:
-        pass
-
-    return jsonify({"pages": pages, "widgets": widgets}), 200
+    # Always return the legacy CMS-shaped keys so FE consumers that read
+    # ``response.pages`` / ``response.widgets`` keep working when no
+    # content-owning plugin is enabled.
+    merged.setdefault("pages", [])
+    merged.setdefault("widgets", [])
+    return jsonify(merged), 200
 
 
 @access_bp.route("/user-levels/export", methods=["POST"])

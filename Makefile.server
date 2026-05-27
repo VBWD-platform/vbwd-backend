@@ -64,12 +64,28 @@ logs-backend:
 # ── Database ──────────────────────────────────────────────────────────────────
 
 migrate:
-	$(DC) exec $(BACKEND) alembic upgrade head
+	$(DC) exec $(BACKEND) alembic upgrade heads
+
+# S03 — one-shot migrate against the prod DB without requiring the backend
+# container to be up. Use this in deploy scripts BEFORE `make up`: a failed
+# migration here exits non-zero and the deploy aborts before any new
+# backend container starts serving.
+migrate-once:
+	$(DC) run --rm vbwd_migrate
 
 shell-db:
 	$(DC) exec vbwd_postgres psql -U vbwd -d vbwd
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
+
+# S04 — generate secure random values for the three required prod secrets.
+# Pipe to `>> ~/.bashrc` (or your secrets manager) — never paste into the
+# repo. Compose will refuse to start if any is unset.
+secrets:
+	@echo "export VBWD_FLASK_SECRET=$$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+	@echo "export VBWD_JWT_SECRET=$$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+	@echo "export VBWD_DB_PASSWORD=$$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+	@echo "export VBWD_TOKEN_ENCRYPTION_KEY=$$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
 
 demo-data:
 	$(DC) exec $(BACKEND) python /app/bin/install_demo_data.py

@@ -4,10 +4,7 @@ from decimal import Decimal
 
 from flask import Blueprint, Response, current_app, g, jsonify
 
-from vbwd.extensions import db
 from vbwd.middleware.auth import require_auth
-from vbwd.repositories.invoice_repository import InvoiceRepository
-from vbwd.services.invoice_service import InvoiceService
 
 invoices_bp = Blueprint("invoices", __name__, url_prefix="/api/v1/user/invoices")
 
@@ -127,8 +124,8 @@ def get_invoices():
         200: List of user's invoices
         401: If not authenticated
     """
-    invoice_repo = InvoiceRepository(db.session)
-    invoice_service = InvoiceService(invoice_repository=invoice_repo)
+    # S08 — pull service from container.
+    invoice_service = current_app.container.invoice_service()
     invoices = invoice_service.get_user_invoices(str(g.user_id))
     return jsonify({"invoices": [inv.to_dict() for inv in invoices]}), 200
 
@@ -145,8 +142,8 @@ def get_invoice(invoice_id):
         403: If user doesn't own the invoice
         404: If invoice not found
     """
-    invoice_repo = InvoiceRepository(db.session)
-    invoice_service = InvoiceService(invoice_repository=invoice_repo)
+    # S08 — pull service from container.
+    invoice_service = current_app.container.invoice_service()
     invoice = invoice_service.get_invoice(invoice_id)
 
     if not invoice:
@@ -170,8 +167,8 @@ def download_invoice_pdf(invoice_id):
         403: If user doesn't own the invoice
         404: If invoice not found
     """
-    invoice_repo = InvoiceRepository(db.session)
-    invoice_service = InvoiceService(invoice_repository=invoice_repo)
+    # S08 — pull service from container.
+    invoice_service = current_app.container.invoice_service()
     invoice = invoice_service.get_invoice(invoice_id)
 
     if not invoice:
@@ -183,9 +180,8 @@ def download_invoice_pdf(invoice_id):
     # Pull the authenticated user record to populate billing-party fields.
     user = getattr(g, "current_user", None)
     if user is None:
-        from vbwd.repositories.user_repository import UserRepository
-
-        user = UserRepository(db.session).find_by_id(str(g.user_id))
+        # S08 — pull repo from container.
+        user = current_app.container.user_repository().find_by_id(str(g.user_id))
 
     pdf_service = get_pdf_service()
     context = _build_invoice_pdf_context(invoice, user)

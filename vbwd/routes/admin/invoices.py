@@ -36,8 +36,10 @@ def list_invoices():
     Returns:
         200: List of invoices with pagination info
     """
-    limit = min(int(request.args.get("limit", 20)), 100)
-    offset = int(request.args.get("offset", 0))
+    # S22 — shared pagination helper.
+    from vbwd.utils.pagination import parse_pagination_params
+
+    limit, offset = parse_pagination_params(request)
     status = request.args.get("status")
     user_id = request.args.get("user_id")
 
@@ -305,12 +307,12 @@ def refund_invoice(invoice_id):
     if not invoice:
         return jsonify({"error": "Invoice not found"}), 404
 
-    # Pre-check: ensure user has enough tokens before calling payment provider
+    # S23 — pre-check via service public surface (was an underscore-private
+    # method call into refund_service before).
     refund_service = container.refund_service()
-    tokens_needed = refund_service._calculate_tokens_to_debit(invoice)
+    tokens_needed = refund_service.calculate_tokens_to_debit(invoice)
     if tokens_needed > 0:
-        token_service = container.token_service()
-        current_balance = token_service.get_balance(invoice.user_id)
+        current_balance = container.token_service().get_balance(invoice.user_id)
         if current_balance < tokens_needed:
             return (
                 jsonify(

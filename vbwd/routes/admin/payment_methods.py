@@ -7,7 +7,6 @@ from vbwd.repositories.payment_method_repository import (
     PaymentMethodTranslationRepository,
 )
 from vbwd.extensions import db
-from vbwd.models import PaymentMethod
 
 admin_payment_methods_bp = Blueprint(
     "admin_payment_methods", __name__, url_prefix="/api/v1/admin/payment-methods"
@@ -36,94 +35,36 @@ def list_payment_methods():
 @require_admin
 @require_permission("settings.manage")
 def create_payment_method():
+    """Create a new payment method.
+
+    S23 — body shape unchanged; logic moved to ``PaymentMethodService.create``.
+    Route is transport only: deserialize → call service → serialize.
     """
-    Create a new payment method.
+    from vbwd.services.payment_method_service import (
+        PaymentMethodService,
+        PaymentMethodValidationError,
+    )
 
-    Body:
-        - code: str (required, immutable)
-        - name: str (required)
-        - description: str (optional)
-        - short_description: str (optional)
-        - icon: str (optional)
-        - plugin_id: str (optional)
-        - is_active: bool (default: true)
-        - is_default: bool (default: false)
-        - position: int (default: 0)
-        - min_amount: decimal (optional)
-        - max_amount: decimal (optional)
-        - currencies: list (optional)
-        - countries: list (optional)
-        - fee_type: str (default: 'none')
-        - fee_amount: decimal (optional)
-        - fee_charged_to: str (default: 'customer')
-        - instructions: str (optional)
-        - config: dict (optional)
-
-    Returns:
-        201: Created payment method
-        400: Validation error
-    """
-    data = request.get_json() or {}
-    repo = PaymentMethodRepository(db.session)
-
-    # Validate required fields
-    if not data.get("code"):
-        return jsonify({"error": "Code is required"}), 400
-    if not data.get("name"):
-        return jsonify({"error": "Name is required"}), 400
-
-    # Check for duplicate code
-    if repo.code_exists(data["code"]):
-        return jsonify({"error": "Code already exists"}), 400
-
+    payload = request.get_json() or {}
+    service = PaymentMethodService(
+        repository=PaymentMethodRepository(db.session), session=db.session
+    )
     try:
-        method = PaymentMethod(
-            code=data["code"],
-            name=data["name"],
-            description=data.get("description"),
-            short_description=data.get("short_description"),
-            icon=data.get("icon"),
-            plugin_id=data.get("plugin_id"),
-            is_active=data.get("is_active", True),
-            is_default=data.get("is_default", False),
-            position=data.get("position", 0),
-            min_amount=(
-                Decimal(str(data["min_amount"])) if data.get("min_amount") else None
-            ),
-            max_amount=(
-                Decimal(str(data["max_amount"])) if data.get("max_amount") else None
-            ),
-            currencies=data.get("currencies", []),
-            countries=data.get("countries", []),
-            fee_type=data.get("fee_type", "none"),
-            fee_amount=(
-                Decimal(str(data["fee_amount"])) if data.get("fee_amount") else None
-            ),
-            fee_charged_to=data.get("fee_charged_to", "customer"),
-            instructions=data.get("instructions"),
-            config=data.get("config", {}),
-        )
+        saved = service.create(payload)
+    except PaymentMethodValidationError as validation_error:
+        return jsonify({"error": str(validation_error)}), 400
+    except Exception as creation_error:  # noqa: BLE001 — preserve old API
+        return jsonify({"error": str(creation_error)}), 400
 
-        # If setting as default, clear other defaults
-        if method.is_default:
-            db.session.query(PaymentMethod).filter(
-                PaymentMethod.is_default.is_(True)
-            ).update({"is_default": False})
-
-        saved = repo.save(method)
-
-        return (
-            jsonify(
-                {
-                    "payment_method": saved.to_dict(),
-                    "message": "Payment method created successfully",
-                }
-            ),
-            201,
-        )
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+    return (
+        jsonify(
+            {
+                "payment_method": saved.to_dict(),
+                "message": "Payment method created successfully",
+            }
+        ),
+        201,
+    )
 
 
 @admin_payment_methods_bp.route("/<method_id>", methods=["GET"])

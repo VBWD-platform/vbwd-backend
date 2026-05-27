@@ -53,7 +53,17 @@ class InvoiceLineItem(BaseModel):
 
         try:
             return line_item_registry.resolve_catalog_item_id(self)
-        except Exception:
+        except Exception as resolve_error:  # noqa: BLE001 — registry contract
+            # S24 — narrow this when the registry contract is tightened. For
+            # now, any handler exception is swallowed (must not break the
+            # to_dict serialisation path), but we log so debugging is possible.
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "resolve_catalog_item_id failed for line item %s: %s",
+                getattr(self, "id", "<no-id>"),
+                resolve_error,
+            )
             return None
 
     def to_dict(self) -> dict:
