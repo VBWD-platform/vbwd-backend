@@ -14,33 +14,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Every published vbwd-plugin-* repo (24 total). Plugins without
-        # unit tests are skipped gracefully by pre-commit-check.sh.
+        # Active payment scope (2026-05-28): demo instances only use
+        # stripe + paypal + token_payment + invoice. The 7 frozen payment
+        # plugins (c2p2, conekta, mercado_pago, promptpay, toss_payments,
+        # truemoney, yookassa) are excluded from CI. See
+        # docs/dev_log/20260528/reports/01-payment-scope-freeze.md.
+        # Plugins without unit tests skip gracefully via pre-commit-check.sh.
         plugin:
           - analytics
           - booking
-          - c2p2
           - chat
           - checkout
           - cms
-          - conekta
           - discount
           - email
           - ghrm
           - mailchimp
           - meinchat
-          - mercado_pago
           - paypal
-          - promptpay
           - shipping_flat_rate
           - shop
           - stripe
           - subscription
           - taro
           - token_payment
-          - toss_payments
-          - truemoney
-          - yookassa
 
     services:
       postgres:
@@ -58,13 +55,11 @@ jobs:
         with: { python-version: '3.11', cache: 'pip', cache-dependency-path: requirements.txt }
       - run: pip install -r requirements.txt
       - name: Install plugin
-        # Local dir name is snake; some repos use kebab — handle via override map.
+        # Local dir name is snake; ``token_payment`` is the one kebab-cased repo.
         run: |
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
-            [mercado_pago]=mercado-pago
             [token_payment]=token-payment
-            [toss_payments]=toss-payments
           )
           dir_name="${{ matrix.plugin }}"
           suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
@@ -78,15 +73,12 @@ jobs:
         run: |
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
-            [mercado_pago]=mercado-pago
             [token_payment]=token-payment
-            [toss_payments]=toss-payments
           )
           declare -A DEPS=(
             [taro]="chat"
             [stripe]="subscription"
             [paypal]="subscription"
-            [yookassa]="subscription"
             [meinchat]="subscription"
           )
           deps_for_this="${DEPS[${{ matrix.plugin }}]:-}"
@@ -114,15 +106,14 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11', cache: 'pip', cache-dependency-path: requirements.txt }
       - run: pip install -r requirements.txt
-      - name: Install ALL plugins (full SDK — all 24 published plugins)
+      - name: Install ALL plugins (active set — 17 plugins)
+        # Same scope as the unit matrix above; see the freeze note there.
         run: |
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
-            [mercado_pago]=mercado-pago
             [token_payment]=token-payment
-            [toss_payments]=toss-payments
           )
-          BACKEND_PLUGINS="analytics booking c2p2 chat checkout cms conekta discount email ghrm mailchimp meinchat mercado_pago paypal promptpay shipping_flat_rate shop stripe subscription taro token_payment toss_payments truemoney yookassa"
+          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 -q \

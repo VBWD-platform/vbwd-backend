@@ -82,21 +82,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install plugins (full SDK — all 24 published plugins)
-        # The CI tests the FULL plugin set, not a lean subset — keeps the
-        # main `Tests` workflow honest about what production runs.
+      - name: Install plugins (active set — 17 plugins)
+        # Payment scope (2026-05-28 decision): demo instances only use
+        # stripe + paypal + token_payment + invoice (core). The other 7
+        # payment plugins (c2p2, conekta, mercado_pago, promptpay,
+        # toss_payments, truemoney, yookassa) are FROZEN — repos kept
+        # on the org for archival but excluded from CI + deploy until
+        # someone explicitly un-freezes them. See
+        # docs/dev_log/20260528/reports/01-payment-scope-freeze.md.
         # S15 — fail fast on any clone failure.
-        # Naming: local dir uses snake_case (e.g. token_payment); the repo
-        # mostly uses kebab-case (vbwd-plugin-token-payment). REPO_OVERRIDES
-        # captures the three repos that don't match the simple identity rule.
+        # Naming: snake-cased local dir; ``token_payment`` is the one
+        # kebab-cased repo (vbwd-plugin-token-payment).
         run: |
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
-            [mercado_pago]=mercado-pago
             [token_payment]=token-payment
-            [toss_payments]=toss-payments
           )
-          BACKEND_PLUGINS="analytics booking c2p2 chat checkout cms conekta discount email ghrm mailchimp meinchat mercado_pago paypal promptpay shipping_flat_rate shop stripe subscription taro token_payment toss_payments truemoney yookassa"
+          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 \
@@ -191,21 +193,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install plugins (full SDK — all 24 published plugins)
-        # The CI tests the FULL plugin set, not a lean subset — keeps the
-        # main `Tests` workflow honest about what production runs.
+      - name: Install plugins (active set — 17 plugins)
+        # Payment scope (2026-05-28 decision): demo instances only use
+        # stripe + paypal + token_payment + invoice (core). The other 7
+        # payment plugins (c2p2, conekta, mercado_pago, promptpay,
+        # toss_payments, truemoney, yookassa) are FROZEN — repos kept
+        # on the org for archival but excluded from CI + deploy until
+        # someone explicitly un-freezes them. See
+        # docs/dev_log/20260528/reports/01-payment-scope-freeze.md.
         # S15 — fail fast on any clone failure.
-        # Naming: local dir uses snake_case (e.g. token_payment); the repo
-        # mostly uses kebab-case (vbwd-plugin-token-payment). REPO_OVERRIDES
-        # captures the three repos that don't match the simple identity rule.
+        # Naming: snake-cased local dir; ``token_payment`` is the one
+        # kebab-cased repo (vbwd-plugin-token-payment).
         run: |
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
-            [mercado_pago]=mercado-pago
             [token_payment]=token-payment
-            [toss_payments]=toss-payments
           )
-          BACKEND_PLUGINS="analytics booking c2p2 chat checkout cms conekta discount email ghrm mailchimp meinchat mercado_pago paypal promptpay shipping_flat_rate shop stripe subscription taro token_payment toss_payments truemoney yookassa"
+          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 \
