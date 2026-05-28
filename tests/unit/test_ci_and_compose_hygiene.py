@@ -46,9 +46,11 @@ def test_ci_plugin_clone_fails_fast():
     with open(workflow) as handle:
         content = handle.read()
     # Find the "Install plugins" step's run block.
-    # Permissive: allow comment lines between `name:` and `run:`.
+    # Permissive: the step's display name may be qualified (e.g.
+    # "Install plugins (active set — 17 plugins)") and there may be
+    # comment lines between `name:` and `run:`.
     step_match = re.search(
-        r"- name:\s*Install plugins\s*\n(?:\s*#[^\n]*\n)*\s*run:\s*\|\s*\n((?:\s+.*\n)+?)(?=\s*- name:|\Z)",
+        r"- name:\s*Install plugins\b[^\n]*\n(?:\s*#[^\n]*\n)*\s*run:\s*\|\s*\n((?:\s+.*\n)+?)(?=\s*- name:|\Z)",
         content,
     )
     assert step_match is not None, "Couldn't find the 'Install plugins' step"
