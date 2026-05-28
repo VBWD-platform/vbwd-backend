@@ -87,3 +87,82 @@ class TestRateLimitingConfiguration:
         assert (
             register_block is not None
         ), "POST /register MUST stay decorated with @limiter.limit(...)."
+
+
+class TestS27NoRegression:
+    """S27 lifted the global default ceilings + made them env-driven. These
+    specs pin the contracts that must NOT regress: existing per-route
+    overrides are intact, the 429 body shape is untouched, and the test-
+    harness `RATELIMIT_ENABLED: False` toggle still disables the limiter.
+    """
+
+    def test_existing_per_route_overrides_unchanged(self):
+        """Auth routes carry 5000/minute (looser brute-force tolerance) and
+        the events webhook keeps 100/minute (tighter). Both are independent
+        of the global default lift in S27.
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        backend = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+
+        auth_path = os.path.join(backend, "vbwd", "routes", "auth.py")
+        with open(auth_path) as handle:
+            auth_source = handle.read()
+        assert (
+            '@limiter.limit("5000 per minute")' in auth_source
+        ), "auth routes must keep their 5000/minute override (brute-force tolerance)."
+
+        events_path = os.path.join(backend, "vbwd", "routes", "events.py")
+        with open(events_path) as handle:
+            events_source = handle.read()
+        assert (
+            '@limiter.limit("100 per minute")' in events_source
+        ), "events webhook must keep its tighter 100/minute cap."
+
+    def test_429_response_shape_unchanged(self):
+        """Prod clients (fe-user web + iOS) parse the 429 body shape. S27
+        only changes the *numbers*; the shape stays `{"error": "...",
+        "message": "..."}` and `Retry-After` keeps being parsed from the
+        descriptor at vbwd/app.py:ratelimit_handler.
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        backend = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+        app_path = os.path.join(backend, "vbwd", "app.py")
+        with open(app_path) as handle:
+            source = handle.read()
+        assert (
+            '"error": "Rate limit exceeded"' in source
+        ), "The 429 body must keep its `error` field for client parsers."
+        assert (
+            '"message": str(error.description)' in source
+        ), "The 429 body must keep its `message` field for client parsers."
+        # Retry-After parsing block exists.
+        assert (
+            'response.headers["Retry-After"]' in source or "Retry-After" in source
+        ), "Retry-After parsing must stay in ratelimit_handler."
+
+    def test_ratelimit_enabled_false_still_disables(self):
+        """Every plugin conftest passes `RATELIMIT_ENABLED: False` to keep
+        unit tests from accidentally tripping the global limiter. S27 must
+        not break that toggle. We build a fresh app here (rather than using
+        the shared `app` fixture which sets it to True) so this test is
+        independent of the fixture's defaults.
+        """
+        from vbwd.app import create_app
+        from vbwd.config import get_database_url
+        from vbwd.extensions import limiter
+
+        app = create_app(
+            {
+                "TESTING": True,
+                "SQLALCHEMY_DATABASE_URI": get_database_url(),
+                "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+                "RATELIMIT_ENABLED": False,
+                "RATELIMIT_STORAGE_URL": "memory://",
+            }
+        )
+
+        assert app.config.get("RATELIMIT_ENABLED") is False
+        # flask-limiter mirrors the app-config toggle into limiter.enabled
+        # after init_app. The toggle path must survive S27's env-driven
+        # default lift.
+        assert limiter.enabled is False

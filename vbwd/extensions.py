@@ -1,4 +1,7 @@
 """Flask extensions and database setup."""
+import os
+from typing import Callable, List, Union
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -11,10 +14,38 @@ from vbwd.config import DATABASE_CONFIG, get_redis_url
 # SQLAlchemy instance
 db = SQLAlchemy()
 
+
+def _global_default_limits() -> List[Union[str, Callable[[], str]]]:
+    """Per-instance ceilings for the global Flask-Limiter, read from env.
+
+    Each value is an integer request count; the window unit is fixed (per
+    day / per hour) so ops can tune the number without learning
+    Flask-Limiter's mini-DSL. Setting a value to 0 omits that window —
+    operators can disable e.g. the day cap entirely.
+
+    Return type matches the Limiter constructor's `default_limits` signature
+    (`list[str | Callable[[], str]] | None`) so type-checking flows cleanly
+    into the Limiter call site below.
+
+    Raises:
+        ValueError: if an env var is set but not a valid integer — fail
+        fast so a typo in deployment config crashes app startup instead of
+        silently falling through to defaults.
+    """
+    per_day = int(os.environ.get("RATELIMIT_DEFAULT_DAY", "100000"))
+    per_hour = int(os.environ.get("RATELIMIT_DEFAULT_HOUR", "20000"))
+    limits: List[Union[str, Callable[[], str]]] = []
+    if per_day > 0:
+        limits.append(f"{per_day} per day")
+    if per_hour > 0:
+        limits.append(f"{per_hour} per hour")
+    return limits
+
+
 # Rate limiter - uses Redis for distributed rate limiting
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["10000 per day", "2000 per hour"],
+    default_limits=_global_default_limits(),
     storage_uri=get_redis_url(),
     strategy="fixed-window",  # or "moving-window" for stricter limiting
 )
