@@ -82,18 +82,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install plugins
-        # S15 — fail fast on any clone failure. Without this, a deleted
-        # or private plugin repo would let CI proceed against a half-cloned
-        # plugin tree and report green even though tests ran on an incomplete
-        # state.
+      - name: Install plugins (full SDK — all 24 published plugins)
+        # The CI tests the FULL plugin set, not a lean subset — keeps the
+        # main `Tests` workflow honest about what production runs.
+        # S15 — fail fast on any clone failure.
+        # Naming: local dir uses snake_case (e.g. token_payment); the repo
+        # mostly uses kebab-case (vbwd-plugin-token-payment). REPO_OVERRIDES
+        # captures the three repos that don't match the simple identity rule.
         run: |
           set -euo pipefail
-          for plugin in analytics chat cms email ghrm mailchimp paypal stripe taro yookassa; do
+          declare -A REPO_OVERRIDES=(
+            [mercado_pago]=mercado-pago
+            [token_payment]=token-payment
+            [toss_payments]=toss-payments
+          )
+          BACKEND_PLUGINS="analytics booking c2p2 chat checkout cms conekta discount email ghrm mailchimp meinchat mercado_pago paypal promptpay shipping_flat_rate shop stripe subscription taro token_payment toss_payments truemoney yookassa"
+          for dir_name in $BACKEND_PLUGINS; do
+            suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 \
-              "https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git" \
-              "plugins/${plugin}" \
-              || { echo "::error::Failed to clone plugin ${plugin}"; exit 1; }
+              "https://github.com/VBWD-platform/vbwd-plugin-${suffix}.git" \
+              "plugins/${dir_name}" \
+              || { echo "::error::Failed to clone plugin ${dir_name} (repo vbwd-plugin-${suffix})"; exit 1; }
           done
 
       - name: Create plugins.json
@@ -182,18 +191,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install plugins
-        # S15 — fail fast on any clone failure. Without this, a deleted
-        # or private plugin repo would let CI proceed against a half-cloned
-        # plugin tree and report green even though tests ran on an incomplete
-        # state.
+      - name: Install plugins (full SDK — all 24 published plugins)
+        # The CI tests the FULL plugin set, not a lean subset — keeps the
+        # main `Tests` workflow honest about what production runs.
+        # S15 — fail fast on any clone failure.
+        # Naming: local dir uses snake_case (e.g. token_payment); the repo
+        # mostly uses kebab-case (vbwd-plugin-token-payment). REPO_OVERRIDES
+        # captures the three repos that don't match the simple identity rule.
         run: |
           set -euo pipefail
-          for plugin in analytics chat cms email ghrm mailchimp paypal stripe taro yookassa; do
+          declare -A REPO_OVERRIDES=(
+            [mercado_pago]=mercado-pago
+            [token_payment]=token-payment
+            [toss_payments]=toss-payments
+          )
+          BACKEND_PLUGINS="analytics booking c2p2 chat checkout cms conekta discount email ghrm mailchimp meinchat mercado_pago paypal promptpay shipping_flat_rate shop stripe subscription taro token_payment toss_payments truemoney yookassa"
+          for dir_name in $BACKEND_PLUGINS; do
+            suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 \
-              "https://github.com/VBWD-platform/vbwd-plugin-${plugin}.git" \
-              "plugins/${plugin}" \
-              || { echo "::error::Failed to clone plugin ${plugin}"; exit 1; }
+              "https://github.com/VBWD-platform/vbwd-plugin-${suffix}.git" \
+              "plugins/${dir_name}" \
+              || { echo "::error::Failed to clone plugin ${dir_name} (repo vbwd-plugin-${suffix})"; exit 1; }
           done
 
       - name: Run database migrations
