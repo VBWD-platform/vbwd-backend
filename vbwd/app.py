@@ -348,10 +348,12 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.cli.test_data import seed_test_data_command, cleanup_test_data_command
     from vbwd.cli.reset_demo import reset_demo_command
     from vbwd.cli.plugins import plugins_cli
+    from vbwd.cli.seed_rbac import seed_rbac_command
 
     app.cli.add_command(seed_test_data_command)
     app.cli.add_command(cleanup_test_data_command)
     app.cli.add_command(reset_demo_command)
     app.cli.add_command(plugins_cli)
+    app.cli.add_command(seed_rbac_command)
 
     return app

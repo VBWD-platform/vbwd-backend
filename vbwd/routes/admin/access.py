@@ -33,19 +33,14 @@ CORE_PERMISSIONS = [
 
 
 def _get_all_permissions():
-    """Collect permissions from core + all enabled plugins."""
-    from flask import current_app
+    """Collect permissions from core + all enabled plugins.
 
-    result = {"core": CORE_PERMISSIONS}
+    Thin wrapper over the shared catalog collector (DRY) — the seeder uses
+    the same source.
+    """
+    from vbwd.services.permission_catalog import collect_permission_catalog
 
-    manager = getattr(current_app, "plugin_manager", None)
-    if manager:
-        for plugin in manager.get_enabled_plugins():
-            admin_perms = getattr(plugin, "admin_permissions", None)
-            if admin_perms:
-                result[plugin.metadata.name] = admin_perms
-
-    return result
+    return collect_permission_catalog()
 
 
 # ── Access Levels (Roles) ───────────────────────────────────────────────
