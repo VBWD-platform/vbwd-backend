@@ -146,6 +146,54 @@ def reorder_countries():
     return jsonify({"countries": [c.to_dict() for c in enabled]}), 200
 
 
+@admin_countries_bp.route("/export", methods=["GET"])
+@require_auth
+@require_admin
+@require_permission("settings.view")
+def export_countries_route():
+    """
+    Export the full country catalog as a downloadable VBWD-standard JSON file.
+
+    Returns:
+        200: JSON envelope (Content-Disposition: attachment)
+    """
+    from vbwd.services.country_io import export_countries
+
+    envelope = export_countries(db.session)
+    response = jsonify(envelope)
+    response.headers["Content-Disposition"] = "attachment; filename=vbwd-countries.json"
+    return response, 200
+
+
+@admin_countries_bp.route("/import", methods=["POST"])
+@require_auth
+@require_admin
+@require_permission("settings.manage")
+def import_countries_route():
+    """
+    Import a country catalog from a VBWD-standard JSON envelope (upsert by code).
+
+    Body:
+        A VBWD countries export envelope, or a raw ``{"countries": [...]}``.
+
+    Returns:
+        200: {created, updated}
+        400: Malformed payload
+    """
+    from vbwd.services.country_io import CountryImportError, import_countries
+
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({"error": "request body must be JSON"}), 400
+
+    try:
+        result = import_countries(db.session, payload)
+    except CountryImportError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({"created": result.created, "updated": result.updated}), 200
+
+
 @admin_countries_bp.route("/enabled", methods=["GET"])
 @require_auth
 @require_admin

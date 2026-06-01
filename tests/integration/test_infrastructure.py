@@ -67,6 +67,10 @@ class TestDockerInfrastructure:
 
     def test_database_tables_exist(self):
         """Test that all database tables have been created."""
+        # Core-owned tables only. `vbwd_tarif_plan`/`vbwd_subscription` were
+        # extracted to the subscription plugin (Sprint 11) and renamed to
+        # `subscription_tarif_plan`/`subscription_record` (S43.4); a core
+        # infrastructure test must stay plugin-agnostic and not assert them.
         expected_tables = [
             "alembic_version",
             "vbwd_currency",
@@ -76,8 +80,6 @@ class TestDockerInfrastructure:
             "vbwd_tax_rate",
             "vbwd_user_case",
             "vbwd_user_details",
-            "vbwd_tarif_plan",
-            "vbwd_subscription",
             "vbwd_user_invoice",
         ]
 

@@ -14,7 +14,8 @@ from uuid import uuid4
 import pytest
 
 from vbwd.extensions import db
-from vbwd.models.role import Role, Permission, role_permissions
+from vbwd.models.role import Role, Permission, role_permissions, user_roles
+from vbwd.models.user_access_level import user_access_level_permissions
 from vbwd.models.user import User
 from vbwd.models.enums import UserRole, UserStatus
 from vbwd.repositories.role_repository import RoleRepository
@@ -38,7 +39,12 @@ def _load_create_admin():
 
 
 def _wipe_rbac(session):
+    # Clear the user↔role link first (see test_rbac_seeder._wipe_rbac): an
+    # admin-with-role seeded at app startup otherwise makes DELETE FROM
+    # vbwd_role violate vbwd_user_roles_role_id_fkey.
+    session.execute(user_roles.delete())
     session.execute(role_permissions.delete())
+    session.execute(user_access_level_permissions.delete())
     session.query(Role).delete()
     session.query(Permission).delete()
     session.commit()

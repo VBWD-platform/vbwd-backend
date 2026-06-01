@@ -350,6 +350,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.cli.plugins import plugins_cli
     from vbwd.cli.seed_rbac import seed_rbac_command
     from vbwd.cli.seed_countries import seed_countries_command
+    from vbwd.cli.seed_payment_methods import seed_payment_methods_command
 
     app.cli.add_command(seed_test_data_command)
     app.cli.add_command(cleanup_test_data_command)
@@ -357,5 +358,6 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(plugins_cli)
     app.cli.add_command(seed_rbac_command)
     app.cli.add_command(seed_countries_command)
+    app.cli.add_command(seed_payment_methods_command)
 
     return app

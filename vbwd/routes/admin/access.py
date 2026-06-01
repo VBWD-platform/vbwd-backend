@@ -1,9 +1,10 @@
 """Admin access management routes — roles, permissions, user-role assignment."""
 from uuid import uuid4
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from vbwd.extensions import db
 from vbwd.middleware.auth import require_auth, require_permission
+from vbwd.models.enums import UserRole
 from vbwd.models.role import Role, Permission, user_roles
 from vbwd.models.user import User
 from vbwd.models.user_access_level import (
@@ -12,6 +13,16 @@ from vbwd.models.user_access_level import (
 )
 
 access_bp = Blueprint("admin_access", __name__, url_prefix="/api/v1/admin/access")
+
+
+def _acting_user_is_super_admin() -> bool:
+    """True when the authenticated caller is a SUPER_ADMIN.
+
+    System roles / user access levels are protected from deletion for ordinary
+    admins, but a super admin may remove them (e.g. the default ``admin`` role).
+    """
+    user = getattr(g, "user", None)
+    return user is not None and user.role == UserRole.SUPER_ADMIN
 
 
 # ── Core permissions (always available) ─────────────────────────────────
@@ -133,12 +144,15 @@ def update_level(level_id):
 @require_auth
 @require_permission("settings.system")
 def delete_level(level_id):
-    """Delete an access level. System roles cannot be deleted."""
+    """Delete an access level. System roles are deletable only by a super admin."""
     role = db.session.query(Role).filter_by(id=level_id).first()
     if not role:
         return jsonify({"error": "Access level not found"}), 404
-    if role.is_system:
-        return jsonify({"error": "System roles cannot be deleted"}), 400
+    if role.is_system and not _acting_user_is_super_admin():
+        return (
+            jsonify({"error": "System roles can only be deleted by a super admin"}),
+            400,
+        )
 
     db.session.delete(role)
     db.session.commit()
@@ -400,12 +414,15 @@ def update_user_level(level_id):
 @require_auth
 @require_permission("settings.system")
 def delete_user_level(level_id):
-    """Delete a user access level. System levels cannot be deleted."""
+    """Delete a user access level. System levels are deletable only by a super admin."""
     level = db.session.query(UserAccessLevel).filter_by(id=level_id).first()
     if not level:
         return jsonify({"error": "User access level not found"}), 404
-    if level.is_system:
-        return jsonify({"error": "System levels cannot be deleted"}), 400
+    if level.is_system and not _acting_user_is_super_admin():
+        return (
+            jsonify({"error": "System levels can only be deleted by a super admin"}),
+            400,
+        )
 
     db.session.delete(level)
     db.session.commit()

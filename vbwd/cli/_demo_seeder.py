@@ -46,8 +46,20 @@ class DemoSeeder:
         stats.update(self._clear_transactional_data())
         stats.update(self._clear_catalog())
         stats.update(self._seed_catalog())
+        stats.update(self._seed_countries())
         self.session.commit()
         return stats
+
+    def _seed_countries(self) -> dict:
+        """Ensure the foundational country catalog exists.
+
+        Delegates to the core country seeder (single source of truth, DRY).
+        Idempotent: existing rows and operator enable/disable edits survive.
+        """
+        from vbwd.services.country_seeder import seed_countries
+
+        result = seed_countries(self.session)
+        return {"countries_created": result.created}
 
     def _clear_transactional_data(self) -> dict:
         """Delete all invoices, subscriptions, purchases, balances."""

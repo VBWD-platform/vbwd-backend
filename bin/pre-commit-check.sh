@@ -264,6 +264,22 @@ run_integration_tests() {
             echo "Waiting for services to be ready..."
             sleep 5
         fi
+
+        # Seed the foundational reference data the admin-* integration suites
+        # rely on (idempotent, service-layer CLI seeders). A cold DB has no
+        # roles / countries / payment methods / admin user, so without this the
+        # country + payment-method + RBAC suites fail. Warn-and-continue (the
+        # tests fail loudly if a seed genuinely broke); never silently mask.
+        echo "Seeding foundational data (rbac, countries, payment methods, test data)..."
+        local seed_env="-e FLASK_APP=vbwd.app:create_app"
+        docker compose exec -T $seed_env api flask seed-rbac \
+            || echo -e "${YELLOW}  warn: seed-rbac failed${NC}"
+        docker compose exec -T $seed_env api flask seed-countries \
+            || echo -e "${YELLOW}  warn: seed-countries failed${NC}"
+        docker compose exec -T $seed_env api flask seed-payment-methods \
+            || echo -e "${YELLOW}  warn: seed-payment-methods failed${NC}"
+        docker compose exec -T $seed_env -e TEST_DATA_SEED=true api flask seed-test-data \
+            || echo -e "${YELLOW}  warn: seed-test-data failed${NC}"
     fi
 
     # Check if integration test paths exist

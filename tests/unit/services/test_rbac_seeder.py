@@ -9,7 +9,8 @@ permission collection is exercised via an injected fake ``plugin_manager``
 import pytest
 
 from vbwd.extensions import db
-from vbwd.models.role import Role, Permission, role_permissions
+from vbwd.models.role import Role, Permission, role_permissions, user_roles
+from vbwd.models.user_access_level import user_access_level_permissions
 from vbwd.routes.admin.access import CORE_PERMISSIONS
 from vbwd.services.permission_catalog import collect_permission_catalog
 from vbwd.services.rbac_seeder import seed_default_rbac, RbacSeedResult
@@ -47,7 +48,12 @@ class FakePluginManager:
 
 def _wipe_rbac(session):
     """Remove all role/permission rows so each test starts clean."""
+    # Clear the user↔role link first: since S39 seeds an admin-with-role at
+    # app startup, a leftover user_roles row otherwise makes DELETE FROM
+    # vbwd_role violate vbwd_user_roles_role_id_fkey.
+    session.execute(user_roles.delete())
     session.execute(role_permissions.delete())
+    session.execute(user_access_level_permissions.delete())
     session.query(Role).delete()
     session.query(Permission).delete()
     session.commit()
