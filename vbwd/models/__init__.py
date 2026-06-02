@@ -20,6 +20,7 @@ from vbwd.models.token_bundle_purchase import TokenBundlePurchase
 from vbwd.models.user_token_balance import UserTokenBalance, TokenTransaction
 from vbwd.models.payment_method import PaymentMethod, PaymentMethodTranslation
 from vbwd.models.country import Country
+from vbwd.models.plugin_seed_marker import PluginSeedMarker
 from vbwd.models.enums import (
     UserStatus,
     UserRole,
@@ -55,6 +56,7 @@ __all__ = [
     "PaymentMethod",
     "PaymentMethodTranslation",
     "Country",
+    "PluginSeedMarker",
     "UserAccessLevel",
     # Association tables
     "role_permissions",

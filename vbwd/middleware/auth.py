@@ -58,6 +58,9 @@ def require_auth(f):
 
         return f(*args, **kwargs)
 
+    # S30 — let the route-catalog introspection report this route as
+    # authenticated without re-parsing source / unwrapping decorators.
+    decorated_function.requires_auth = True  # type: ignore[attr-defined]
     return decorated_function
 
 
@@ -114,6 +117,10 @@ def require_permission(*permissions):
                     )
             return f(*args, **kwargs)
 
+        # S30 — surface the required permission to the route catalog.
+        decorated_function.required_permission = (  # type: ignore[attr-defined]
+            ",".join(permissions) if permissions else None
+        )
         return decorated_function
 
     return decorator
@@ -144,6 +151,10 @@ def require_user_permission(*permissions):
                     )
             return f(*args, **kwargs)
 
+        # S30 — surface the required user permission to the route catalog.
+        decorated_function.required_permission = (  # type: ignore[attr-defined]
+            ",".join(permissions) if permissions else None
+        )
         return decorated_function
 
     return decorator
