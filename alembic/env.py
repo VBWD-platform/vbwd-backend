@@ -13,6 +13,7 @@ import pkgutil
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy import text
 
 from alembic import context
 
@@ -84,6 +85,25 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        # Alembic's version table defaults to version_num VARCHAR(32). Some
+        # date-prefixed plugin revision ids exceed 32 chars, which truncates on
+        # write to a fresh DB. Widen the column up front so any revision id
+        # fits. Idempotent across every DB shape (fresh, narrow, already-wide)
+        # and — like the rest of this file — names no specific plugin.
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS alembic_version ("
+                "version_num VARCHAR(255) NOT NULL "
+                "CONSTRAINT alembic_version_pkc PRIMARY KEY)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE alembic_version "
+                "ALTER COLUMN version_num TYPE VARCHAR(255)"
+            )
+        )
+        connection.commit()
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
