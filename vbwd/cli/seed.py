@@ -65,11 +65,19 @@ def run_populate_db_module(plugin_name: str) -> int:
     script_path = os.path.join(plugins_root, plugin_name, "populate_db.py")
     if not os.path.exists(script_path):
         return NO_SEED_SOURCE
+    # The script parses its OWN argv with argparse (`[--force] [--check]`). Under
+    # `flask seed all` the inherited sys.argv still holds "seed all", which made
+    # argparse abort with exit 2. Run it with a clean argv — `--force` mirrors the
+    # legacy `python populate_db.py --force` loop so re-seeds stay idempotent.
+    saved_argv = sys.argv
+    sys.argv = [script_path, "--force"]
     try:
         runpy.run_path(script_path, run_name="__main__")
     except SystemExit as exit_signal:
         code = exit_signal.code
         return int(code) if isinstance(code, int) else (0 if code is None else 1)
+    finally:
+        sys.argv = saved_argv
     return 0
 
 

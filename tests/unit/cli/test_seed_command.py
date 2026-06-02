@@ -135,6 +135,42 @@ def test_plugin_without_populate_falls_back_to_populate_db(app, runner):
     mock_runner.assert_called_once_with("legacy")
 
 
+def test_run_populate_db_module_sanitizes_argv(app):
+    """Regression (heavy-load run #26847419902): under `flask seed all` the
+    inherited ``sys.argv`` still held ``seed all``, so a populate_db.py parsing
+    its own args with argparse aborted with ``error: unrecognized arguments:
+    seed all`` (exit 2). The fallback must run the script with a CLEAN argv
+    (script path + ``--force``, mirroring the legacy loop) and restore argv after.
+    """
+    import sys
+
+    from vbwd.cli import seed as seed_module
+
+    captured = {}
+
+    def _fake_run_path(path, run_name=None):
+        captured["argv"] = list(sys.argv)
+
+    saved = list(sys.argv)
+    sys.argv = ["flask", "seed", "all"]  # simulate the contaminated invocation
+    try:
+        with patch("vbwd.cli.seed.os.path.exists", return_value=True), patch(
+            "vbwd.cli.seed.runpy.run_path", side_effect=_fake_run_path
+        ):
+            code = seed_module.run_populate_db_module("booking")
+        argv_after_call = list(sys.argv)
+    finally:
+        sys.argv = saved
+
+    assert code == 0
+    # The script saw a clean argv — its own path + --force, never the flask args.
+    assert captured["argv"][0].endswith("populate_db.py")
+    assert "--force" in captured["argv"]
+    assert "seed" not in captured["argv"] and "all" not in captured["argv"]
+    # argv is restored after the call (no leakage to later plugins).
+    assert argv_after_call == ["flask", "seed", "all"]
+
+
 def test_plugin_with_no_seed_source_is_noop_success(app, runner):
     """Spec 6b: a plugin with neither populate() nor populate_db.py is a no-op
     success (ok=True), so ``seed all`` in strict mode still passes."""
