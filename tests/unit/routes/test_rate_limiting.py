@@ -166,3 +166,33 @@ class TestS27NoRegression:
         # after init_app. The toggle path must survive S27's env-driven
         # default lift.
         assert limiter.enabled is False
+
+
+class TestRateLimitTelemetry:
+    """S33 — every 429 emitted by the global Flask-Limiter handler writes a
+    single WARN-level structured log line so the next "users hit the cap"
+    report is answerable with grep instead of guesswork."""
+
+    def test_429_emits_warn_log_with_route_key_descriptor(self, app, caplog):
+        """A 429 routed through `vbwd/app.py:ratelimit_handler` emits one WARN
+        line carrying the route, the bucket key, and the tripped descriptor.
+
+        We drive the real registered 429 handler via `handle_http_exception`
+        inside a request context — exercising `ratelimit_handler` end-to-end
+        without hammering a live limit or depending on URL-map ordering.
+        """
+        import logging
+
+        from werkzeug.exceptions import TooManyRequests
+
+        with app.test_request_context("/api/v1/some-limited-route"):
+            error = TooManyRequests(description="5 per 1 minute")
+            with caplog.at_level(logging.WARNING):
+                response = app.handle_http_exception(error)
+
+        assert response.status_code == 429
+        assert "429 route=" in caplog.text, caplog.text
+        # bucket key (current keyfunc is get_remote_address → the request IP)
+        assert "key=" in caplog.text
+        # the tripped descriptor is carried through verbatim
+        assert "5 per 1 minute" in caplog.text

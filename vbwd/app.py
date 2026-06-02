@@ -1,6 +1,7 @@
 """Flask application factory."""
 import os
-from flask import Flask, jsonify, make_response
+from flask import Flask, jsonify, make_response, request
+from flask_limiter.util import get_remote_address
 from typing import Optional, Dict, Any
 import logging
 
@@ -268,6 +269,18 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(settings_bp)
     app.register_blueprint(webhooks_bp)
 
+    # S30 — debug-only load-test introspection (/_routes, /_seed_status).
+    # The whole blueprint is gated per-route by require_debug_enabled; the
+    # ENABLE_DEBUG_ENDPOINTS flag (below) defaults OFF so prod is unaffected.
+    from vbwd.routes.debug import debug_bp
+
+    csrf.exempt(debug_bp)
+    app.register_blueprint(debug_bp)
+    if "ENABLE_DEBUG_ENDPOINTS" not in app.config:
+        app.config["ENABLE_DEBUG_ENDPOINTS"] = os.getenv(
+            "VBWD_ENABLE_DEBUG_ENDPOINTS", ""
+        ).lower() in ("1", "true", "yes")
+
     # Health check endpoint — cheap liveness (process alive); no I/O.
     @app.route("/api/v1/health")
     def health():
@@ -317,6 +330,16 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     @app.errorhandler(429)
     def ratelimit_handler(error):
         """Handle rate limit exceeded errors with JSON response."""
+        # S33 — structured telemetry: one WARN line per 429 so "users hit the
+        # cap" reports are answerable with grep (route + bucket key + the
+        # tripped descriptor). The bucket key uses the limiter's current
+        # keyfunc (get_remote_address); S31 will swap that for a per-user key.
+        logger.warning(
+            "429 route=%s key=%s descriptor=%s",
+            request.endpoint or request.path,
+            get_remote_address(),
+            str(error.description),
+        )
         response = make_response(
             jsonify(
                 {"error": "Rate limit exceeded", "message": str(error.description)}
@@ -351,6 +374,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.cli.seed_rbac import seed_rbac_command
     from vbwd.cli.seed_countries import seed_countries_command
     from vbwd.cli.seed_payment_methods import seed_payment_methods_command
+    from vbwd.cli.seed import seed_command
 
     app.cli.add_command(seed_test_data_command)
     app.cli.add_command(cleanup_test_data_command)
@@ -359,5 +383,6 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(seed_rbac_command)
     app.cli.add_command(seed_countries_command)
     app.cli.add_command(seed_payment_methods_command)
+    app.cli.add_command(seed_command)
 
     return app
