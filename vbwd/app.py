@@ -269,6 +269,13 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(settings_bp)
     app.register_blueprint(webhooks_bp)
 
+    # S47.1 — core SEO seam: /sitemap.xml + /robots.txt aggregate the
+    # plugin-registered sitemap providers (core declares none). Agnostic.
+    from vbwd.routes.seo import seo_bp
+
+    csrf.exempt(seo_bp)
+    app.register_blueprint(seo_bp)
+
     # S30 — debug-only load-test introspection (/_routes, /_seed_status).
     # The whole blueprint is gated per-route by require_debug_enabled; the
     # ENABLE_DEBUG_ENDPOINTS flag (below) defaults OFF so prod is unaffected.
