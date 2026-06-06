@@ -9,8 +9,110 @@ from uuid import UUID
 from flask import current_app, jsonify
 
 from vbwd.events.payment_events import PaymentCapturedEvent, PaymentAuthorizedEvent
+from vbwd.events.bus import event_bus
 
 logger = logging.getLogger(__name__)
+
+
+# Domain-neutral recurring-billing facts published by payment webhooks.
+# A payment install with no plan concept has no subscriber for these — the
+# webhook still succeeds (publish is a no-op when no subscriber is registered),
+# so payment plugins stay subscription-free. Any plugin that owns recurring
+# objects (e.g. subscription) subscribes and does the work inline (the bus
+# dispatches synchronously, in the same request/transaction).
+EVENT_PROVIDER_LINKED = "payment.provider_linked"
+EVENT_RECURRING_CHARGE = "payment.recurring_charge"
+EVENT_PROVIDER_CANCELLED = "payment.provider_cancelled"
+EVENT_RECURRING_FAILED = "payment.recurring_failed"
+EVENT_INVOICE_FAILED = "payment.invoice_failed"
+
+
+def publish_provider_linked(invoice_id, provider, provider_ref_id):
+    """Publish that a provider's recurring object id is linked to an invoice.
+
+    Subscriber records ``provider_ref_id`` on the recurring object referenced
+    by the invoice's line item. No-op if nothing subscribes.
+    """
+    event_bus.publish(
+        EVENT_PROVIDER_LINKED,
+        {
+            "invoice_id": str(invoice_id),
+            "provider": provider,
+            "provider_ref_id": provider_ref_id,
+        },
+    )
+
+
+def publish_recurring_charge(
+    provider,
+    provider_ref_id,
+    amount,
+    currency,
+    provider_reference,
+    transaction_id="",
+    metadata=None,
+):
+    """Publish a successful recurring charge fact.
+
+    The subscriber finds the matching recurring object, creates the renewal
+    invoice, and itself emits ``payment.captured`` (forwarding ``metadata``
+    verbatim) so all downstream capture handling is preserved byte-for-byte.
+    No-op if nothing subscribes.
+    """
+    event_bus.publish(
+        EVENT_RECURRING_CHARGE,
+        {
+            "provider": provider,
+            "provider_ref_id": provider_ref_id,
+            "amount": amount,
+            "currency": currency,
+            "provider_reference": provider_reference,
+            "transaction_id": transaction_id,
+            "metadata": metadata or {},
+        },
+    )
+
+
+def publish_provider_cancelled(provider, provider_ref_id, reason=None):
+    """Publish that the provider cancelled a recurring object. No-op if no sub."""
+    event_bus.publish(
+        EVENT_PROVIDER_CANCELLED,
+        {
+            "provider": provider,
+            "provider_ref_id": provider_ref_id,
+            "reason": reason,
+        },
+    )
+
+
+def publish_recurring_failed(provider, provider_ref_id, error_message):
+    """Publish a failed recurring charge fact. No-op if nothing subscribes."""
+    event_bus.publish(
+        EVENT_RECURRING_FAILED,
+        {
+            "provider": provider,
+            "provider_ref_id": provider_ref_id,
+            "error_message": error_message,
+        },
+    )
+
+
+def publish_invoice_failed(
+    invoice_id, provider, error_message, error_code="payment_failed"
+):
+    """Publish a payment failure keyed by invoice (provider has no ref id).
+
+    No-op if nothing subscribes.
+    """
+    event_bus.publish(
+        EVENT_INVOICE_FAILED,
+        {
+            "invoice_id": str(invoice_id),
+            "provider": provider,
+            "error_message": error_message,
+            "error_code": error_code,
+        },
+    )
 
 
 def check_plugin_enabled(plugin_name: str):

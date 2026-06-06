@@ -55,6 +55,8 @@ DELETED_CORE_MODULES = [
     "vbwd.services.tarif_plan_category_service",
     # Feature gating (S3)
     "vbwd.services.feature_guard",
+    # Subscription read-model port → generic invoice extra-fields registry (S50.3)
+    "vbwd.services.subscription_read_model",
 ]
 
 
@@ -145,11 +147,35 @@ def test_core_deletion_info_is_generic():
     assert "subscription_count" not in source
 
 
+def test_core_admin_invoice_detail_uses_generic_extra_fields_registry():
+    """S50.3 — admin invoice detail merges plugin extra fields via the generic
+    registry; it names no subscription read-model symbol."""
+    from vbwd.routes.admin import invoices as invoices_routes
+
+    source = inspect.getsource(invoices_routes.get_invoice)
+    assert "aggregate_invoice_extra_fields" in source
+    assert "subscription_read_model" not in source
+
+
+def test_core_admin_user_routes_name_no_subscription_read_model():
+    """S50.3 — the subscription read-model port is gone from core user routes;
+    the deleted /addons route is now a subscription-plugin endpoint."""
+    from vbwd.routes.admin import users as users_routes
+
+    source = inspect.getsource(users_routes)
+    assert "subscription_read_model" not in source
+    assert not hasattr(users_routes, "get_user_addons")
+
+
 def test_core_has_generic_subscription_ports():
-    """Core exposes the generic ports the plugin implements (S3/S4)."""
+    """Core exposes the generic ports the plugin implements (S3/S4).
+
+    The subscription read model is no longer a core port (S50.3): invoice
+    enrichment now flows through the generic invoice extra-fields registry.
+    """
     from vbwd.services.entitlement import IEntitlementProvider  # noqa: F401
-    from vbwd.services.subscription_read_model import (  # noqa: F401
-        ISubscriptionReadModel,
+    from vbwd.services.invoice_extra_fields_registry import (  # noqa: F401
+        register_invoice_extra_fields_provider,
     )
     from vbwd.services.demo_data_registry import (  # noqa: F401
         register_catalog_seeder,

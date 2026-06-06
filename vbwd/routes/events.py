@@ -8,6 +8,7 @@ from marshmallow import Schema, fields, ValidationError, validate
 from vbwd.middleware.auth import require_auth
 from vbwd.extensions import limiter
 from vbwd.events.dispatcher import Event
+from vbwd.services.frontend_event_type_registry import allowed_frontend_event_types
 
 
 # Create blueprint
@@ -33,37 +34,6 @@ event_schema = FrontendEventSchema()
 events_batch_schema = EventsBatchSchema()
 
 
-# Allowed frontend event types (whitelist for security)
-ALLOWED_EVENT_TYPES = {
-    # Auth events
-    "auth:login",
-    "auth:logout",
-    "auth:token-refreshed",
-    "auth:session-expired",
-    # User events
-    "user:registered",
-    "user:updated",
-    "user:deleted",
-    # Subscription events
-    "subscription:created",
-    "subscription:activated",
-    "subscription:upgraded",
-    "subscription:downgraded",
-    "subscription:cancelled",
-    "subscription:expired",
-    # Payment events
-    "payment:initiated",
-    "payment:completed",
-    "payment:failed",
-    "payment:refunded",
-    # Plugin events
-    "plugin:registered",
-    "plugin:initialized",
-    "plugin:error",
-    "plugin:stopped",
-}
-
-
 @events_bp.route("", methods=["POST"])
 @require_auth
 @limiter.limit("100 per minute")
@@ -79,8 +49,8 @@ def receive_events():
         {
             "events": [
                 {
-                    "type": "subscription:created",
-                    "data": { "subscriptionId": "123", "planId": "456" },
+                    "type": "user:updated",
+                    "data": { "userId": "123" },
                     "timestamp": "2026-01-05T10:30:00.000Z"
                 }
             ]
@@ -112,11 +82,13 @@ def receive_events():
     processed = 0
     errors = []
 
+    allowed_event_types = allowed_frontend_event_types()
+
     for event_data in events:
         event_type = event_data.get("type")
 
         # Validate event type against whitelist
-        if event_type not in ALLOWED_EVENT_TYPES:
+        if event_type not in allowed_event_types:
             errors.append(f"Event type '{event_type}' not allowed")
             continue
 
@@ -169,4 +141,4 @@ def list_event_types():
             "event_types": ["auth:login", "auth:logout", ...]
         }
     """
-    return jsonify({"event_types": sorted(list(ALLOWED_EVENT_TYPES))}), 200
+    return jsonify({"event_types": sorted(allowed_frontend_event_types())}), 200

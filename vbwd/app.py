@@ -23,7 +23,6 @@ def _register_event_handlers(app: Flask, container) -> None:
     from vbwd.handlers.payment_handler import PaymentCapturedHandler
     from vbwd.handlers.refund_handler import PaymentRefundedHandler
     from vbwd.handlers.restore_handler import RefundReversedHandler
-    from vbwd.handlers.payment_failed_handler import PaymentFailedHandler
     from vbwd.handlers.payment_authorized_handler import PaymentAuthorizedHandler
 
     try:
@@ -82,10 +81,6 @@ def _register_event_handlers(app: Flask, container) -> None:
         # Create and register refund reversal handler
         restore_handler = RefundReversedHandler(container)
         dispatcher.register("refund.reversed", restore_handler)
-
-        # Create and register payment failed handler
-        payment_failed_handler = PaymentFailedHandler(container)
-        dispatcher.register("payment.failed", payment_failed_handler)
 
         # Create and register payment authorized handler
         authorized_handler = PaymentAuthorizedHandler(container)
@@ -268,13 +263,6 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(config_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(webhooks_bp)
-
-    # S47.1 — core SEO seam: /sitemap.xml + /robots.txt aggregate the
-    # plugin-registered sitemap providers (core declares none). Agnostic.
-    from vbwd.routes.seo import seo_bp
-
-    csrf.exempt(seo_bp)
-    app.register_blueprint(seo_bp)
 
     # S30 — debug-only load-test introspection (/_routes, /_seed_status).
     # The whole blueprint is gated per-route by require_debug_enabled; the

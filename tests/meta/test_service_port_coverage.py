@@ -22,12 +22,13 @@ EXPECTED_GAPS: set[str] = set()
 PORT_SERVICES = {
     "access_level_content_provider",
     "activity_logger",
-    "catalog_read_model",
     "deletion_dependency_registry",
     "demo_data_registry",
     "entitlement",
-    "subscription_lifecycle",
-    "subscription_read_model",
+    "invoice_extra_fields_registry",
+    # ``subscription_lifecycle`` removed in S50.4 — the lifecycle port was
+    # deleted; payment↔subscription is now event-driven (payment plugins
+    # publish domain-neutral facts, subscription subscribes). No core port.
 }
 
 

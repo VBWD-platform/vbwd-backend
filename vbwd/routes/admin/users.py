@@ -358,7 +358,7 @@ def delete_user(user_id):
     Delete a user completely.
 
     Body (optional):
-        - force: bool (if true, cascade delete all dependencies including invoices and subscriptions)
+        - force: bool (if true, cascade delete all dependencies)
 
     Args:
         user_id: UUID of the user
@@ -366,7 +366,7 @@ def delete_user(user_id):
     Returns:
         200: User deleted successfully
         404: User not found
-        409: User has invoices/subscriptions and force delete not requested
+        409: User has cascade dependencies and force delete not requested
     """
     user_repo = UserRepository(db.session)
     user = user_repo.find_by_id(user_id)
@@ -380,34 +380,36 @@ def delete_user(user_id):
     data = request.get_json(silent=True) or {}
     force_delete = data.get("force", False)
 
-    # Check if user has invoices or subscriptions
+    # Check what cascades. Core contributes its own dependencies (invoices);
+    # plugins contribute theirs (e.g. subscriptions) via the deletion-dependency
+    # registry, so core names no plugin domain.
     from vbwd.repositories.invoice_repository import InvoiceRepository
-    from vbwd.services.subscription_read_model import (
-        resolve_subscription_read_model,
+    from vbwd.services.deletion_dependency_registry import (
+        resolve_deletion_dependencies,
     )
 
     invoice_repo = InvoiceRepository(db.session)
 
     invoices = invoice_repo.find_by_user(user_id)
-    invoice_count = len(invoices)
-    subscription_count = resolve_subscription_read_model().count_user_subscriptions(
-        user_id
-    )
-
-    has_dependencies = invoice_count > 0 or subscription_count > 0
-
-    if has_dependencies and not force_delete:
-        error_msg = (
-            f"Cannot delete user with {invoice_count} invoice(s) and "
-            f"{subscription_count} subscription(s). User has transaction history."
+    dependencies = []
+    if len(invoices) > 0:
+        dependencies.append(
+            {"type": "invoice", "count": len(invoices), "label": "Invoices"}
         )
+    dependencies.extend(resolve_deletion_dependencies(user.id))
+
+    if dependencies and not force_delete:
+        summary = ", ".join(
+            f"{dependency['count']} {dependency['label'].lower()}"
+            for dependency in dependencies
+        )
+        error_msg = f"Cannot delete user with {summary}. User has transaction history."
         return (
             jsonify(
                 {
                     "error": error_msg,
                     "has_dependencies": True,
-                    "invoice_count": invoice_count,
-                    "subscription_count": subscription_count,
+                    "dependencies": dependencies,
                 }
             ),
             409,
@@ -417,36 +419,3 @@ def delete_user(user_id):
     user_repo.delete(user_id)
 
     return jsonify({"message": "User deleted successfully"}), 200
-
-
-@admin_users_bp.route("/<user_id>/addons", methods=["GET"])
-@require_auth
-@require_admin
-@require_permission("users.view")
-def get_user_addons(user_id):
-    """
-    Get user's add-on subscriptions with invoice data.
-
-    Args:
-        user_id: UUID of the user
-
-    Returns:
-        200: List of addon subscriptions with invoice info
-        404: User not found
-    """
-    user_repo = UserRepository(db.session)
-    user = user_repo.find_by_id(user_id)
-
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    from vbwd.services.subscription_read_model import (
-        resolve_subscription_read_model,
-    )
-
-    result = resolve_subscription_read_model().user_addon_subscriptions(user_id)
-
-    return jsonify({"addon_subscriptions": result}), 200
-
-
-# ============================================================================

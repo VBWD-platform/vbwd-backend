@@ -73,17 +73,18 @@ def list_invoices():
 @require_permission("invoices.view")
 def get_invoice(invoice_id):
     """
-    Get invoice detail with enriched user, plan, and subscription data.
+    Get invoice detail with enriched user data, plus any plugin-contributed
+    extra fields.
 
     Args:
         invoice_id: UUID of the invoice
 
     Returns:
-        200: Invoice details with user, plan, subscription info
+        200: Invoice details with user info (+ plugin extra fields)
         404: Invoice not found
     """
-    from vbwd.services.subscription_read_model import (
-        resolve_subscription_read_model,
+    from vbwd.services.invoice_extra_fields_registry import (
+        aggregate_invoice_extra_fields,
     )
 
     invoice_repo = InvoiceRepository(db.session)
@@ -106,9 +107,9 @@ def get_invoice(invoice_id):
             else ""
         )
 
-    # Enrich with plan / subscription info (subscription plugin owns this;
-    # empty when the plugin is disabled).
-    inv_dict.update(resolve_subscription_read_model().enrich_invoice(invoice))
+    # Merge plugin-contributed extra fields (opaque to core; empty when no
+    # contributing plugin is enabled).
+    inv_dict.update(aggregate_invoice_extra_fields(invoice))
 
     # Add due_date and created_at
     inv_dict["due_date"] = (
