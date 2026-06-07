@@ -41,4 +41,50 @@ def collect_permission_catalog(*, plugin_manager: Optional[Any] = None) -> dict:
             if admin_permissions:
                 catalog[plugin.metadata.name] = admin_permissions
 
+    data_exchange_permissions = _collect_data_exchange_permissions()
+    if data_exchange_permissions:
+        catalog["data_exchange"] = data_exchange_permissions
+
     return catalog
+
+
+def _collect_data_exchange_permissions() -> list:
+    """Derive sales-cluster export/import/PII perms from the exchange registry.
+
+    Settings-cluster exchangers reuse the existing ``settings.view`` /
+    ``settings.manage`` permissions, so they contribute nothing here. Computed
+    dynamically from whatever is registered (DRY single source).
+    """
+    from vbwd.services.data_exchange.port import CLUSTER_SALES
+    from vbwd.services.data_exchange.registry import data_exchange_registry
+
+    permissions: list = []
+    for exchanger in data_exchange_registry.all():
+        if exchanger.cluster != CLUSTER_SALES:
+            continue
+        group = f"Data Exchange — {exchanger.cluster.capitalize()}"
+        if exchanger.supports_export:
+            permissions.append(
+                {
+                    "key": exchanger.export_permission,
+                    "label": f"Export {exchanger.label}",
+                    "group": group,
+                }
+            )
+        if exchanger.supports_import:
+            permissions.append(
+                {
+                    "key": exchanger.import_permission,
+                    "label": f"Import {exchanger.label}",
+                    "group": group,
+                }
+            )
+        if exchanger.pii_fields:
+            permissions.append(
+                {
+                    "key": exchanger.pii_export_permission,
+                    "label": f"Export {exchanger.label} (PII)",
+                    "group": group,
+                }
+            )
+    return permissions

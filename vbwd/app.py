@@ -141,6 +141,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         admin_tax_bp,
     )
     from vbwd.routes.admin.access import access_bp as admin_access_bp
+    from vbwd.routes.admin.data_exchange import data_exchange_bp
     from vbwd.routes.admin.frontend_plugins import frontend_plugins_bp
     from vbwd.routes.config import config_bp
     from vbwd.routes.settings import settings_bp
@@ -161,6 +162,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(admin_plugins_bp)
     csrf.exempt(admin_tax_bp)
     csrf.exempt(admin_access_bp)
+    csrf.exempt(data_exchange_bp)
     csrf.exempt(frontend_plugins_bp)
     csrf.exempt(token_bundles_bp)
     csrf.exempt(config_bp)
@@ -258,11 +260,23 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_plugins_bp)
     app.register_blueprint(admin_tax_bp)
     app.register_blueprint(admin_access_bp)
+    app.register_blueprint(data_exchange_bp)
     app.register_blueprint(frontend_plugins_bp)
     app.register_blueprint(token_bundles_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(webhooks_bp)
+
+    # Register the core data-exchange entity exchangers (S46.1). These are CORE
+    # entities (users+details, invoices, payment methods, access levels, email
+    # templates, currencies, countries), so — unlike plugin exchangers, which
+    # register at plugin enable-time — they register directly at init, before
+    # the permission catalog is collected, so their sales-cluster export/import
+    # permissions surface in the Access Level form. Idempotent / clear-safe.
+    from vbwd.services.data_exchange.core_exchangers import register_core_exchangers
+
+    with app.app_context():
+        register_core_exchangers(db.session)
 
     # S30 — debug-only load-test introspection (/_routes, /_seed_status).
     # The whole blueprint is gated per-route by require_debug_enabled; the
@@ -370,6 +384,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.cli.seed_countries import seed_countries_command
     from vbwd.cli.seed_payment_methods import seed_payment_methods_command
     from vbwd.cli.seed import seed_command
+    from vbwd.cli.data_exchange import data_exchange_group
 
     app.cli.add_command(seed_test_data_command)
     app.cli.add_command(cleanup_test_data_command)
@@ -379,5 +394,6 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(seed_countries_command)
     app.cli.add_command(seed_payment_methods_command)
     app.cli.add_command(seed_command)
+    app.cli.add_command(data_exchange_group)
 
     return app

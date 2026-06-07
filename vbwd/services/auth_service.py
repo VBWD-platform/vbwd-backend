@@ -83,6 +83,12 @@ class AuthService(IAuthService):
         if not user:
             return AuthResult(success=False, error="Invalid credentials")
 
+        # BOT accounts are server-authored identities that must never
+        # authenticate interactively (S60). Reject with the SAME generic
+        # response as a wrong password — no role disclosure, no token.
+        if user.role == UserRole.BOT:
+            return AuthResult(success=False, error="Invalid credentials")
+
         # Check if user is active
         if user.status != UserStatus.ACTIVE:
             return AuthResult(success=False, error="User account is inactive")

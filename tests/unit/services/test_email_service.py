@@ -213,6 +213,69 @@ class TestEmailServiceTemplates:
         assert "Alice" in html
 
 
+class TestEmailServiceVarAssetsOverride:
+    """Admin-supplied templates in ``var/assets/core/email/templates`` WIN
+    over the bundled defaults; absence of an override is harmless."""
+
+    def _make_service(self, bundled_dir):
+        from vbwd.services.email_service import EmailService
+
+        return EmailService(
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_user="user@example.com",
+            smtp_password="password",
+            from_email="noreply@example.com",
+            template_dir=str(bundled_dir),
+        )
+
+    def test_override_dir_wins_over_bundled(self, monkeypatch, tmp_path):
+        var_dir = tmp_path / "var"
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        (bundled / "welcome.txt").write_text("bundled {{ first_name }}")
+        (bundled / "welcome.html").write_text("<p>bundled {{ first_name }}</p>")
+        override = var_dir / "assets" / "core" / "email" / "templates"
+        override.mkdir(parents=True)
+        (override / "welcome.txt").write_text("override {{ first_name }}")
+        (override / "welcome.html").write_text("<p>override {{ first_name }}</p>")
+
+        monkeypatch.setenv("VBWD_VAR_DIR", str(var_dir))
+        service = self._make_service(bundled)
+        text, html = service.render_template("welcome", {"first_name": "Jo"})
+        assert "override Jo" in text
+        assert "override Jo" in html
+
+    def test_bundled_renders_without_override(self, monkeypatch, tmp_path):
+        var_dir = tmp_path / "var"  # exists but no assets dir at all
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        (bundled / "welcome.txt").write_text("bundled {{ first_name }}")
+        (bundled / "welcome.html").write_text("<p>bundled {{ first_name }}</p>")
+
+        monkeypatch.setenv("VBWD_VAR_DIR", str(var_dir))
+        service = self._make_service(bundled)
+        text, html = service.render_template("welcome", {"first_name": "Jo"})
+        assert "bundled Jo" in text
+        assert "bundled Jo" in html
+
+    def test_plugin_registered_path_still_appended_last(self, monkeypatch, tmp_path):
+        var_dir = tmp_path / "var"
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+        plugin = tmp_path / "plugin"
+        plugin.mkdir()
+        # Only the plugin dir has this template; it must resolve.
+        (plugin / "plugin_only.txt").write_text("plugin {{ first_name }}")
+        (plugin / "plugin_only.html").write_text("<p>plugin {{ first_name }}</p>")
+
+        monkeypatch.setenv("VBWD_VAR_DIR", str(var_dir))
+        service = self._make_service(bundled)
+        service.register_template_path(str(plugin))
+        text, _html = service.render_template("plugin_only", {"first_name": "Jo"})
+        assert "plugin Jo" in text
+
+
 class TestEmailServiceConvenienceMethods:
     """Tests for EmailService convenience methods."""
 

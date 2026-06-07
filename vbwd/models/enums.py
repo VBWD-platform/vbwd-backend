@@ -40,6 +40,9 @@ class UserRole(CaseInsensitiveEnum):
     ADMIN = "ADMIN"
     USER = "USER"
     VENDOR = "VENDOR"
+    # Server-authored, non-privileged identity (e.g. a contact-form sender
+    # provisioned by a plugin). BOT accounts cannot log in interactively.
+    BOT = "BOT"
 
 
 class SubscriptionStatus(enum.Enum):

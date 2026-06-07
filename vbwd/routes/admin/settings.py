@@ -1,23 +1,12 @@
 """Admin settings routes."""
 from flask import Blueprint, jsonify, request
 from vbwd.middleware.auth import require_auth, require_admin, require_permission
+from vbwd.services.core_settings_store import (
+    get_core_settings,
+    update_core_settings,
+)
 
 admin_settings_bp = Blueprint("admin_settings", __name__, url_prefix="/api/v1/admin")
-
-# In-memory settings store (in production, use database or config service)
-_settings = {
-    "provider_name": "",
-    "contact_email": "",
-    "website_url": "",
-    "other_links": "",
-    "address_street": "",
-    "address_city": "",
-    "address_postal_code": "",
-    "address_country": "",
-    "bank_name": "",
-    "bank_iban": "",
-    "bank_bic": "",
-}
 
 
 @admin_settings_bp.route("/settings", methods=["GET"])
@@ -31,7 +20,7 @@ def get_settings():
     Returns:
         200: Settings object
     """
-    return jsonify({"settings": _settings}), 200
+    return jsonify({"settings": get_core_settings()}), 200
 
 
 @admin_settings_bp.route("/settings", methods=["PUT"])
@@ -43,19 +32,18 @@ def update_settings():
     Update admin settings.
 
     Body:
-        Any settings key-value pairs
+        Any settings key-value pairs (unknown keys are ignored)
 
     Returns:
         200: Updated settings
     """
     data = request.get_json() or {}
-
-    # Update only known keys
-    for key in _settings:
-        if key in data:
-            _settings[key] = data[key]
-
     return (
-        jsonify({"settings": _settings, "message": "Settings updated successfully"}),
+        jsonify(
+            {
+                "settings": update_core_settings(data),
+                "message": "Settings updated successfully",
+            }
+        ),
         200,
     )

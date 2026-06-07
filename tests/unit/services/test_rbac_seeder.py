@@ -152,8 +152,16 @@ class TestSeedDefaultRbacIdempotency:
         result = seed_default_rbac(session, plugin_manager=FakePluginManager([]))
 
         assert result.roles_created == 3
-        # Core permission keys plus the wildcard ("*") used by super_admin.
-        assert result.permissions_created == len(CORE_PERMISSION_KEYS) + 1
+        # The seeder creates one Permission row per catalog key plus the
+        # wildcard ("*"). The catalog is core permissions + the data-exchange
+        # sales perms auto-derived from the registered core exchangers (S46.1);
+        # derive the expected count from the same single source so this stays
+        # accurate as exchangers are added.
+        catalog = collect_permission_catalog(plugin_manager=FakePluginManager([]))
+        catalog_keys = {
+            entry["key"] for entries in catalog.values() for entry in entries
+        }
+        assert result.permissions_created == len(catalog_keys | {"*"})
 
 
 class TestSeedDefaultRbacGuards:

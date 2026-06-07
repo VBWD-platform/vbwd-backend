@@ -14,6 +14,8 @@ from jinja2 import (
     TemplateNotFound as Jinja2TemplateNotFound,
 )
 
+from vbwd.services.asset_storage import asset_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,10 +89,20 @@ class EmailService:
         self._from_email = from_email
         self._from_name = from_name
 
-        # Core template dir + any plugin-contributed dirs (ChoiceLoader so
-        # feature plugins own their own email templates without core knowing
-        # them — e.g. the subscription plugin's activation/cancellation mails).
-        self._template_dirs: list = [template_dir]
+        # Loader order (first match wins):
+        #   1. admin overrides in var/assets/core/email/templates (host-mounted,
+        #      editable per deployment — an operator-supplied template WINS),
+        #   2. the bundled defaults shipped in the image,
+        #   3. any plugin-contributed dirs appended via register_template_path
+        #      (ChoiceLoader so feature plugins own their own email templates
+        #      without core knowing them — e.g. the subscription plugin's
+        #      activation/cancellation mails).
+        # FileSystemLoader of a missing dir is harmless, so an absent override
+        # dir (empty var) simply falls through to the bundled defaults.
+        self._template_dirs: list = [
+            asset_dir("core", "email", "templates"),
+            template_dir,
+        ]
         self._template_env: Optional[Environment] = None
         self._build_template_env()
 
