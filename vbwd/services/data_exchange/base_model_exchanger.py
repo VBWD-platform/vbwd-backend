@@ -81,9 +81,21 @@ class BaseModelExchanger(EntityExchanger):
     def _select_rows(self, selector: ExportSelector) -> List[Any]:
         all_rows = self._repository.find_all()
         if selector.ids:
-            wanted = set(selector.ids)
-            return [row for row in all_rows if getattr(row, self.natural_key) in wanted]
+            wanted = {str(value) for value in selector.ids}
+            return [row for row in all_rows if self._row_selected(row, wanted)]
         return all_rows
+
+    def _row_selected(self, row: Any, wanted: set) -> bool:
+        """A row matches when its primary id OR its natural key is requested.
+
+        The fe-admin "Export selected" sends primary-key ids; the CLI ``--ids``
+        flag may pass natural keys. Both sides are stringified for UUID safety.
+        """
+        primary_id = getattr(row, "id", None)
+        natural_value = getattr(row, self.natural_key, None)
+        return (primary_id is not None and str(primary_id) in wanted) or (
+            natural_value is not None and str(natural_value) in wanted
+        )
 
     def _serialise_row(self, row: Any, *, include_pii: bool) -> dict:
         result: dict = {}

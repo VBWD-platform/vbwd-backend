@@ -1,8 +1,8 @@
 """User repository implementation."""
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 from vbwd.repositories.base import BaseRepository
 from vbwd.models import User
-from vbwd.models.enums import UserStatus
+from vbwd.models.enums import UserRole, UserStatus
 
 
 class UserRepository(BaseRepository[User]):
@@ -18,6 +18,11 @@ class UserRepository(BaseRepository[User]):
     def find_by_status(self, status: str) -> List[User]:
         """Find users by status."""
         return self._session.query(User).filter(User.status == status).all()
+
+    def find_by_role(self, role: Union[UserRole, str]) -> List[User]:
+        """Find all users holding the given role."""
+        role_enum = role if isinstance(role, UserRole) else UserRole(role)
+        return self._session.query(User).filter(User.role == role_enum).all()
 
     def email_exists(self, email: str) -> bool:
         """Check if email is already registered."""

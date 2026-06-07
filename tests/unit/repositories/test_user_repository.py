@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from vbwd.models import User
+from vbwd.models.enums import UserRole
 from vbwd.repositories.user_repository import UserRepository
 
 
@@ -45,6 +46,22 @@ def test_find_by_email_returns_first_match(session, repository):
 def test_find_by_email_returns_none_when_no_match(session, repository):
     session.query.return_value.filter.return_value.first.return_value = None
     assert repository.find_by_email("nope@example.com") is None
+
+
+def test_find_by_role_filters_on_role_enum(session, repository):
+    expected = [object()]
+    session.query.return_value.filter.return_value.all.return_value = expected
+
+    result = repository.find_by_role(UserRole.ADMIN)
+
+    session.query.assert_called_once_with(User)
+    session.query.return_value.filter.assert_called_once()
+    assert result is expected
+
+
+def test_find_by_role_accepts_string(session, repository):
+    repository.find_by_role("BOT")
+    session.query.return_value.filter.assert_called_once()
 
 
 def test_email_exists_returns_true_when_count_positive(session, repository):

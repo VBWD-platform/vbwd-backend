@@ -128,6 +128,53 @@ def test_export_redacts_pii_without_pii_permission(mock_repo, mock_auth, client)
 
 @patch("vbwd.middleware.auth.AuthService")
 @patch("vbwd.middleware.auth.UserRepository")
+def test_export_selected_by_ids_returns_non_empty(mock_repo, mock_auth, client):
+    """POST /export {ids:[...]} flows the selector ids through to the exchanger;
+    the envelope is non-empty with exactly the selected rows (the empty-export
+    bug surfaced here from the UI sending primary ids)."""
+
+    class _IdAwareExchanger(EntityExchanger):
+        entity_key = "widgets"
+        label = "Widgets"
+        cluster = "sales"
+        natural_key = "code"
+        supports_export = True
+        supports_import = False
+        supported_formats = frozenset({"json"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        _ROWS = [
+            {"id": "uuid-a", "code": "a"},
+            {"id": "uuid-b", "code": "b"},
+        ]
+
+        def export(self, selector: ExportSelector, *, include_pii: bool) -> Envelope:
+            rows = self._ROWS
+            if selector.ids:
+                wanted = {str(value) for value in selector.ids}
+                rows = [
+                    row for row in rows if row["id"] in wanted or row["code"] in wanted
+                ]
+            return Envelope(entity_key="widgets", rows=rows)
+
+        def import_(self, payload: dict, *, mode: str, dry_run: bool) -> ImportResult:
+            raise UnsupportedOperationError("widgets is export-only")
+
+    data_exchange_registry.register(_IdAwareExchanger())
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.export"))
+    response = client.post(
+        "/api/v1/admin/data-exchange/widgets/export",
+        headers=_headers(),
+        json={"ids": ["uuid-b"]},
+    )
+    assert response.status_code == 200
+    rows = response.get_json()["widgets"]
+    assert [row["code"] for row in rows] == ["b"]
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
 def test_export_includes_pii_with_pii_permission(mock_repo, mock_auth, client):
     _mock_auth(
         mock_repo,

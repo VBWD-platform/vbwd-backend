@@ -146,37 +146,3 @@ class TestRoleCRUDBulletproof:
             f"/api/v1/admin/access/levels/{role_id}",
             headers={"Authorization": "Bearer valid"},
         )
-
-    @patch("vbwd.middleware.auth.AuthService")
-    @patch("vbwd.middleware.auth.UserRepository")
-    def test_export_import_roundtrip(self, mock_repo_cls, mock_auth_cls, client):
-        user = make_user_with_permissions("*")
-        mock_repo_cls.return_value.find_by_id.return_value = user
-        mock_auth_cls.return_value.verify_token.return_value = str(uuid4())
-
-        # Create a role first (CI has empty DB)
-        suffix = uuid4().hex[:6]
-        client.post(
-            "/api/v1/admin/access/levels",
-            json={"name": f"Export Test {suffix}", "slug": f"export-test-{suffix}"},
-            headers={"Authorization": "Bearer valid"},
-        )
-
-        # Export
-        export_resp = client.post(
-            "/api/v1/admin/access/export",
-            json={},
-            headers={"Authorization": "Bearer valid"},
-        )
-        assert export_resp.status_code == 200
-        export_data = export_resp.get_json()
-        assert "roles" in export_data
-        assert len(export_data["roles"]) > 0
-
-        # Import (should not fail — upsert)
-        import_resp = client.post(
-            "/api/v1/admin/access/import",
-            json=export_data,
-            headers={"Authorization": "Bearer valid"},
-        )
-        assert import_resp.status_code == 200

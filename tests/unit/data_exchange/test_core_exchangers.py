@@ -107,6 +107,24 @@ class TestUsersExchanger:
         assert row["details"]["first_name"] == "Round"
         assert row["details"]["city"] == "Berlin"
 
+    def test_export_selected_by_primary_id(self, session, seeded_user):
+        """fe-admin "Export selected" sends the user's primary id (UUID)."""
+        exchanger = _exchangers(session)["users"]
+        rows = exchanger.export(
+            ExportSelector(ids=[str(seeded_user.id)]), include_pii=True
+        ).rows
+        assert [r["email"] for r in rows] == ["roundtrip@example.com"]
+        assert rows[0]["details"]["first_name"] == "Round"
+
+    def test_export_selected_by_email_natural_key_still_works(
+        self, session, seeded_user
+    ):
+        exchanger = _exchangers(session)["users"]
+        rows = exchanger.export(
+            ExportSelector(ids=["roundtrip@example.com"]), include_pii=True
+        ).rows
+        assert [r["email"] for r in rows] == ["roundtrip@example.com"]
+
     def test_export_never_includes_password_hash(self, session, seeded_user):
         rows = _export_rows(_exchangers(session)["users"], include_pii=True)
         for row in rows:
@@ -185,6 +203,31 @@ class TestInvoicesExchanger:
             assert "id" not in row
             assert "user_id" not in row
             assert str(row["amount"]).startswith("10")
+        finally:
+            session.delete(invoice)
+            session.delete(user)
+            session.commit()
+
+    def test_export_selected_by_primary_id(self, session):
+        """fe-admin "Export selected" sends the invoice's primary id (UUID)."""
+        user = User(id=uuid4(), email="inv-id@example.com", password_hash="x")
+        session.add(user)
+        session.flush()
+        invoice = UserInvoice(
+            id=uuid4(),
+            user_id=user.id,
+            invoice_number="INV-ID-0001",
+            amount=10,
+            currency="EUR",
+        )
+        session.add(invoice)
+        session.commit()
+        try:
+            exchanger = _exchangers(session)["invoices"]
+            rows = exchanger.export(
+                ExportSelector(ids=[str(invoice.id)]), include_pii=False
+            ).rows
+            assert [r["number"] for r in rows] == ["INV-ID-0001"]
         finally:
             session.delete(invoice)
             session.delete(user)
@@ -427,6 +470,15 @@ class TestAccessLevelsExchanger:
         row = next(r for r in rows if r["name"] == "RT Role")
         assert "users.view" in row["permissions"]
         assert "id" not in row
+
+    def test_export_selected_by_primary_id(self, session, seeded):
+        """fe-admin "Export selected" sends the role's primary id (UUID)."""
+        role = session.query(Role).filter_by(name="RT Role").first()
+        exchanger = _exchangers(session)["access_levels"]
+        rows = exchanger.export(
+            ExportSelector(ids=[str(role.id)]), include_pii=False
+        ).rows
+        assert [r["name"] for r in rows] == ["RT Role"]
 
     def test_round_trip_preserves_grants(self, session, seeded):
         exchanger = _exchangers(session)["access_levels"]

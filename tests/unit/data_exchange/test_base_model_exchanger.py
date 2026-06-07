@@ -67,6 +67,50 @@ def test_export_selector_by_ids_filters_rows():
     assert [r["code"] for r in envelope.rows] == ["b"]
 
 
+def test_export_selector_by_primary_id_filters_rows():
+    """The fe-admin "Export selected" sends primary-key ids, not natural keys."""
+    rows = sample_rows()
+    rows[0].id = "uuid-a"
+    rows[1].id = "uuid-b"
+    repo = FakeRepository(rows)
+    session = FakeSession()
+    exchanger = BaseModelExchanger(
+        entity_key="widgets",
+        label="Widgets",
+        cluster="settings",
+        natural_key="code",
+        model_class=FakeRecord,
+        repository=repo,
+        session=session,
+        public_fields=["code", "label"],
+    )
+    envelope = exchanger.export(ExportSelector(ids=["uuid-b"]), include_pii=True)
+    assert [r["code"] for r in envelope.rows] == ["b"]
+
+
+def test_export_selector_matches_uuid_id_stringified():
+    """Primary-id matching must stringify both sides (UUID-safe)."""
+    import uuid
+
+    row_id = uuid.uuid4()
+    row = FakeRecord("a", "Alpha", "s", "a@x")
+    row.id = row_id
+    repo = FakeRepository([row])
+    session = FakeSession()
+    exchanger = BaseModelExchanger(
+        entity_key="widgets",
+        label="Widgets",
+        cluster="settings",
+        natural_key="code",
+        model_class=FakeRecord,
+        repository=repo,
+        session=session,
+        public_fields=["code"],
+    )
+    envelope = exchanger.export(ExportSelector(ids=[str(row_id)]), include_pii=True)
+    assert [r["code"] for r in envelope.rows] == ["a"]
+
+
 def test_export_over_row_cap_raises():
     rows = [FakeRecord(str(n), "L", "s", "e@x") for n in range(5)]
     repo = FakeRepository(rows)

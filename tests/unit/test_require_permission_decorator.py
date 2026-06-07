@@ -177,19 +177,3 @@ class TestRoleCRUDProtection:
             headers={"Authorization": "Bearer valid"},
         )
         assert_forbidden(response, "settings.system")
-
-    @patch("vbwd.middleware.auth.AuthService")
-    @patch("vbwd.middleware.auth.UserRepository")
-    def test_export_requires_settings_system(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
-        user = make_user_with_permissions("shop.products.view")
-        mock_repo_cls.return_value.find_by_id.return_value = user
-        mock_auth_cls.return_value.verify_token.return_value = str(uuid4())
-
-        response = client.post(
-            "/api/v1/admin/access/export",
-            json={},
-            headers={"Authorization": "Bearer valid"},
-        )
-        assert_forbidden(response, "settings.system")

@@ -180,7 +180,13 @@ class UsersExchanger(EntityExchanger):
     def _select(self, selector: ExportSelector) -> List[User]:
         query = self._session.query(User)
         if selector.ids:
-            return query.filter(User.email.in_(list(selector.ids))).all()
+            users = query.all()
+            wanted = {str(value) for value in selector.ids}
+            return [
+                user
+                for user in users
+                if str(user.id) in wanted or (user.email and user.email in wanted)
+            ]
         return query.all()
 
     def _serialise(self, user: User, *, include_pii: bool) -> dict:
@@ -309,10 +315,16 @@ class InvoicesExchanger(EntityExchanger):
         self._session = session
 
     def export(self, selector: ExportSelector, *, include_pii: bool) -> Envelope:
-        query = self._session.query(UserInvoice)
+        invoices = self._session.query(UserInvoice).all()
         if selector.ids:
-            query = query.filter(UserInvoice.invoice_number.in_(list(selector.ids)))
-        rows = [self._serialise(invoice) for invoice in query.all()]
+            wanted = {str(value) for value in selector.ids}
+            invoices = [
+                invoice
+                for invoice in invoices
+                if str(invoice.id) in wanted
+                or (invoice.invoice_number and invoice.invoice_number in wanted)
+            ]
+        rows = [self._serialise(invoice) for invoice in invoices]
         return Envelope(entity_key=self.entity_key, rows=rows)
 
     def _serialise(self, invoice: UserInvoice) -> dict:
@@ -356,10 +368,15 @@ class AccessLevelsExchanger(EntityExchanger):
         self._session = session
 
     def export(self, selector: ExportSelector, *, include_pii: bool) -> Envelope:
-        query = self._session.query(Role)
+        roles = self._session.query(Role).all()
         if selector.ids:
-            query = query.filter(Role.name.in_(list(selector.ids)))
-        rows = [self._serialise(role) for role in query.all()]
+            wanted = {str(value) for value in selector.ids}
+            roles = [
+                role
+                for role in roles
+                if str(role.id) in wanted or (role.name and role.name in wanted)
+            ]
+        rows = [self._serialise(role) for role in roles]
         return Envelope(entity_key=self.entity_key, rows=rows)
 
     def _serialise(self, role: Role) -> dict:
