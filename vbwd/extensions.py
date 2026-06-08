@@ -9,7 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_jwt_extended import JWTManager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from vbwd.config import DATABASE_CONFIG, get_redis_url
+from vbwd.config import DATABASE_CONFIG, build_engine_options, get_redis_url
 
 # SQLAlchemy instance
 db = SQLAlchemy()
@@ -71,15 +71,14 @@ def create_db_engine():
     if db_url.startswith("sqlite"):
         return create_engine(db_url, echo=False)
 
-    # PostgreSQL with full distributed architecture support
+    # PostgreSQL with full distributed architecture support. Pool options come
+    # from the single env-driven builder (S48.1) so this standalone engine and
+    # Flask-SQLAlchemy's SQLALCHEMY_ENGINE_OPTIONS never drift apart.
     return create_engine(
         db_url,
         isolation_level=DATABASE_CONFIG["isolation_level"],
-        pool_size=DATABASE_CONFIG["pool_size"],
-        max_overflow=DATABASE_CONFIG["max_overflow"],
-        pool_pre_ping=DATABASE_CONFIG["pool_pre_ping"],
-        pool_recycle=DATABASE_CONFIG["pool_recycle"],
         echo=False,
+        **build_engine_options(),
     )
 
 

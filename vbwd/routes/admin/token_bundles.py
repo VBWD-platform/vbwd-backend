@@ -8,6 +8,7 @@ from vbwd.repositories.token_bundle_purchase_repository import (
 )
 from vbwd.extensions import db
 from vbwd.models import TokenBundle
+from vbwd.routes.token_bundles import invalidate_token_bundle_cache
 
 admin_token_bundles_bp = Blueprint(
     "admin_token_bundles", __name__, url_prefix="/api/v1/admin/token-bundles"
@@ -114,6 +115,7 @@ def create_token_bundle():
 
         bundle_repo = TokenBundleRepository(db.session)
         saved_bundle = bundle_repo.save(bundle)
+        invalidate_token_bundle_cache()
 
         return (
             jsonify(
@@ -218,6 +220,7 @@ def update_token_bundle(bundle_id):
         bundle.sort_order = int(data.get("sort_order", 0))
 
     saved_bundle = bundle_repo.save(bundle)
+    invalidate_token_bundle_cache()
 
     return jsonify({"bundle": saved_bundle.to_dict()}), 200
 
@@ -264,6 +267,7 @@ def delete_token_bundle(bundle_id):
         )
 
     bundle_repo.delete(bundle_id)
+    invalidate_token_bundle_cache()
 
     return jsonify({"message": "Token bundle deleted successfully"}), 200
 
@@ -291,6 +295,7 @@ def activate_token_bundle(bundle_id):
 
     bundle.is_active = True
     saved_bundle = bundle_repo.save(bundle)
+    invalidate_token_bundle_cache()
 
     return (
         jsonify(
@@ -323,6 +328,7 @@ def deactivate_token_bundle(bundle_id):
 
     bundle.is_active = False
     saved_bundle = bundle_repo.save(bundle)
+    invalidate_token_bundle_cache()
 
     return (
         jsonify(

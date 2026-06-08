@@ -164,12 +164,21 @@ class TestDockerInfrastructure:
         assert data["service"] == "vbwd-api"
 
     def test_database_connection_pooling(self):
-        """Test database connection pooling is configured."""
-        from vbwd.extensions import engine
+        """Test database connection pooling matches the env-driven defaults.
 
+        S48.1: pool sizing comes from build_engine_options (safe defaults
+        pool_size=10, max_overflow=10 so workers x per_worker stays under
+        Postgres max_connections). Asserting against the builder keeps this
+        oracle in lock-step with the single source of truth instead of a
+        hardcoded number.
+        """
+        from vbwd.extensions import engine
+        from vbwd.config import build_engine_options
+
+        expected = build_engine_options()
         assert engine is not None
-        assert engine.pool.size() == 20  # Configured pool size
-        assert engine.pool._max_overflow == 40  # Configured max overflow
+        assert engine.pool.size() == expected["pool_size"]
+        assert engine.pool._max_overflow == expected["max_overflow"]
 
     def test_database_isolation_level(self):
         """Test database isolation level is READ COMMITTED."""

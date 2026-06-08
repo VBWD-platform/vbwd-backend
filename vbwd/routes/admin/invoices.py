@@ -50,12 +50,17 @@ def list_invoices():
         limit=limit, offset=offset, status=status, user_id=user_id
     )
 
+    # Batch-fetch the users for this page in one query, then map by id during
+    # enrichment. Avoids the per-row find_by_id N+1 (S48.3).
+    user_ids = {inv.user_id for inv in invoices}
+    users_by_id = {user.id: user for user in user_repo.find_by_ids(list(user_ids))}
+
     # Enrich invoices with user info for admin display
     result = []
     for inv in invoices:
         inv_dict = inv.to_dict()
         # Add user email
-        user = user_repo.find_by_id(str(inv.user_id))
+        user = users_by_id.get(inv.user_id)
         inv_dict["user_email"] = user.email if user else ""
         # Add created_at for sorting
         inv_dict["created_at"] = inv.created_at.isoformat() if inv.created_at else None

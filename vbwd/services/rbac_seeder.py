@@ -1,8 +1,10 @@
 """Core RBAC default seeder — Sprint S38.
 
 Idempotently syncs the permission catalog into ``vbwd_permission`` and
-upserts the 3 default system roles (``super_admin``, ``admin``, ``user``)
-that mirror the coarse :class:`~vbwd.models.enums.UserRole` enum. Safe to
+upserts the 2 default admin system roles (``super_admin``, ``admin``).
+A regular account is identified by the ``UserRole.USER`` enum on the user
+record, not a redundant ``user`` RBAC role (removed: it held no permissions
+and only created ambiguity in the admin Access-Levels UI). Safe to
 re-run on every deploy (ungated). Reads the plugin permission catalog via
 the injected ``plugin_manager`` (DI) — core never imports a plugin module.
 """
@@ -16,14 +18,16 @@ from vbwd.services.permission_catalog import collect_permission_catalog
 
 WILDCARD_PERMISSION = "*"
 
-# The 3 default system roles, mirroring the UserRole enum. Each maps a slug
-# to (name, description). Name == slug so role lookups by name (the existing
-# RBACService convention, e.g. assign_role / user_has_role) resolve. Permission
-# assignment is resolved below so it stays in lock-step with the live catalog.
+# The 2 default ADMIN system roles. Each maps a slug to (name, description).
+# Name == slug so role lookups by name (the existing RBACService convention,
+# e.g. assign_role / user_has_role) resolve. Permission assignment is resolved
+# below so it stays in lock-step with the live catalog. A regular account is
+# identified by the UserRole.USER enum on the user record — there is no
+# redundant "user" RBAC role (it held no permissions and only created ambiguity
+# in the admin Access-Levels UI).
 DEFAULT_ROLES = (
     ("super_admin", "super_admin", "Full system access (all permissions)."),
     ("admin", "admin", "Administrative access to all core features."),
-    ("user", "user", "Standard user with no admin permissions."),
 )
 
 

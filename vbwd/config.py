@@ -1,10 +1,70 @@
 """Application configuration."""
 import os
-from typing import Optional, Type
+from typing import Any, Dict, Mapping, Optional, Type
 
 # Constants - avoid magic numbers
 DEFAULT_JWT_EXPIRATION_HOURS = 24
 DEFAULT_SECRET_KEY = "dev-secret-key-change-in-production"
+
+# --- S48.1: connection-pool / worker tuning ---------------------------------
+#
+# INVARIANT (enforced by tests/unit/test_connection_pool_tuning.py):
+#
+#     workers x (pool_size + max_overflow) + reserve <= Postgres max_connections
+#
+# Postgres ships with max_connections=200 (docker-compose.yaml). With the
+# documented defaults below: 4 workers x (10 + 10) = 80, leaving ample reserve
+# (~120) for migrations, the superuser, and admin tooling. Real horizontal
+# scale is achieved with pgbouncer (S48.4), NOT by raising max_connections.
+#
+# All values are env-driven so prod (many cores, pgbouncer) and CI (2 cores)
+# run identical code with different env.
+DEFAULT_DB_POOL_SIZE = 10
+DEFAULT_DB_MAX_OVERFLOW = 10
+# A request waits at most this long for a free connection, then errors fast
+# (mapped to a 503 by the app) instead of hanging the worker.
+DEFAULT_DB_POOL_TIMEOUT_SECONDS = 5
+# Recycle connections after an hour to drop ones the DB/proxy has closed.
+DEFAULT_DB_POOL_RECYCLE_SECONDS = 3600
+# The worker count the invariant is pinned against. The runtime default in
+# gunicorn.conf.py is (2 x CPU) + 1; on the 2-core CI/dev box that is 5, but
+# the documented guard uses 4 as the worst-case prod baseline this math must
+# hold for.
+DEFAULT_GUNICORN_WORKERS = 4
+
+
+def build_engine_options(
+    env: Optional[Mapping[str, str]] = None,
+) -> Dict[str, Any]:
+    """Build SQLAlchemy engine pool options from environment with safe defaults.
+
+    Reads ``DB_POOL_SIZE`` / ``DB_MAX_OVERFLOW`` / ``DB_POOL_TIMEOUT`` and falls
+    back to the documented safe defaults. ``pool_pre_ping`` and ``pool_recycle``
+    are always present. Kept as a pure function (no global ``os.environ`` read
+    baked in) so it is unit-testable and the single source of truth for both
+    Flask-SQLAlchemy (``SQLALCHEMY_ENGINE_OPTIONS``) and the standalone engine
+    in ``vbwd/extensions.py``.
+
+    Args:
+        env: Mapping to read overrides from; defaults to ``os.environ``.
+
+    Returns:
+        Dict of keyword arguments accepted by both ``create_engine`` and
+        Flask-SQLAlchemy's ``SQLALCHEMY_ENGINE_OPTIONS``.
+    """
+    source = os.environ if env is None else env
+    pool_size = int(source.get("DB_POOL_SIZE", DEFAULT_DB_POOL_SIZE))
+    max_overflow = int(source.get("DB_MAX_OVERFLOW", DEFAULT_DB_MAX_OVERFLOW))
+    pool_timeout = int(source.get("DB_POOL_TIMEOUT", DEFAULT_DB_POOL_TIMEOUT_SECONDS))
+    pool_recycle = int(source.get("DB_POOL_RECYCLE", DEFAULT_DB_POOL_RECYCLE_SECONDS))
+    return {
+        "pool_size": pool_size,
+        "max_overflow": max_overflow,
+        "pool_timeout": pool_timeout,
+        "pool_pre_ping": True,
+        "pool_recycle": pool_recycle,
+    }
+
 
 # Internationalization
 AVAILABLE_LANGUAGES = [
@@ -30,14 +90,14 @@ def get_redis_url() -> str:
     return os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 
-# Database engine configuration for distributed systems (Sprint 1)
+# Database engine configuration for distributed systems (Sprint 1).
+# Pool sizing comes from build_engine_options (S48.1) — env-driven, safe by
+# default, and the single source of truth shared with vbwd/extensions.py.
+_ENGINE_POOL_OPTIONS = build_engine_options()
 DATABASE_CONFIG = {
     "url": get_database_url(),
     "isolation_level": "READ_COMMITTED",  # PostgreSQL default (explicit)
-    "pool_size": 20,  # Per Flask instance
-    "max_overflow": 40,  # Additional connections under load
-    "pool_pre_ping": True,  # Verify connections before use
-    "pool_recycle": 3600,  # Recycle connections after 1 hour
+    **_ENGINE_POOL_OPTIONS,
 }
 
 
@@ -50,15 +110,15 @@ class Config:
     # Database
     SQLALCHEMY_DATABASE_URI = get_database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": DATABASE_CONFIG["pool_size"],
-        "max_overflow": DATABASE_CONFIG["max_overflow"],
-        "pool_pre_ping": DATABASE_CONFIG["pool_pre_ping"],
-        "pool_recycle": DATABASE_CONFIG["pool_recycle"],
-    }
+    SQLALCHEMY_ENGINE_OPTIONS = dict(_ENGINE_POOL_OPTIONS)
 
     # Redis
     REDIS_URL = get_redis_url()
+
+    # Read-through catalogue cache (S48.2). Generic infra: enable flag + TTL
+    # backstop. Disabled in tests so unit/integration runs are deterministic.
+    CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
+    CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "120"))
 
     # Security
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
@@ -90,6 +150,10 @@ class TestingConfig(Config):
 
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"  # In-memory for tests
+
+    # Cache off by default in tests; tests that exercise caching install their
+    # own InMemoryCacheStore via vbwd.services.cache.set_cache_store.
+    CACHE_ENABLED = False
 
     # Override engine options for SQLite (doesn't support pool_size, max_overflow)
     SQLALCHEMY_ENGINE_OPTIONS = {}

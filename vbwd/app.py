@@ -7,6 +7,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# S48.1 — how long clients should back off when the box sheds load with a 503
+# under DB connection pressure. Short, so honest capacity recovers quickly.
+DB_UNAVAILABLE_RETRY_AFTER_SECONDS = 5
+
 
 def _install_unified_logging(app: Flask, container) -> None:
     """Install the D9 unified logging layer (Sprint 58.5).
@@ -394,6 +398,38 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     def internal_error(error):
         """Handle 500 errors."""
         return jsonify({"error": "Internal server error"}), 500
+
+    from sqlalchemy.exc import OperationalError, TimeoutError as PoolTimeoutError
+
+    @app.errorhandler(PoolTimeoutError)
+    @app.errorhandler(OperationalError)
+    def database_unavailable(error):
+        """Graceful degradation under DB connection pressure (S48.1).
+
+        A ``QueuePool`` timeout (the pool is full and ``pool_timeout`` elapsed)
+        or a Postgres ``OperationalError`` such as
+        ``FATAL: sorry, too many clients already`` means the box is at its
+        connection ceiling. Surfacing that as a fast ``503 Service Unavailable``
+        with a ``Retry-After`` header lets the box shed load and recover,
+        instead of returning an opaque 500 or hanging a worker for ``timeout``
+        seconds. Real horizontal headroom comes from pgbouncer (S48.4).
+        """
+        logger.warning(
+            "503 db-unavailable route=%s error=%s",
+            request.endpoint or request.path,
+            type(error).__name__,
+        )
+        response = make_response(
+            jsonify(
+                {
+                    "error": "Service temporarily unavailable",
+                    "detail": "The server is at capacity. Please retry shortly.",
+                }
+            ),
+            503,
+        )
+        response.headers["Retry-After"] = str(DB_UNAVAILABLE_RETRY_AFTER_SECONDS)
+        return response
 
     @app.errorhandler(429)
     def ratelimit_handler(error):

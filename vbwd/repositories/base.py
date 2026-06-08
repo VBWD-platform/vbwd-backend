@@ -29,6 +29,18 @@ class BaseRepository(Generic[T]):
         """Find entity by ID."""
         return self._session.get(self._model, id)
 
+    def find_by_ids(self, ids: List[Union[UUID, str]]) -> List[T]:
+        """Find entities for a set of IDs in a single query.
+
+        Used to batch-fetch related rows when enriching a list page, avoiding
+        the per-row ``find_by_id`` N+1. Returns the rows that exist; missing
+        IDs are simply absent (callers map by id and default the rest).
+        """
+        if not ids:
+            return []
+        primary_key = self._model.id  # type: ignore[attr-defined]
+        return self._session.query(self._model).filter(primary_key.in_(ids)).all()
+
     def find_all(self, limit: int = 100, offset: int = 0) -> List[T]:
         """Find all entities with pagination."""
         return self._session.query(self._model).limit(limit).offset(offset).all()

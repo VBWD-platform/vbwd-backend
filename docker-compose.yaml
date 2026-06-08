@@ -47,6 +47,9 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    # S48.1 invariant: workers x (pool_size + max_overflow) + reserve <= this.
+    # Defaults (4 workers x 20 conns = 80) fit with ample reserve. Real
+    # horizontal scale uses pgbouncer (S48.4) — do NOT just raise this number.
     command: postgres -c max_connections=200
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-vbwd}

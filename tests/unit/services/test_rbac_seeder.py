@@ -77,13 +77,13 @@ def session(app):
 
 
 class TestSeedDefaultRbacRoles:
-    """The 3 default system roles."""
+    """The 2 default admin system roles."""
 
-    def test_creates_three_system_roles_with_correct_slugs(self, session):
+    def test_creates_two_admin_system_roles_with_correct_slugs(self, session):
         seed_default_rbac(session)
 
         slugs = {role.slug for role in session.query(Role).all()}
-        assert slugs == {"super_admin", "admin", "user"}
+        assert slugs == {"super_admin", "admin"}
 
     def test_all_default_roles_are_system(self, session):
         seed_default_rbac(session)
@@ -103,11 +103,10 @@ class TestSeedDefaultRbacRoles:
         admin = session.query(Role).filter_by(slug="admin").one()
         assert {p.name for p in admin.permissions} == CORE_PERMISSION_KEYS
 
-    def test_user_has_no_permissions(self, session):
+    def test_no_redundant_user_role_is_seeded(self, session):
         seed_default_rbac(session)
 
-        user = session.query(Role).filter_by(slug="user").one()
-        assert list(user.permissions) == []
+        assert session.query(Role).filter_by(slug="user").first() is None
 
 
 class TestSeedDefaultRbacPermissions:
@@ -146,12 +145,12 @@ class TestSeedDefaultRbacIdempotency:
         assert isinstance(result, RbacSeedResult)
         assert result.roles_created == 0
         assert result.permissions_created == 0
-        assert session.query(Role).count() == 3
+        assert session.query(Role).count() == 2
 
-    def test_first_run_reports_three_roles_created(self, session):
+    def test_first_run_reports_two_roles_created(self, session):
         result = seed_default_rbac(session, plugin_manager=FakePluginManager([]))
 
-        assert result.roles_created == 3
+        assert result.roles_created == 2
         # The seeder creates one Permission row per catalog key plus the
         # wildcard ("*"). The catalog is core permissions + the data-exchange
         # sales perms auto-derived from the registered core exchangers (S46.1);
