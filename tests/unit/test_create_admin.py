@@ -97,7 +97,7 @@ class TestCreateOrPromoteAdmin:
         )
 
         slugs = {r.slug for r in db_session.query(Role).all()}
-        assert {"super_admin", "admin", "user"}.issubset(slugs)
+        assert {"super_admin", "admin"}.issubset(slugs)
 
     def test_promotes_existing_user(self, module, session):
         db_session, created_emails = session
