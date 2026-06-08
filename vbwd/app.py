@@ -8,6 +8,59 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _install_unified_logging(app: Flask, container) -> None:
+    """Install the D9 unified logging layer (Sprint 58.5).
+
+    Attaches a single :class:`VbwdLogRouter` to the root logger and registers
+    one :class:`EventLogSubscriber` on the EventBus, both writing through the
+    FilesystemManager's ``logs`` namespace.
+
+    GUARDED like the schedulers: the disk router is NOT attached during the
+    test suite (``TESTING``) so pytest is not polluted and does not try to write
+    ``/app/var/logs``; the console handler stays. The whole wiring is
+    best-effort — if the ``logs`` root is not writable the app still boots and
+    logging degrades to stderr.
+    """
+    if app.config.get("TESTING"):
+        return
+    try:
+        from vbwd.events.bus import event_bus
+        from vbwd.services.logging import (
+            EventLogSubscriber,
+            LoggingConfig,
+            VbwdLogRouter,
+        )
+
+        filesystem_manager = container.filesystem_manager()
+
+        max_bytes = int(
+            app.config.get(
+                "LOG_MAX_BYTES", os.getenv("VBWD_LOG_MAX_BYTES", "") or 10 * 1024 * 1024
+            )
+        )
+        backups = int(
+            app.config.get("LOG_BACKUPS", os.getenv("VBWD_LOG_BACKUPS", "") or 5)
+        )
+        logging_config = LoggingConfig(max_bytes=max_bytes, backups=backups)
+
+        router = VbwdLogRouter(
+            filesystem_manager=filesystem_manager, config=logging_config
+        )
+        root_logger = logging.getLogger()
+        # Idempotent: never attach a second router on app re-creation.
+        if not any(
+            isinstance(handler, VbwdLogRouter) for handler in root_logger.handlers
+        ):
+            root_logger.addHandler(router)
+        if root_logger.level > logging.INFO or root_logger.level == logging.NOTSET:
+            root_logger.setLevel(logging.INFO)
+
+        EventLogSubscriber(filesystem_manager=filesystem_manager).register(event_bus)
+        logger.info("Unified logging (D9) installed")
+    except Exception as logging_error:  # noqa: BLE001 — boot must survive
+        logger.warning("Failed to install unified logging: %s", logging_error)
+
+
 def _register_event_handlers(app: Flask, container) -> None:
     """
     Register event handlers with the dispatcher.
@@ -191,6 +244,12 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     # Register event handlers (now db_session is available)
     with app.app_context():
         _register_event_handlers(app, container)
+
+    # Install the unified logging layer (D9) — root log router + event audit
+    # subscriber. TESTING-guarded so the disk router is not attached under
+    # pytest (see _install_unified_logging).
+    with app.app_context():
+        _install_unified_logging(app, container)
 
     # Initialize plugin system
     from vbwd.plugins.manager import PluginManager

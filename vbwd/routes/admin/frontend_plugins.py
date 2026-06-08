@@ -29,6 +29,13 @@ import os
 from flask import Blueprint, jsonify
 
 from vbwd.middleware.auth import require_admin, require_auth, require_permission
+from vbwd.services.filesystem import LocalFilesystemManager
+
+# The namespace whose policy (INPLACE_LOCKED + flock) governs manifest IO. The
+# manifests are bind-mounted single files; rewriting in place under an advisory
+# lock fixes the torn-read race without breaking the bind-mount contract (a
+# rename across the mount fails "Device or resource busy").
+_MANIFEST_NAMESPACE = "plugins"
 
 frontend_plugins_bp = Blueprint(
     "admin_frontend_plugins", __name__, url_prefix="/api/v1/admin/frontend-plugins"
@@ -59,18 +66,37 @@ def _resolve_manifest_path(app: str) -> str | None:
     return MANIFEST_PATHS.get(app)
 
 
+def _manifest_manager(path: str) -> tuple[LocalFilesystemManager, str]:
+    """Return a FilesystemManager pinned to ``path``'s dir + the file's basename.
+
+    D8 back-compat: the env vars give absolute manifest paths (in prod
+    ``${VBWD_VAR_DIR}/plugins/<name>.json``, but a deployment may place them
+    elsewhere). We pin the ``plugins`` namespace directly to the file's parent
+    directory so the EXACT on-disk path is preserved, while every read/write
+    still flows through that namespace's INPLACE_LOCKED policy (flock-guarded,
+    inode-preserving). The relative name is the file's basename.
+    """
+    directory = os.path.dirname(path)
+    name = os.path.basename(path)
+    manager = LocalFilesystemManager(namespace_roots={_MANIFEST_NAMESPACE: directory})
+    return manager, name
+
+
 def _read_manifest(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    manager, name = _manifest_manager(path)
+    raw = manager.read_text(_MANIFEST_NAMESPACE, name)
+    return json.loads(raw)
 
 
 def _write_manifest(path: str, manifest: dict) -> None:
-    # Write in-place (no tempfile+rename) because manifests are bind-
-    # mounted single files in prod compose — rename across inodes fails
-    # with "Device or resource busy".
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=2)
-        fh.write("\n")
+    # Route through the ``plugins`` namespace (INPLACE_LOCKED): an advisory
+    # flock + in-place truncate/rewrite preserves the bind-mounted inode and
+    # closes the torn-read race a reader container used to hit. Serialise here
+    # to keep the on-disk bytes identical to the previous writer (indent=2 +
+    # trailing newline).
+    manager, name = _manifest_manager(path)
+    serialised = json.dumps(manifest, indent=2) + "\n"
+    manager.write_text(_MANIFEST_NAMESPACE, name, serialised)
 
 
 @frontend_plugins_bp.route("/<app>", methods=["GET"])

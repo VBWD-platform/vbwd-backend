@@ -27,6 +27,7 @@ from vbwd.services.token_service import TokenService
 from vbwd.services.invoice_service import InvoiceService
 from vbwd.services.pdf_service import PdfService, build_default_template_env
 from vbwd.services.refund_service import RefundService
+from vbwd.services.filesystem import build_uploads_pinned_manager
 
 from vbwd.events.domain import DomainEventDispatcher
 
@@ -125,6 +126,14 @@ class Container(containers.DeclarativeContainer):
     )
 
     activity_logger = providers.Singleton(ActivityLogger)
+
+    # Unified file-access manager (Sprint 58.0) — agnostic core infrastructure.
+    # Resolves the var/uploads roots and namespace policies from the
+    # environment; consumers resolve it here instead of calling open() on a
+    # var path directly. Singleton so the namespace registry is built once.
+    # The ``uploads`` namespace is pinned to the uploads root (Sprint 58.3) so
+    # blobs keep the legacy ``<UPLOADS_BASE_PATH>/<relative_path>`` layout.
+    filesystem_manager = providers.Singleton(build_uploads_pinned_manager)
 
     # PDF renderer — shared by invoice, booking, and any plugin PDFs.
     # Jinja env points at vbwd/templates/pdf/ for core templates; plugins

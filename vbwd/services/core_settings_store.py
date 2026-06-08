@@ -9,12 +9,17 @@ gunicorn worker (in-memory state was per-worker and wiped on restart).
 ``DEFAULT_CORE_SETTINGS`` is the single source of truth for the schema: missing
 or newly-added keys are filled from it on read, and only known keys are accepted
 on write. Reads never raise — a missing or corrupt file degrades to defaults.
+
+Sprint 58.1: the actual file IO now flows through the unified
+``FilesystemManager`` (the ``core`` namespace = ATOMIC_REPLACE), instead of the
+hand-rolled ``mkstemp`` + ``os.replace``. The on-disk path, the default /
+corruption-tolerance behaviour, and the public API are all unchanged; the write
+is still atomic and crash-safe, just centralised behind one audited seam.
 """
-import json
 import logging
-import os
-import tempfile
 from typing import Any, Dict
+
+from vbwd.services.filesystem import LocalFilesystemManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +39,20 @@ DEFAULT_CORE_SETTINGS: Dict[str, Any] = {
     "bank_bic": "",
 }
 
-_DEFAULT_VAR_DIR = "/app/var"
+# The core namespace stores ``${VBWD_VAR_DIR}/core/vbwd_settings.json`` — the
+# exact path the hand-rolled writer used.
+_CORE_NAMESPACE = "core"
+_SETTINGS_FILE = "vbwd_settings.json"
 
 
-def _path() -> str:
-    """Absolute path to the persisted settings file."""
-    var_dir = os.environ.get("VBWD_VAR_DIR", _DEFAULT_VAR_DIR)
-    return os.path.join(var_dir, "core", "vbwd_settings.json")
+def _manager() -> LocalFilesystemManager:
+    """Return a FilesystemManager bound to the current ``VBWD_VAR_DIR``.
+
+    Built per call (cheaply) so that an env change between requests — and the
+    test harness's per-test ``monkeypatch.setenv("VBWD_VAR_DIR", ...)`` — is
+    honoured, matching the previous module-level ``os.environ.get`` behaviour.
+    """
+    return LocalFilesystemManager()
 
 
 def get_core_settings() -> Dict[str, Any]:
@@ -49,25 +61,16 @@ def get_core_settings() -> Dict[str, Any]:
     Defaults fill any missing or newly-added keys. A missing or corrupt file
     degrades to defaults (logged) and never raises.
     """
-    path = _path()
+    loaded = _manager().read_json(_CORE_NAMESPACE, _SETTINGS_FILE, default=None)
     file_values: Dict[str, Any] = {}
-    if os.path.exists(path):
-        try:
-            with open(path, encoding="utf-8") as handle:
-                loaded = json.load(handle)
-            if isinstance(loaded, dict):
-                file_values = loaded
-            else:
-                logger.warning(
-                    "Core settings file %s is not a JSON object; using defaults.",
-                    path,
-                )
-        except (json.JSONDecodeError, OSError) as error:
-            logger.warning(
-                "Could not read core settings file %s (%s); using defaults.",
-                path,
-                error,
-            )
+    if isinstance(loaded, dict):
+        file_values = loaded
+    elif loaded is not None:
+        logger.warning(
+            "Core settings file %s/%s is not a JSON object; using defaults.",
+            _CORE_NAMESPACE,
+            _SETTINGS_FILE,
+        )
     return {**DEFAULT_CORE_SETTINGS, **file_values}
 
 
@@ -75,26 +78,13 @@ def update_core_settings(partial: Dict[str, Any]) -> Dict[str, Any]:
     """Merge ``partial`` (known keys only) into the stored settings and persist.
 
     Unknown keys are ignored. The write is atomic (temp file in the same
-    directory + ``os.replace``) so a concurrent read never sees a half-written
-    file. Last-writer-wins; settings edits are rare and serial, so no lock.
+    directory + ``os.replace``, via the manager's ``core`` namespace) so a
+    concurrent read never sees a half-written file. Last-writer-wins; settings
+    edits are rare and serial, so no lock.
 
     Returns the merged settings.
     """
     current = get_core_settings()
     current.update({k: v for k, v in partial.items() if k in DEFAULT_CORE_SETTINGS})
-
-    path = _path()
-    directory = os.path.dirname(path)
-    os.makedirs(directory, exist_ok=True)
-
-    file_descriptor, temp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
-    try:
-        with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
-            json.dump(current, handle, ensure_ascii=False, indent=2)
-        os.replace(temp_path, path)
-    except OSError:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise
-
+    _manager().write_json(_CORE_NAMESPACE, _SETTINGS_FILE, current)
     return current

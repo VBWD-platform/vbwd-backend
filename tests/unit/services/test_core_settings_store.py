@@ -103,3 +103,27 @@ def test_corrupt_json_falls_back_to_defaults(isolated_var_dir):
 
     settings = get_core_settings()
     assert settings == DEFAULT_CORE_SETTINGS  # no raise
+
+
+def test_non_object_json_falls_back_to_defaults(isolated_var_dir):
+    """A JSON file whose top level is not an object degrades to defaults."""
+    path = _settings_file(isolated_var_dir)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write('["not", "an", "object"]')
+
+    settings = get_core_settings()
+    assert settings == DEFAULT_CORE_SETTINGS  # no raise
+
+
+def test_write_lands_in_core_namespace_path(isolated_var_dir):
+    """S58.1: the write routes through the manager's ``core`` namespace,
+
+    which lives at ``${VBWD_VAR_DIR}/core/vbwd_settings.json`` — the SAME
+    on-disk path the hand-rolled IO used (behaviour-identical).
+    """
+    update_core_settings({"provider_name": "Namespaced GmbH"})
+    expected_path = _settings_file(isolated_var_dir)
+    assert os.path.exists(expected_path)
+    on_disk = json.loads(open(expected_path, encoding="utf-8").read())
+    assert on_disk["provider_name"] == "Namespaced GmbH"

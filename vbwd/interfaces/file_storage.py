@@ -2,13 +2,21 @@
 
 Any plugin that needs to persist binary blobs (images, attachments, exports,
 etc.) depends on `IFileStorage` here, never on a specific plugin's storage
-implementation. Two batteries-included implementations are provided:
+implementation.
 
-  * `LocalFileStorage` — bind-mounted disk (production).
-  * `InMemoryFileStorage` — in-process dict, for unit tests.
+As of Sprint 58.3 the production implementation is a thin adapter over the
+unified :class:`~vbwd.services.filesystem.IFilesystemManager` ``uploads``
+namespace, so there is **one** home for path confinement, write policy and
+served-URL mapping. Two implementations are provided:
+
+  * `ManagerBackedFileStorage` — adapter over the FilesystemManager (production).
+  * `InMemoryFileStorage` — in-process dict, for unit tests that do not want to
+    construct a manager.
 """
-import os
 from abc import ABC, abstractmethod
+from typing import Any
+
+UPLOADS_NAMESPACE = "uploads"
 
 
 class IFileStorage(ABC):
@@ -35,49 +43,39 @@ class IFileStorage(ABC):
         """Return raw bytes of a stored file."""
 
 
-class LocalFileStorage(IFileStorage):
-    """File storage backed by a bind-mounted local directory.
+class ManagerBackedFileStorage(IFileStorage):
+    """`IFileStorage` adapter over the unified FilesystemManager (Sprint 58.3).
 
-    Files live at: <base_path>/<relative_path>
-    URLs served at: <base_url>/<relative_path>
+    All operations route to the manager's ``uploads`` namespace, so on-disk
+    paths (``<uploads_root>/<relative_path>``) and served URLs
+    (``<UPLOADS_BASE_URL>/<relative_path>``) are identical to the legacy
+    ``LocalFileStorage`` it replaces. Confinement now comes from the namespace
+    (realpath-within-namespace — stronger than the old ``startswith`` guard,
+    which a symlink could defeat).
 
-    Production bind mount: /loopai_storage/vbwd/uploads → /app/uploads (container)
+    Consumers resolve the manager via ``container.filesystem_manager()`` and
+    wrap it here, keeping their existing ``IFileStorage`` call-sites unchanged.
     """
 
-    def __init__(self, base_path: str, base_url: str) -> None:
-        self.base_path = base_path.rstrip("/")
-        self.base_url = base_url.rstrip("/")
-
-    def _full_path(self, relative_path: str) -> str:
-        # Prevent path traversal
-        relative_path = relative_path.lstrip("/")
-        full = os.path.normpath(os.path.join(self.base_path, relative_path))
-        if not full.startswith(self.base_path):
-            raise ValueError(f"Path traversal attempt: {relative_path}")
-        return full
+    def __init__(self, filesystem_manager: Any) -> None:
+        self._filesystem_manager = filesystem_manager
 
     def save(self, file_data: bytes, relative_path: str) -> str:
-        full = self._full_path(relative_path)
-        os.makedirs(os.path.dirname(full), exist_ok=True)
-        with open(full, "wb") as f:
-            f.write(file_data)
-        return relative_path
+        return self._filesystem_manager.write_bytes(
+            UPLOADS_NAMESPACE, relative_path, file_data
+        )
 
     def delete(self, relative_path: str) -> None:
-        full = self._full_path(relative_path)
-        if os.path.exists(full):
-            os.remove(full)
+        self._filesystem_manager.delete(UPLOADS_NAMESPACE, relative_path)
 
     def get_url(self, relative_path: str) -> str:
-        relative_path = relative_path.lstrip("/")
-        return f"{self.base_url}/{relative_path}"
+        return self._filesystem_manager.url_for(UPLOADS_NAMESPACE, relative_path)
 
     def exists(self, relative_path: str) -> bool:
-        return os.path.exists(self._full_path(relative_path))
+        return self._filesystem_manager.exists(UPLOADS_NAMESPACE, relative_path)
 
     def read(self, relative_path: str) -> bytes:
-        with open(self._full_path(relative_path), "rb") as f:
-            return f.read()
+        return self._filesystem_manager.read_bytes(UPLOADS_NAMESPACE, relative_path)
 
 
 class InMemoryFileStorage(IFileStorage):

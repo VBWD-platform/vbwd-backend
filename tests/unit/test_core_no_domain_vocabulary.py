@@ -111,6 +111,13 @@ ALLOWLIST: set[tuple[str, str]] = {
     # blob whose boilerplate names "Subscription Services". This is fallback
     # content prose (editable user content), not a domain seam.
     ("vbwd/routes/settings.py", "subscriptions"),
+    # --- (f) FilesystemManager namespace name (S58.0) --------------------
+    # The unified FilesystemManager (agnostic core infrastructure) registers a
+    # "seo" *namespace* in its managed-tree registry — a file-routing label
+    # under ${VBWD_VAR_DIR}/seo/, NOT core reading an SEO domain field. The
+    # manager knows files, not domains; the SEO plugin (S58.2) writes through
+    # this namespace via the DI container. Pure filesystem vocabulary.
+    ("vbwd/services/filesystem/_common.py", "seo"),
 }
 
 _TERM_RE = {
