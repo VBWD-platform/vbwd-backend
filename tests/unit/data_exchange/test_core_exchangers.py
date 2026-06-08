@@ -25,7 +25,7 @@ from vbwd.services.data_exchange.core_exchangers import (
     build_core_exchangers,
     register_core_exchangers,
 )
-from vbwd.services.data_exchange.envelope import build_envelope
+from vbwd.services.data_exchange.envelope import build_envelope, rows_to_csv
 from vbwd.services.data_exchange.port import (
     MODE_UPSERT,
     ExportSelector,
@@ -107,6 +107,24 @@ class TestUsersExchanger:
         assert row["details"]["first_name"] == "Round"
         assert row["details"]["city"] == "Berlin"
 
+    def test_supports_csv_and_csv_export_handles_nested_details(
+        self, session, seeded_user
+    ):
+        """users (sales) lists csv; its nested ``details`` cell CSV-exports.
+
+        Exercises the exact route CSV path: ``rows_to_csv(export().rows)``. The
+        nested details dict must not break the writer — it JSON-encodes into the
+        cell — and the output has a header row plus a body row.
+        """
+        exchanger = _exchangers(session)["users"]
+        assert "csv" in exchanger.supported_formats
+        rows = _export_rows(exchanger, include_pii=True)
+        csv_text = rows_to_csv(rows)
+        lines = csv_text.splitlines()
+        assert "details" in lines[0] and "email" in lines[0]
+        assert len(lines) >= 2
+        assert "roundtrip@example.com" in csv_text
+
     def test_export_selected_by_primary_id(self, session, seeded_user):
         """fe-admin "Export selected" sends the user's primary id (UUID)."""
         exchanger = _exchangers(session)["users"]
@@ -179,6 +197,31 @@ class TestUsersExchanger:
 
 
 class TestInvoicesExchanger:
+    def test_supports_csv_export(self, session):
+        exchanger = _exchangers(session)["invoices"]
+        assert "csv" in exchanger.supported_formats
+        user = User(id=uuid4(), email="inv-csv@example.com", password_hash="x")
+        session.add(user)
+        session.flush()
+        invoice = UserInvoice(
+            id=uuid4(),
+            user_id=user.id,
+            invoice_number="INV-CSV-0001",
+            amount=10,
+            currency="EUR",
+        )
+        session.add(invoice)
+        session.commit()
+        try:
+            rows = _export_rows(exchanger)
+            csv_text = rows_to_csv(rows)
+            assert "number" in csv_text.splitlines()[0]
+            assert "INV-CSV-0001" in csv_text
+        finally:
+            session.delete(invoice)
+            session.delete(user)
+            session.commit()
+
     def test_import_raises_unsupported(self, session):
         exchanger = _exchangers(session)["invoices"]
         with pytest.raises(UnsupportedOperationError):

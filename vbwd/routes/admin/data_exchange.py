@@ -36,7 +36,9 @@ data_exchange_bp = Blueprint(
 
 CSV_FORMAT = "csv"
 JSON_FORMAT = "json"
+ZIP_FORMAT = "zip"
 ROW_CAP_STATUS = 413
+ZIP_MAGIC = b"PK\x03\x04"
 
 
 def _instance_name() -> str:
@@ -91,6 +93,14 @@ def export_entity(key: str):
     include_pii = data_exchange_registry.can_export_pii(exchanger, g.user)
     selector = _selector_from_body(body)
 
+    if export_format == ZIP_FORMAT:
+        if ZIP_FORMAT not in exchanger.supported_formats:
+            return (
+                jsonify({"error": f"entity '{key}' does not support zip export"}),
+                400,
+            )
+        return _export_zip(exchanger, key, selector, include_pii=include_pii)
+
     try:
         rows = exchanger.export(selector, include_pii=include_pii).rows
     except UnsupportedOperationError as exc:
@@ -112,6 +122,32 @@ def export_entity(key: str):
     return response, 200
 
 
+def _export_zip(exchanger, key: str, selector, *, include_pii: bool):
+    """Export one zip-capable entity as a real ZIP bundle (rows + binary assets).
+
+    Reuses ``build_bundle`` (DRY): one JSON ``BundleEntry`` for the rows plus the
+    exchanger's binary assets under ``assets/``. The fe saves this as
+    ``vbwd-<key>.zip`` and it is a genuine archive (the original bug saved a JSON
+    envelope under a ``.zip`` name).
+    """
+    try:
+        zip_export = exchanger.export_zip(selector, include_pii=include_pii)
+    except UnsupportedOperationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RowCapExceededError as exc:
+        return jsonify({"error": str(exc)}), ROW_CAP_STATUS
+
+    envelope = build_envelope(key, zip_export.rows, instance=_instance_name())
+    entry = BundleEntry(entity_key=key, export_format=JSON_FORMAT, content=envelope)
+    archive = build_bundle([entry], instance=_instance_name(), assets=zip_export.assets)
+    return send_file(
+        io.BytesIO(archive),
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"vbwd-{key}.zip",
+    )
+
+
 @data_exchange_bp.route("/<key>/import", methods=["POST"])
 @require_auth
 @require_admin
@@ -123,12 +159,15 @@ def import_entity(key: str):
     if not data_exchange_registry.can_import(exchanger, g.user):
         return jsonify({"error": "Permission denied"}), 403
 
-    payload, mode, dry_run, error = _read_import_request(key)
+    payload, assets, mode, dry_run, error = _read_import_request(key, exchanger)
     if error is not None:
         return jsonify({"error": error}), 400
 
     if mode == MODE_REPLACE_ALL and not _is_superadmin():
         return jsonify({"error": "replace_all requires superadmin"}), 403
+
+    if assets:
+        payload = exchanger.attach_assets(payload, assets)
 
     try:
         result = exchanger.import_(payload, mode=mode, dry_run=dry_run)
@@ -139,27 +178,47 @@ def import_entity(key: str):
     return jsonify(result.to_dict()), 200
 
 
-def _read_import_request(key: str):
-    """Return (payload, mode, dry_run, error) from JSON body or multipart."""
+def _read_import_request(key: str, exchanger):
+    """Return (payload, assets, mode, dry_run, error) from JSON, file, or zip.
+
+    A multipart upload may be a JSON envelope or a ZIP bundle (single-entity
+    export with binary ``assets/``). A zip is detected by its magic bytes so the
+    fe need not set a special content type; the json/csv import path is unchanged.
+    """
     if request.files:
         uploaded = request.files.get("file")
         mode = request.form.get("mode", "upsert")
         dry_run = request.form.get("dry_run", "false").lower() == "true"
         if uploaded is None:
-            return None, mode, dry_run, "no file uploaded"
+            return None, None, mode, dry_run, "no file uploaded"
+        raw = uploaded.read()
+        if raw.startswith(ZIP_MAGIC):
+            return _read_zip_import(key, raw, mode, dry_run)
         try:
-            data = json.loads(uploaded.read().decode("utf-8"))
+            data = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as exc:
-            return None, mode, dry_run, f"invalid JSON file: {exc}"
-        return data, mode, dry_run, None
+            return None, None, mode, dry_run, f"invalid JSON file: {exc}"
+        return data, None, mode, dry_run, None
 
     body = request.get_json(silent=True)
     if body is None:
-        return None, "upsert", False, "request body must be JSON"
+        return None, None, "upsert", False, "request body must be JSON"
     payload = body.get("payload", body)
     mode = body.get("mode", "upsert")
     dry_run = bool(body.get("dry_run", False))
-    return payload, mode, dry_run, None
+    return payload, None, mode, dry_run, None
+
+
+def _read_zip_import(key: str, raw: bytes, mode: str, dry_run: bool):
+    """Read a single-entity zip upload → (envelope, assets, mode, dry_run, err)."""
+    try:
+        _manifest, entries, assets = read_bundle(raw)
+    except EnvelopeError as exc:
+        return None, None, mode, dry_run, str(exc)
+    envelope = entries.get(key)
+    if envelope is None:
+        return None, None, mode, dry_run, f"bundle has no '{key}' entity"
+    return envelope, assets, mode, dry_run, None
 
 
 @data_exchange_bp.route("/export", methods=["POST"])
@@ -174,6 +233,7 @@ def export_bundle():
         return jsonify({"error": "'entities' must be a list"}), 400
 
     entries = []
+    assets: dict = {}
     dropped = []
     for entity_key in requested:
         exchanger = data_exchange_registry.get(entity_key)
@@ -183,31 +243,16 @@ def export_bundle():
             dropped.append(entity_key)
             continue
         include_pii = data_exchange_registry.can_export_pii(exchanger, g.user)
-        try:
-            envelope = exchanger.export(
-                ExportSelector(all=True), include_pii=include_pii
-            )
-        except (RowCapExceededError, UnsupportedOperationError):
+        entry = _bundle_entry_for(
+            exchanger, entity_key, export_format, include_pii, assets
+        )
+        if entry is None:
             # Per-entity failure is reported via the dropped header, not fatal.
             dropped.append(entity_key)
             continue
-        use_csv = (
-            export_format == CSV_FORMAT and CSV_FORMAT in exchanger.supported_formats
-        )
-        content = (
-            rows_to_csv(envelope.rows)
-            if use_csv
-            else build_envelope(entity_key, envelope.rows, instance=_instance_name())
-        )
-        entries.append(
-            BundleEntry(
-                entity_key=entity_key,
-                export_format=CSV_FORMAT if use_csv else JSON_FORMAT,
-                content=content,
-            )
-        )
+        entries.append(entry)
 
-    archive = build_bundle(entries, instance=_instance_name())
+    archive = build_bundle(entries, instance=_instance_name(), assets=assets)
     response = send_file(
         io.BytesIO(archive),
         mimetype="application/zip",
@@ -216,6 +261,44 @@ def export_bundle():
     )
     response.headers["X-Dropped-Entities"] = ",".join(dropped)
     return response
+
+
+def _bundle_entry_for(exchanger, entity_key, export_format, include_pii, assets):
+    """Build one entity's BundleEntry, accumulating any binary assets.
+
+    CSV is unchanged. A zip-capable entity uses ``export_zip`` so the bundle
+    contains its real binaries (the asset filenames stay as the row's
+    ``asset_file`` references — for cms_images that already includes the unique
+    slug); every other entity uses the base64 ``export``. Returns ``None`` on a
+    per-entity export failure (the caller drops it).
+    """
+    use_csv = export_format == CSV_FORMAT and CSV_FORMAT in exchanger.supported_formats
+    try:
+        if not use_csv and ZIP_FORMAT in exchanger.supported_formats:
+            zip_export = exchanger.export_zip(
+                ExportSelector(all=True), include_pii=include_pii
+            )
+            assets.update(zip_export.assets)
+            return BundleEntry(
+                entity_key=entity_key,
+                export_format=JSON_FORMAT,
+                content=build_envelope(
+                    entity_key, zip_export.rows, instance=_instance_name()
+                ),
+            )
+        envelope = exchanger.export(ExportSelector(all=True), include_pii=include_pii)
+    except (RowCapExceededError, UnsupportedOperationError):
+        return None
+    content = (
+        rows_to_csv(envelope.rows)
+        if use_csv
+        else build_envelope(entity_key, envelope.rows, instance=_instance_name())
+    )
+    return BundleEntry(
+        entity_key=entity_key,
+        export_format=CSV_FORMAT if use_csv else JSON_FORMAT,
+        content=content,
+    )
 
 
 @data_exchange_bp.route("/import", methods=["POST"])

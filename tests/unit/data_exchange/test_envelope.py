@@ -1,5 +1,6 @@
 """Unit tests for the VBWD envelope: JSON build/validate, CSV, ZIP bundle."""
 import io
+import json
 import zipfile
 
 import pytest
@@ -80,6 +81,40 @@ def test_csv_round_trip_flat_rows():
 def test_csv_empty_rows_yields_empty_string():
     assert rows_to_csv([]) == ""
     assert rows_from_csv("") == []
+
+
+def test_csv_handles_nested_dict_and_list_cells():
+    """Non-scalar cells (nested dict, list) JSON-encode into the CSV cell.
+
+    Drives the ``users`` case: a row carries a nested ``details`` dict; another
+    carries a list. The header is the stable, sorted union of all row keys; the
+    nested cells round-trip back as compact JSON strings without crashing.
+    """
+    rows = [
+        {
+            "email": "a@example.com",
+            "details": {"first_name": "Ann", "city": "Berlin"},
+            "tags": ["vip", "beta"],
+        },
+        {"email": "b@example.com", "details": None},
+    ]
+    csv_text = rows_to_csv(rows)
+
+    header = csv_text.splitlines()[0]
+    # Stable, deterministic header = sorted union of every row's keys.
+    assert header == "details,email,tags"
+
+    parsed = rows_from_csv(csv_text)
+    assert len(parsed) == 2
+    # The nested dict comes back as a compact JSON string (documented contract).
+    assert json.loads(parsed[0]["details"]) == {
+        "first_name": "Ann",
+        "city": "Berlin",
+    }
+    assert json.loads(parsed[0]["tags"]) == ["vip", "beta"]
+    assert parsed[0]["email"] == "a@example.com"
+    # None renders as an empty cell.
+    assert parsed[1]["details"] == ""
 
 
 # ── ZIP bundle ───────────────────────────────────────────────────────────

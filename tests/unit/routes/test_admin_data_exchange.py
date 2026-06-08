@@ -4,6 +4,7 @@ S46.0 ships no real exchanger, so these tests register a FAKE exchanger over
 an in-memory repo into the module-level registry singleton, exercise every
 route, then clear it.
 """
+import base64
 import io
 import json
 import zipfile
@@ -191,6 +192,69 @@ def test_export_includes_pii_with_pii_permission(mock_repo, mock_auth, client):
     assert rows[0]["owner_email"] == "alice@example.com"
 
 
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_export_zip_returns_valid_archive_with_assets(mock_repo, mock_auth, client):
+    """A zip-capable exchanger exporting ``format=zip`` returns a real ZIP whose
+    ``assets/`` holds the binary bytes and whose ``<key>.json`` holds the rows."""
+
+    class _ZipExchanger(EntityExchanger):
+        entity_key = "pics"
+        label = "Pics"
+        cluster = "sales"
+        natural_key = "slug"
+        supports_export = True
+        supports_import = False
+        supported_formats = frozenset({"json", "zip"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):
+            return Envelope(entity_key="pics", rows=[{"slug": "a", "data": "ZA=="}])
+
+        def export_zip(self, selector, *, include_pii):
+            from vbwd.services.data_exchange.port import ZipExport
+
+            return ZipExport(
+                rows=[{"slug": "a", "asset_file": "a.png"}],
+                assets={"a.png": b"raw-bytes"},
+            )
+
+        def import_(self, payload, *, mode, dry_run):
+            raise UnsupportedOperationError("pics is export-only")
+
+    data_exchange_registry.register(_ZipExchanger())
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("pics.export"))
+    response = client.post(
+        "/api/v1/admin/data-exchange/pics/export",
+        headers=_headers(),
+        json={"all": True, "format": "zip"},
+    )
+    assert response.status_code == 200
+    assert response.mimetype == "application/zip"
+    archive = zipfile.ZipFile(io.BytesIO(response.data))
+    names = archive.namelist()
+    assert "manifest.json" in names
+    assert "pics.json" in names
+    assert "assets/a.png" in names
+    assert archive.read("assets/a.png") == b"raw-bytes"
+    rows = json.loads(archive.read("pics.json"))["pics"]
+    assert rows[0]["asset_file"] == "a.png"
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_export_zip_unsupported_entity_returns_400(mock_repo, mock_auth, client):
+    """``widgets`` advertises only json/csv → asking for zip is a clear 400."""
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.export"))
+    response = client.post(
+        "/api/v1/admin/data-exchange/widgets/export",
+        headers=_headers(),
+        json={"all": True, "format": "zip"},
+    )
+    assert response.status_code == 400
+
+
 # ── single import ────────────────────────────────────────────────────────
 
 
@@ -257,6 +321,67 @@ def test_import_replace_all_allowed_for_superadmin(mock_repo, mock_auth, client)
     assert response.status_code == 200
 
 
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_import_accepts_zip_upload_and_attaches_assets(mock_repo, mock_auth, client):
+    """A single-entity ``.zip`` upload is read as a bundle: the route hands the
+    entity's envelope + assets to ``attach_assets`` before ``import_``."""
+    seen = {}
+
+    class _ZipImportExchanger(EntityExchanger):
+        entity_key = "pics"
+        label = "Pics"
+        cluster = "sales"
+        natural_key = "slug"
+        supports_export = False
+        supports_import = True
+        supported_formats = frozenset({"json", "zip"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):
+            raise UnsupportedOperationError("pics is import-only")
+
+        def attach_assets(self, envelope, assets):
+            seen["assets"] = dict(assets)
+            row = envelope["pics"][0]
+            row["data"] = base64.b64encode(assets[row["asset_file"]]).decode("ascii")
+            return envelope
+
+        def import_(self, payload, *, mode, dry_run):
+            seen["data"] = payload["pics"][0]["data"]
+            return ImportResult(entity="pics", mode=mode, dry_run=dry_run, created=1)
+
+    data_exchange_registry.register(_ZipImportExchanger())
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("pics.import"))
+
+    from vbwd.services.data_exchange.envelope import BundleEntry, build_bundle
+
+    bundle = build_bundle(
+        [
+            BundleEntry(
+                "pics",
+                "json",
+                build_envelope(
+                    "pics", [{"slug": "a", "asset_file": "a.png"}], instance="main"
+                ),
+            )
+        ],
+        instance="main",
+        assets={"a.png": b"raw-bytes"},
+    )
+    response = client.post(
+        "/api/v1/admin/data-exchange/pics/import",
+        headers=_headers(),
+        data={"file": (io.BytesIO(bundle), "pics.zip"), "mode": "upsert"},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    assert response.get_json()["created"] == 1
+    assert seen["assets"] == {"a.png": b"raw-bytes"}
+    assert base64.b64decode(seen["data"]) == b"raw-bytes"
+
+
 # ── bundle export / import ───────────────────────────────────────────────
 
 
@@ -276,6 +401,52 @@ def test_bundle_export_drops_unpermitted(mock_repo, mock_auth, client):
     assert "widgets.json" in names
     manifest = json.loads(archive.read("manifest.json"))
     assert any(c["entity_key"] == "widgets" for c in manifest["contents"])
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_bundle_export_includes_real_assets_for_zip_entities(
+    mock_repo, mock_auth, client
+):
+    """The General-tab "everything" ZIP carries real binary files for
+    zip-capable entities (it uses ``export_zip``, not the base64 ``export``)."""
+
+    class _ZipBundleExchanger(EntityExchanger):
+        entity_key = "pics"
+        label = "Pics"
+        cluster = "sales"
+        natural_key = "slug"
+        supports_export = True
+        supports_import = False
+        supported_formats = frozenset({"json", "zip"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):
+            return Envelope(entity_key="pics", rows=[{"slug": "a", "data": "ZA=="}])
+
+        def export_zip(self, selector, *, include_pii):
+            from vbwd.services.data_exchange.port import ZipExport
+
+            return ZipExport(
+                rows=[{"slug": "a", "asset_file": "a.png"}],
+                assets={"a.png": b"bundle-bytes"},
+            )
+
+        def import_(self, payload, *, mode, dry_run):
+            raise UnsupportedOperationError("pics is export-only")
+
+    data_exchange_registry.register(_ZipBundleExchanger())
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("pics.export"))
+    response = client.post(
+        "/api/v1/admin/data-exchange/export",
+        headers=_headers(),
+        json={"entities": ["pics"]},
+    )
+    assert response.status_code == 200
+    archive = zipfile.ZipFile(io.BytesIO(response.data))
+    assert "assets/a.png" in archive.namelist()
+    assert archive.read("assets/a.png") == b"bundle-bytes"
 
 
 @patch("vbwd.middleware.auth.AuthService")

@@ -6,6 +6,7 @@ from vbwd.services.data_exchange.port import (
     ExportSelector,
     ImportResult,
     UnsupportedOperationError,
+    ZipExport,
 )
 
 from .fakes import FakeExportOnlyExchanger
@@ -51,3 +52,30 @@ def test_import_result_defaults_to_zero_counts():
     assert result.updated == 0
     assert result.skipped == 0
     assert result.errors == []
+
+
+# ── binary-asset contract (optional hooks; defaults preserve behaviour) ────
+
+
+def test_zip_export_holds_rows_and_assets():
+    zip_export = ZipExport(rows=[{"slug": "a"}], assets={"a.png": b"bytes"})
+    assert zip_export.rows == [{"slug": "a"}]
+    assert zip_export.assets == {"a.png": b"bytes"}
+
+
+def test_export_zip_default_wraps_export_with_empty_assets():
+    """The default ``export_zip`` reuses ``export`` and carries no assets, so a
+    plain exchanger is zip-capable without binary handling."""
+    exchanger = FakeExportOnlyExchanger()
+    zip_export = exchanger.export_zip(ExportSelector(all=True), include_pii=False)
+    assert isinstance(zip_export, ZipExport)
+    assert zip_export.rows == [{"code": "r1"}]
+    assert zip_export.assets == {}
+
+
+def test_attach_assets_default_returns_envelope_unchanged():
+    """The default ``attach_assets`` is the identity, so non-binary entities
+    import unchanged from a bundle."""
+    exchanger = FakeExportOnlyExchanger()
+    envelope = {"fake_reports": [{"code": "r1"}]}
+    assert exchanger.attach_assets(envelope, {"a.png": b"bytes"}) is envelope

@@ -9,6 +9,7 @@ natural key (``replace_all`` drops first), with ``dry_run`` rolling back.
 Entities with bespoke shaping (nested 1:1, ZIP+assets) subclass and override
 ``export`` / ``import_`` — extension, not core change.
 """
+from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, List, Optional
 
 from vbwd.services.data_exchange.envelope import validate_envelope
@@ -105,6 +106,8 @@ class BaseModelExchanger(EntityExchanger):
             value = getattr(row, field_name)
             if field_name in self.pii_fields and not include_pii:
                 value = None
+            elif isinstance(value, Enum):
+                value = value.value
             result[field_name] = value
         for fk_field, resolver in self._fk_natural_key_map.items():
             result[fk_field] = resolver(row)

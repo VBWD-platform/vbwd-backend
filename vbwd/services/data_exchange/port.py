@@ -8,7 +8,7 @@ without naming any domain.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 # The two UI groupings an exchanger may declare. Generic, not domain vocabulary.
 CLUSTER_SALES = "sales"
@@ -47,6 +47,21 @@ class Envelope:
 
     entity_key: str
     rows: List[dict] = field(default_factory=list)
+
+
+@dataclass
+class ZipExport:
+    """A zip export's payload: the row dicts plus the binary assets they name.
+
+    ``rows`` are the instance-independent row dicts (the route wraps them in a
+    JSON envelope); ``assets`` maps an asset filename to its raw bytes, written
+    into the bundle's ``assets/`` directory. An exchanger with no binaries
+    returns an empty ``assets`` map (the default below), so a plain exchanger is
+    zip-capable without any binary handling.
+    """
+
+    rows: List[dict] = field(default_factory=list)
+    assets: Dict[str, bytes] = field(default_factory=dict)
 
 
 @dataclass
@@ -106,6 +121,28 @@ class EntityExchanger(ABC):
         Export-only exchangers raise :class:`UnsupportedOperationError`.
         ``dry_run`` computes counts then rolls back (never writes).
         """
+
+    def export_zip(self, selector: ExportSelector, *, include_pii: bool) -> ZipExport:
+        """Export rows plus their binary assets for a ZIP bundle.
+
+        Optional hook. The default wraps :meth:`export` and carries no assets,
+        so every exchanger is zip-capable with no binary handling; an exchanger
+        with files on disk overrides this to reference each binary by an
+        ``assets/`` filename and return the raw bytes alongside.
+        """
+        return ZipExport(
+            rows=self.export(selector, include_pii=include_pii).rows, assets={}
+        )
+
+    def attach_assets(self, envelope: dict, assets: dict) -> dict:
+        """Re-inline a bundle's binary assets into the envelope before import.
+
+        Optional hook (the reverse of :meth:`export_zip`). The default returns
+        the envelope unchanged, so non-binary entities import from a bundle as-is;
+        a binary exchanger overrides this to map each row's asset reference back
+        to the bytes the existing :meth:`import_` path expects.
+        """
+        return envelope
 
     @property
     def export_permission(self) -> str:

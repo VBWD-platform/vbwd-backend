@@ -85,20 +85,39 @@ def validate_envelope(data: object, expected_key: str) -> List[dict]:
 
 
 def rows_to_csv(rows: List[dict]) -> str:
-    """Serialise flat rows to CSV (header + one row each). Empty → ''."""
+    """Serialise rows to CSV (header + one row each). Empty → ''.
+
+    Robust to non-scalar cells so any entity can CSV-export: the header is the
+    stable, deterministic union of every row's keys (sorted); each cell is
+    rendered by :func:`_csv_cell` — a dict/list value is JSON-encoded (compact)
+    into the cell, ``None`` becomes an empty cell, and scalars render as-is.
+    Parses back via :func:`rows_from_csv` without crashing (a nested cell comes
+    back as the JSON string).
+    """
     if not rows:
         return ""
-    fieldnames: List[str] = []
-    for row in rows:
-        for key in row:
-            if key not in fieldnames:
-                fieldnames.append(key)
+    fieldnames = sorted({key for row in rows for key in row})
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=fieldnames)
     writer.writeheader()
     for row in rows:
-        writer.writerow(row)
+        writer.writerow({key: _csv_cell(row.get(key)) for key in fieldnames})
     return buffer.getvalue()
+
+
+def _csv_cell(value: object) -> str:
+    """Render one CSV cell: dict/list → compact JSON, ``None`` → '', else str.
+
+    Datetimes serialise via ``isoformat`` so timestamp cells stay readable; all
+    other scalars (str/int/bool/UUID/enum value) stringify directly.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"), default=str)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 
 def rows_from_csv(text: str) -> List[dict]:

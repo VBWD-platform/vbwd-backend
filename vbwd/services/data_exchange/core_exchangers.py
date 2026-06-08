@@ -150,7 +150,7 @@ class UsersExchanger(EntityExchanger):
     natural_key = "email"
     supports_export = True
     supports_import = True
-    supported_formats = frozenset({"json"})
+    supported_formats = frozenset({"json", "csv"})
     secret_fields = frozenset({"password_hash"})
     # The whole personal payload (incl. the nested 1:1 details) is PII; a
     # non-empty set is also what gives this exchanger its ``.export.pii`` perm.
