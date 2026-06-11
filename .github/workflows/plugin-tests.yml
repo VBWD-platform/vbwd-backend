@@ -74,9 +74,13 @@ jobs:
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
             [token_payment]=token-payment
+            [bot_base]=bot-base
+            [bot_telegram]=bot-telegram
           )
           declare -A DEPS=(
-            [taro]="chat"
+            [chat]="bot_base bot_telegram"
+            [taro]="bot_base bot_telegram subscription"
+            [ghrm]="subscription"
             [stripe]="subscription"
             [paypal]="subscription"
             [meinchat]="subscription"
@@ -112,8 +116,10 @@ jobs:
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
             [token_payment]=token-payment
+            [bot_base]=bot-base
+            [bot_telegram]=bot-telegram
           )
-          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
+          BACKEND_PLUGINS="analytics booking bot_base bot_telegram chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 -q \
