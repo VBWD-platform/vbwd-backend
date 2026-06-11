@@ -152,15 +152,20 @@ class TestSeedDefaultRbacIdempotency:
 
         assert result.roles_created == 2
         # The seeder creates one Permission row per catalog key plus the
-        # wildcard ("*"). The catalog is core permissions + the data-exchange
-        # sales perms auto-derived from the registered core exchangers (S46.1);
-        # derive the expected count from the same single source so this stays
-        # accurate as exchangers are added.
+        # wildcard ("*") plus the core user-facing permissions (S52 — e.g.
+        # ``manage_api`` — so an admin can grant them to user access levels).
+        # The catalog is core permissions + the data-exchange sales perms
+        # auto-derived from the registered core exchangers (S46.1); derive the
+        # expected count from the same single sources so this stays accurate.
+        from vbwd.routes.admin.access import CORE_USER_PERMISSIONS
+
         catalog = collect_permission_catalog(plugin_manager=FakePluginManager([]))
         catalog_keys = {
             entry["key"] for entries in catalog.values() for entry in entries
         }
-        assert result.permissions_created == len(catalog_keys | {"*"})
+        user_permission_keys = {entry["key"] for entry in CORE_USER_PERMISSIONS}
+        expected = catalog_keys | {"*"} | user_permission_keys
+        assert result.permissions_created == len(expected)
 
 
 class TestSeedDefaultRbacGuards:

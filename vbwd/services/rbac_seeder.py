@@ -105,9 +105,16 @@ def seed_default_rbac(
     catalog = collect_permission_catalog(plugin_manager=plugin_manager)
     core_keys = [entry["key"] for entry in catalog["core"]]
 
+    # Core user-facing permissions (e.g. ``manage_api``) need Permission rows so
+    # an admin can assign them to user access levels — they are NOT admin
+    # permissions, so they stay out of ``core_keys`` (the ``admin`` role's set).
+    from vbwd.routes.admin.access import CORE_USER_PERMISSIONS
+
+    user_permission_keys = [entry["key"] for entry in CORE_USER_PERMISSIONS]
+
     permissions_created = 0
     catalog_keys = _permission_keys_from_catalog(catalog)
-    for name in [WILDCARD_PERMISSION, *catalog_keys]:
+    for name in [WILDCARD_PERMISSION, *catalog_keys, *user_permission_keys]:
         if _upsert_permission(session, name):
             permissions_created += 1
 

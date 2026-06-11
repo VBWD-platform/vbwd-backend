@@ -40,6 +40,19 @@ CORE_PERMISSIONS = [
         "label": "System settings (payment providers, API keys)",
         "group": "Settings",
     },
+    {
+        "key": "api_keys.manage",
+        "label": "Manage user API keys",
+        "group": "API Keys",
+    },
+]
+
+# User-facing permission for self-service API-key management. Seeded into the
+# permission catalogue so an admin can grant it to user access levels; gates
+# the fe-user nav item, page route, and the self-service backend routes
+# (defence-in-depth, never FE-only).
+CORE_USER_PERMISSIONS = [
+    {"key": "manage_api", "label": "Manage own API keys", "group": "API"},
 ]
 
 
@@ -233,10 +246,10 @@ def revoke_user_role(user_id, role_id):
 
 
 def _get_all_user_permissions():
-    """Collect user permissions from all enabled plugins."""
+    """Collect user permissions from core + all enabled plugins."""
     from flask import current_app
 
-    result = {}
+    result = {"core": CORE_USER_PERMISSIONS}
     manager = getattr(current_app, "plugin_manager", None)
     if manager:
         for plugin in manager.get_enabled_plugins():

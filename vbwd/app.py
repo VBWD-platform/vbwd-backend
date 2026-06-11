@@ -204,6 +204,8 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.routes.settings import settings_bp
     from vbwd.routes.token_bundles import token_bundles_bp
     from vbwd.routes.webhooks import webhooks_bp
+    from vbwd.routes.api_keys import api_keys_bp
+    from vbwd.routes.admin.api_keys import admin_api_keys_bp
 
     csrf.exempt(auth_bp)
     csrf.exempt(user_bp)
@@ -225,6 +227,8 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(config_bp)
     csrf.exempt(settings_bp)
     csrf.exempt(webhooks_bp)
+    csrf.exempt(api_keys_bp)
+    csrf.exempt(admin_api_keys_bp)
 
     # Initialize DI container
     from vbwd.container import Container
@@ -323,6 +327,8 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_plugins_bp)
     app.register_blueprint(admin_tax_bp)
     app.register_blueprint(admin_access_bp)
+    app.register_blueprint(api_keys_bp)
+    app.register_blueprint(admin_api_keys_bp)
     app.register_blueprint(data_exchange_bp)
     app.register_blueprint(frontend_plugins_bp)
     app.register_blueprint(token_bundles_bp)
