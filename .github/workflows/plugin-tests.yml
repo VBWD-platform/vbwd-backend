@@ -84,6 +84,7 @@ jobs:
             [stripe]="subscription"
             [paypal]="subscription"
             [meinchat]="subscription"
+            [subscription]="bot_base bot_telegram"
           )
           deps_for_this="${DEPS[${{ matrix.plugin }}]:-}"
           for dep in $deps_for_this; do
