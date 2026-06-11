@@ -1,0 +1,14 @@
+# Plugins the CI must NOT auto-enable when "enable all present plugins" runs.
+#
+# These are the region-specific payment-method plugins that require live
+# gateway credentials / config to initialize and have no place in an isolated
+# plugin CI run. Everything else present is enabled.
+#
+# Kept ENABLED (NOT listed here): stripe, paypal, invoice (core), token_payment.
+# One plugin dir-name per line; blank lines and # comments are ignored.
+conekta
+mercado_pago
+promptpay
+toss_payments
+truemoney
+yookassa
