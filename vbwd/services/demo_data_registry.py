@@ -15,10 +15,18 @@ _catalog_seeders: List[SeedHook] = []
 _catalog_clearers: List[SeedHook] = []
 _test_data_seeders: List[TestDataHook] = []
 _test_data_cleaners: List[SeedHook] = []
+# Post-seed hooks run AFTER every catalog seeder (e.g. the cms backfill that
+# folds the just-seeded pages into the unified cms_post model).
+_post_seed_hooks: List[SeedHook] = []
 
 
 def register_catalog_seeder(hook: SeedHook) -> None:
     _catalog_seeders.append(hook)
+
+
+def register_post_seed_hook(hook: SeedHook) -> None:
+    """Register a hook to run after all catalog seeders (ordering matters)."""
+    _post_seed_hooks.append(hook)
 
 
 def register_catalog_clearer(hook: SeedHook) -> None:
@@ -39,11 +47,27 @@ def clear_demo_data_hooks() -> None:
     _catalog_clearers.clear()
     _test_data_seeders.clear()
     _test_data_cleaners.clear()
+    _post_seed_hooks.clear()
 
 
-def run_catalog_seeders(session) -> None:
+def run_catalog_seeders(session) -> dict:
+    """Run every registered catalog seeder; aggregate any returned stats dict."""
+    stats: dict = {}
     for hook in _catalog_seeders:
-        hook(session)
+        result = hook(session)
+        if isinstance(result, dict):
+            stats.update(result)
+    return stats
+
+
+def run_post_seed_hooks(session) -> dict:
+    """Run every registered post-seed hook; aggregate any returned stats dict."""
+    stats: dict = {}
+    for hook in _post_seed_hooks:
+        result = hook(session)
+        if isinstance(result, dict):
+            stats.update(result)
+    return stats
 
 
 def run_catalog_clearers(session) -> None:

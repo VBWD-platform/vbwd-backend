@@ -1,6 +1,8 @@
 """User-related schemas."""
 from marshmallow import Schema, fields, validate
 
+from vbwd.models.enums import AccountType
+
 
 class UserSchema(Schema):
     """Schema for User model serialization."""
@@ -28,6 +30,7 @@ class UserDetailsSchema(Schema):
     phone = fields.Str(allow_none=True, validate=validate.Length(max=20))
     company = fields.Str(allow_none=True, validate=validate.Length(max=255))
     tax_number = fields.Str(allow_none=True, validate=validate.Length(max=100))
+    account_type = fields.Str(validate=validate.OneOf(AccountType.values()))
     address_line_1 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     address_line_2 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     city = fields.Str(allow_none=True, validate=validate.Length(max=100))
@@ -50,6 +53,7 @@ class UserDetailsUpdateSchema(Schema):
     phone = fields.Str(allow_none=True, validate=validate.Length(max=20))
     company = fields.Str(allow_none=True, validate=validate.Length(max=255))
     tax_number = fields.Str(allow_none=True, validate=validate.Length(max=100))
+    account_type = fields.Str(validate=validate.OneOf(AccountType.values()))
     address_line_1 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     address_line_2 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     city = fields.Str(allow_none=True, validate=validate.Length(max=100))

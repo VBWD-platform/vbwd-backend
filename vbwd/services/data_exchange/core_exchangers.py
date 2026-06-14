@@ -1,10 +1,12 @@
-"""The seven S46.1 core entity exchangers.
+"""The core entity exchangers.
 
 These are *core* entities (users+details, invoices, payment methods, access
-levels, email templates, currencies, countries), so — unlike plugin exchangers
-which register at plugin enable-time — they are registered directly at app init
-via :func:`register_core_exchangers`. The function is idempotent and clear-safe
-so the test suite can rebuild the registry freely.
+levels, email templates, currencies, countries, taxes, token
+bundles), so —
+unlike plugin exchangers which register at plugin enable-time — they are
+registered directly at app init via :func:`register_core_exchangers`. The
+function is idempotent and clear-safe so the test suite can rebuild the
+registry freely.
 
 Each exchanger honours the generic :class:`EntityExchanger` contract:
 
@@ -22,11 +24,16 @@ from typing import Any, List, Optional
 
 from vbwd.models.country import Country
 from vbwd.models.currency import Currency
+from vbwd.models.custom_field_def import CustomFieldDef
 from vbwd.models.invoice import UserInvoice
 from vbwd.models.payment_method import PaymentMethod
 from vbwd.models.role import Permission, Role
+from vbwd.models.tag import Tag
+from vbwd.models.tax import Tax
+from vbwd.models.token_bundle import TokenBundle
 from vbwd.models.user import User
 from vbwd.models.user_details import UserDetails
+from vbwd.models.user_group import UserGroup
 from vbwd.services.asset_storage import asset_dir
 from vbwd.services.data_exchange.base_model_exchanger import BaseModelExchanger
 from vbwd.services.data_exchange.envelope import validate_envelope
@@ -123,12 +130,225 @@ def _build_currencies_exchanger(session: Any) -> BaseModelExchanger:
             "name",
             "symbol",
             "exchange_rate",
-            "is_default",
-            "is_active",
             "decimal_places",
         ],
         supported_formats=frozenset({"json", "csv"}),
     )
+
+
+# ── token_bundles (flat model keyed by name) ─────────────────────────────────
+
+
+def _build_token_bundles_exchanger(session: Any) -> BaseModelExchanger:
+    # TokenBundle has no code/slug, so ``name`` is the stable human identifier
+    # used as the natural key for portable, idempotent upsert across instances.
+    return BaseModelExchanger(
+        entity_key="token_bundles",
+        label="Token Bundles",
+        cluster=CLUSTER_SETTINGS,
+        natural_key="name",
+        model_class=TokenBundle,
+        repository=_SessionModelRepository(session, TokenBundle, "name"),
+        session=session,
+        public_fields=[
+            "name",
+            "description",
+            "token_amount",
+            "price",
+            "is_active",
+            "sort_order",
+        ],
+        supported_formats=frozenset({"json", "csv"}),
+    )
+
+
+# ── taxes (flat model keyed by code, ``tax_class`` a plain label) ─────────────
+
+
+def _build_taxes_exchanger(session: Any) -> BaseModelExchanger:
+    return BaseModelExchanger(
+        entity_key="taxes",
+        label="Taxes",
+        cluster=CLUSTER_SETTINGS,
+        natural_key="code",
+        model_class=Tax,
+        repository=_SessionModelRepository(session, Tax, "code"),
+        session=session,
+        public_fields=[
+            "name",
+            "code",
+            "description",
+            "rate",
+            "country_code",
+            "region_code",
+            "is_active",
+            "is_inclusive",
+            "tax_class",
+        ],
+        supported_formats=frozenset({"json", "csv"}),
+    )
+
+
+# ── user_groups (flat model keyed by slug, parent_group portable by slug) ────
+
+
+def _build_user_groups_exchanger(session: Any) -> BaseModelExchanger:
+    # parent_group is itself a slug, so the envelope is instance-independent
+    # without any FK resolution (D1: slug-keyed hierarchy keeps it portable).
+    return BaseModelExchanger(
+        entity_key="user_groups",
+        label="User Groups",
+        cluster=CLUSTER_SETTINGS,
+        natural_key="slug",
+        model_class=UserGroup,
+        repository=_SessionModelRepository(session, UserGroup, "slug"),
+        session=session,
+        public_fields=[
+            "slug",
+            "name",
+            "lang",
+            "parent_group",
+        ],
+        supported_formats=frozenset({"json", "csv"}),
+    )
+
+
+# ── tags (S77 catalog, keyed by globally-unique slug) ────────────────────────
+
+
+def _build_tags_exchanger(session: Any) -> BaseModelExchanger:
+    # The single core tag catalog (S77). ``slug`` is globally unique, so the
+    # generic BaseModelExchanger upserts by it; ``meta_data`` is a JSON dict
+    # (CSV-encoded into one cell). No secrets/PII.
+    return BaseModelExchanger(
+        entity_key="tags",
+        label="Tags",
+        cluster=CLUSTER_SETTINGS,
+        natural_key="slug",
+        model_class=Tag,
+        repository=_SessionModelRepository(session, Tag, "slug"),
+        session=session,
+        public_fields=[
+            "slug",
+            "name",
+            "parent_entity_type",
+            "meta_data",
+            "color",
+        ],
+        supported_formats=frozenset({"json", "csv"}),
+    )
+
+
+# ── custom_field_defs (S77, composite natural key entity_type + key) ─────────
+
+
+class CustomFieldDefsExchanger(EntityExchanger):
+    """Custom-field definitions (S77), keyed by ``(entity_type, key)``.
+
+    ``key`` is unique only *per* entity_type, so the natural key is composite —
+    the generic single-key :class:`BaseModelExchanger` cannot express it. This
+    exchanger therefore implements the contract directly (extension, not core
+    change), mirroring :class:`AccessLevelsExchanger`. Upsert matches on the
+    pair; ``options`` is a JSON list (CSV-encoded into one cell). No secrets.
+    """
+
+    entity_key = "custom_field_defs"
+    label = "Custom Field Definitions"
+    cluster = CLUSTER_SETTINGS
+    natural_key = "key"
+    supports_export = True
+    supports_import = True
+    supported_formats = frozenset({"json", "csv"})
+    secret_fields = frozenset()
+    pii_fields = frozenset()
+
+    _FIELDS = (
+        "entity_type",
+        "key",
+        "label",
+        "type",
+        "options",
+        "sort_order",
+        "is_active",
+    )
+
+    def __init__(self, session: Any):
+        self._session = session
+
+    def export(self, selector: ExportSelector, *, include_pii: bool) -> Envelope:
+        defs = self._session.query(CustomFieldDef).all()
+        if selector.ids:
+            wanted = {str(value) for value in selector.ids}
+            defs = [
+                definition
+                for definition in defs
+                if str(definition.id) in wanted or definition.key in wanted
+            ]
+        rows = [self._serialise(definition) for definition in defs]
+        return Envelope(entity_key=self.entity_key, rows=rows)
+
+    def _serialise(self, definition: CustomFieldDef) -> dict:
+        return {
+            field_name: getattr(definition, field_name) for field_name in self._FIELDS
+        }
+
+    def import_(self, payload: dict, *, mode: str, dry_run: bool) -> ImportResult:
+        rows = validate_envelope(payload, self.entity_key)
+        result = ImportResult(entity=self.entity_key, mode=mode, dry_run=dry_run)
+        try:
+            for index, row in enumerate(rows):
+                self._import_row(row, index, result, dry_run=dry_run)
+        except Exception:
+            self._session.rollback()
+            raise
+        if dry_run:
+            self._session.rollback()
+        else:
+            self._session.commit()
+        return result
+
+    def _import_row(
+        self, row: dict, index: int, result: ImportResult, *, dry_run: bool
+    ) -> None:
+        entity_type = row.get("entity_type")
+        key = row.get("key")
+        if not entity_type or not key:
+            result.errors.append(
+                {"row": index, "reason": "missing natural key '(entity_type, key)'"}
+            )
+            return
+        existing = (
+            self._session.query(CustomFieldDef)
+            .filter(
+                CustomFieldDef.entity_type == entity_type,
+                CustomFieldDef.key == key,
+            )
+            .first()
+        )
+        if existing is not None:
+            if not dry_run:
+                for field_name in (
+                    "label",
+                    "type",
+                    "options",
+                    "sort_order",
+                    "is_active",
+                ):
+                    if field_name in row:
+                        setattr(existing, field_name, row[field_name])
+            result.updated += 1
+        else:
+            if not dry_run:
+                self._session.add(
+                    CustomFieldDef(
+                        **{
+                            field_name: row[field_name]
+                            for field_name in self._FIELDS
+                            if field_name in row
+                        }
+                    )
+                )
+            result.created += 1
 
 
 # ── users (nested 1:1 details + PII split + role guard) ──────────────────────
@@ -167,6 +387,7 @@ class UsersExchanger(EntityExchanger):
         "phone",
         "company",
         "tax_number",
+        "account_type",
     )
 
     def __init__(self, session: Any):
@@ -190,17 +411,35 @@ class UsersExchanger(EntityExchanger):
         return query.all()
 
     def _serialise(self, user: User, *, include_pii: bool) -> dict:
+        # Group membership (S73) is not PII — it round-trips by slug in both the
+        # redacted and full export so user import carries memberships.
+        group_slugs = self._group_slugs(user)
         row: dict = {
             "email": user.email,
             "status": user.status.value if user.status else None,
             "role": user.role.value if user.role else None,
             "has_used_trial": bool(user.has_used_trial),
+            "group_slugs": group_slugs,
         }
         if not include_pii:
-            return {"email": user.email, "role": row["role"]}
+            return {
+                "email": user.email,
+                "role": row["role"],
+                "group_slugs": group_slugs,
+            }
         details: Optional[UserDetails] = getattr(user, "details", None)
         row["details"] = self._serialise_details(details)
         return row
+
+    def _group_slugs(self, user: User) -> list:
+        from vbwd.services.user_group_membership import (
+            resolve_user_group_membership,
+        )
+
+        from uuid import UUID
+
+        membership = resolve_user_group_membership()
+        return sorted(membership.list_user_group_slugs(UUID(str(user.id))))
 
     def _serialise_details(self, details: Optional[UserDetails]) -> Optional[dict]:
         if details is None:
@@ -265,9 +504,29 @@ class UsersExchanger(EntityExchanger):
         # Never elevate role/admin without explicit system permission (security R4).
         if allow_role_change and row.get("role"):
             user.role = row["role"]
+        if "group_slugs" in row:
+            self._apply_group_slugs(user, row["group_slugs"])
         details_payload = row.get("details")
         if isinstance(details_payload, dict):
             self._apply_details(user, details_payload)
+
+    def _apply_group_slugs(self, user: User, group_slugs) -> None:
+        # group_slugs round-trips by slug through the core membership port (the
+        # exchanger never imports the UserGroup model directly). A CSV import
+        # may pass a comma-joined string; normalise to a slug list.
+        from vbwd.services.user_group_membership import (
+            resolve_user_group_membership,
+        )
+
+        if isinstance(group_slugs, str):
+            slugs = [part.strip() for part in group_slugs.split(",") if part.strip()]
+        elif isinstance(group_slugs, (list, tuple)):
+            slugs = [str(slug) for slug in group_slugs if slug]
+        else:
+            slugs = []
+        from uuid import UUID
+
+        resolve_user_group_membership().set_user_groups(UUID(str(user.id)), slugs)
 
     def _apply_details(self, user: User, details_payload: dict) -> None:
         details = user.details
@@ -619,7 +878,7 @@ class CountriesExchanger(EntityExchanger):
 def build_core_exchangers(
     session: Any, *, email_template_dir: Optional[str] = None
 ) -> List[EntityExchanger]:
-    """Construct the seven core exchangers bound to ``session``.
+    """Construct the core exchangers bound to ``session``.
 
     ``email_template_dir`` overrides the bundled email-template default dir
     (used in tests); the admin-override dir is always ``var/assets/core/email/
@@ -634,6 +893,11 @@ def build_core_exchangers(
         EmailTemplatesExchanger(template_dir),
         _build_currencies_exchanger(session),
         CountriesExchanger(session),
+        _build_token_bundles_exchanger(session),
+        _build_taxes_exchanger(session),
+        _build_user_groups_exchanger(session),
+        _build_tags_exchanger(session),
+        CustomFieldDefsExchanger(session),
     ]
 
 

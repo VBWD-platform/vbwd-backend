@@ -52,3 +52,13 @@ def truncate_all_tables(db):
     quoted = ", ".join(f'public."{name}"' for name in table_names)
     with db.engine.begin() as connection:
         connection.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE"))
+        # Re-seed the canonical RBAC role rows the TRUNCATE wiped, so any User
+        # created afterwards (the test-data seeder's admin, or a test fixture)
+        # does not violate the ``vbwd_user.role`` FK to ``vbwd_user_role``.
+        # Through the model catalog, never raw DDL.
+        if "vbwd_user_role" in table_names:
+            from sqlalchemy import insert
+
+            from vbwd.models.user_role import RoleDefinition, canonical_role_rows
+
+            connection.execute(insert(RoleDefinition.__table__), canonical_role_rows())

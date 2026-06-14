@@ -137,6 +137,41 @@ class UserInvoice(BaseModel):
         unique = uuid.uuid4().hex[:6].upper()
         return f"INV-{timestamp}-{unique}"
 
+    def _serialized_line_items(self) -> list:
+        """Serialise each line and append its FROZEN tags/custom-fields (S77).
+
+        Tags/CF were snapshotted onto the ``invoice_line_item`` id at creation
+        time. Reads use the ``*_bulk`` port variants (one tags query + one CF
+        query for the whole invoice — no N+1, D6) and never touch the live
+        source product/plan, keeping the invoice immutable.
+        """
+        line_items = list(self.line_items or [])  # type: ignore[attr-defined]
+        serialized = [item.to_dict() for item in line_items]
+        if not serialized:
+            return serialized
+
+        from vbwd.services.entity_type_registry import is_registered
+        from vbwd.services.invoice_line_item_snapshot import LINE_ITEM_ENTITY_TYPE
+
+        if not is_registered(LINE_ITEM_ENTITY_TYPE):
+            for line in serialized:
+                line["tags"] = []
+                line["custom_fields"] = {}
+            return serialized
+
+        from vbwd.services.tags_and_custom_fields import (
+            resolve_tags_and_custom_fields,
+        )
+
+        port = resolve_tags_and_custom_fields()
+        line_ids = [item.id for item in line_items]
+        tags_by_id = port.get_tags_bulk(LINE_ITEM_ENTITY_TYPE, line_ids)
+        fields_by_id = port.get_custom_fields_bulk(LINE_ITEM_ENTITY_TYPE, line_ids)
+        for item, line in zip(line_items, serialized):
+            line["tags"] = tags_by_id.get(item.id, [])
+            line["custom_fields"] = fields_by_id.get(item.id, {})
+        return serialized
+
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
@@ -156,9 +191,7 @@ class UserInvoice(BaseModel):
             "is_payable": self.is_payable,
             "is_capturable": self.is_capturable,
             "payment_intent_id": self.payment_intent_id,
-            "line_items": [item.to_dict() for item in self.line_items]  # type: ignore[attr-defined]
-            if self.line_items
-            else [],
+            "line_items": self._serialized_line_items(),
             "invoiced_at": self.invoiced_at.isoformat() if self.invoiced_at else None,
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,

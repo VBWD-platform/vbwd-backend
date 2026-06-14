@@ -19,6 +19,8 @@ from vbwd.models.currency import Currency
 from vbwd.models.invoice import UserInvoice
 from vbwd.models.payment_method import PaymentMethod
 from vbwd.models.role import Permission, Role
+from vbwd.models.tax import Tax
+from vbwd.models.token_bundle import TokenBundle
 from vbwd.models.user import User
 from vbwd.models.user_details import UserDetails
 from vbwd.services.data_exchange.core_exchangers import (
@@ -345,6 +347,18 @@ class TestCurrenciesExchanger:
     def test_supports_csv(self, session):
         assert "csv" in _exchangers(session)["currencies"].supported_formats
 
+    def test_export_excludes_active_default_flags(self, session, seeded):
+        # S84: active/default are settings, not columns — never exported.
+        rows = (
+            _exchangers(session)["currencies"]
+            .export(ExportSelector(all=True), include_pii=True)
+            .rows
+        )
+        zzz = next(row for row in rows if row["code"] == "ZZZ")
+        assert "is_active" not in zzz
+        assert "is_default" not in zzz
+        assert set(zzz) == {"code", "name", "symbol", "exchange_rate", "decimal_places"}
+
 
 # ── email_templates (file-backed) ────────────────────────────────────────────
 
@@ -595,11 +609,210 @@ class TestCountriesExchanger:
             session.commit()
 
 
+# ── taxes (flat model; ``tax_class`` is a plain label string) ────────────────
+
+
+class TestTaxesExchanger:
+    @pytest.fixture
+    def seeded(self, session):
+        for code in ("rt-tax", "rt-tax-orphan"):
+            existing = session.query(Tax).filter_by(code=code).first()
+            if existing is not None:
+                session.delete(existing)
+                session.commit()
+        session.add(
+            Tax(
+                id=uuid4(),
+                name="Round Trip Tax",
+                code="rt-tax",
+                description="round trip tax",
+                rate=19,
+                country_code="DE",
+                region_code=None,
+                tax_class="standard",
+                is_active=True,
+                is_inclusive=False,
+            )
+        )
+        session.commit()
+        yield
+        for code in ("rt-tax", "rt-tax-orphan"):
+            leftover = session.query(Tax).filter_by(code=code).first()
+            if leftover is not None:
+                session.delete(leftover)
+                session.commit()
+
+    def test_export_serialises_tax_class_as_plain_field(self, session, seeded):
+        rows = _export_rows(_exchangers(session)["taxes"])
+        row = next(r for r in rows if r["code"] == "rt-tax")
+        assert row["tax_class"] == "standard"
+        assert "tax_class_id" not in row
+        assert "tax_class_code" not in row
+        assert "id" not in row
+
+    def test_csv_columns_are_public_fields_with_tax_class(self, session, seeded):
+        exchanger = _exchangers(session)["taxes"]
+        assert "csv" in exchanger.supported_formats
+        rows = exchanger.export(ExportSelector(ids=["rt-tax"]), include_pii=False).rows
+        header = rows_to_csv(rows).splitlines()[0].split(",")
+        assert set(header) == {
+            "name",
+            "code",
+            "description",
+            "rate",
+            "country_code",
+            "region_code",
+            "is_active",
+            "is_inclusive",
+            "tax_class",
+        }
+
+    def test_round_trip_preserves_tax_class_string(self, session, seeded):
+        exchanger = _exchangers(session)["taxes"]
+        before = exchanger.export(
+            ExportSelector(ids=["rt-tax"]), include_pii=False
+        ).rows
+        tax = session.query(Tax).filter_by(code="rt-tax").first()
+        session.delete(tax)
+        session.commit()
+        payload = build_envelope("taxes", before, instance="test")
+        result = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        assert result.errors == []
+        rebuilt = session.query(Tax).filter_by(code="rt-tax").first()
+        assert rebuilt is not None
+        assert rebuilt.tax_class == "standard"
+
+    def test_import_is_idempotent_upsert_by_code(self, session, seeded):
+        exchanger = _exchangers(session)["taxes"]
+        before = exchanger.export(
+            ExportSelector(ids=["rt-tax"]), include_pii=False
+        ).rows
+        payload = build_envelope("taxes", before, instance="test")
+        first = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        second = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        assert first.created == 0 and first.updated == 1
+        assert second.created == 0 and second.updated == 1
+        assert session.query(Tax).filter_by(code="rt-tax").count() == 1
+
+    def test_tax_without_class_round_trips(self, session, seeded):
+        classless = session.query(Tax).filter_by(code="rt-tax-orphan").first()
+        if classless is None:
+            session.add(
+                Tax(
+                    id=uuid4(),
+                    name="Classless Tax",
+                    code="rt-tax-orphan",
+                    rate=5,
+                    tax_class=None,
+                )
+            )
+            session.commit()
+        exchanger = _exchangers(session)["taxes"]
+        rows = exchanger.export(
+            ExportSelector(ids=["rt-tax-orphan"]), include_pii=False
+        ).rows
+        row = next(r for r in rows if r["code"] == "rt-tax-orphan")
+        assert row["tax_class"] is None
+        payload = build_envelope("taxes", [row], instance="test")
+        result = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        assert result.errors == []
+        rebuilt = session.query(Tax).filter_by(code="rt-tax-orphan").first()
+        assert rebuilt.tax_class is None
+
+
+# ── token_bundles (flat model keyed by name) ─────────────────────────────────
+
+
+class TestTokenBundlesExchanger:
+    @pytest.fixture
+    def seeded(self, session):
+        for name in ("RT Bundle", "RT Bundle Renamed"):
+            existing = session.query(TokenBundle).filter_by(name=name).first()
+            if existing is not None:
+                session.delete(existing)
+                session.commit()
+        session.add(
+            TokenBundle(
+                id=uuid4(),
+                name="RT Bundle",
+                description="round trip bundle",
+                token_amount=100,
+                price=9.99,
+                is_active=True,
+                sort_order=3,
+            )
+        )
+        session.commit()
+        yield
+        for name in ("RT Bundle", "RT Bundle Renamed"):
+            leftover = session.query(TokenBundle).filter_by(name=name).first()
+            if leftover is not None:
+                session.delete(leftover)
+                session.commit()
+
+    def test_export_strips_uuid_and_keeps_public_fields(self, session, seeded):
+        rows = _export_rows(_exchangers(session)["token_bundles"])
+        row = next(r for r in rows if r["name"] == "RT Bundle")
+        assert "id" not in row
+        assert row["token_amount"] == 100
+        assert row["is_active"] is True
+        assert row["sort_order"] == 3
+
+    def test_supports_csv_and_columns_are_public_fields(self, session, seeded):
+        exchanger = _exchangers(session)["token_bundles"]
+        assert "csv" in exchanger.supported_formats
+        rows = exchanger.export(
+            ExportSelector(ids=["RT Bundle"]), include_pii=False
+        ).rows
+        header = rows_to_csv(rows).splitlines()[0].split(",")
+        assert set(header) == {
+            "name",
+            "description",
+            "token_amount",
+            "price",
+            "is_active",
+            "sort_order",
+        }
+
+    def test_round_trip_json_recreates_by_name(self, session, seeded):
+        exchanger = _exchangers(session)["token_bundles"]
+        before = exchanger.export(
+            ExportSelector(ids=["RT Bundle"]), include_pii=False
+        ).rows
+        # Drop the bundle, then re-import from the envelope (re-create by name).
+        bundle = session.query(TokenBundle).filter_by(name="RT Bundle").first()
+        session.delete(bundle)
+        session.commit()
+        payload = build_envelope("token_bundles", before, instance="test")
+        result = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        assert result.errors == []
+        assert result.created == 1
+        rebuilt = session.query(TokenBundle).filter_by(name="RT Bundle").first()
+        assert rebuilt is not None
+        assert rebuilt.token_amount == 100
+
+    def test_import_is_idempotent_upsert_by_name(self, session, seeded):
+        exchanger = _exchangers(session)["token_bundles"]
+        before = exchanger.export(
+            ExportSelector(ids=["RT Bundle"]), include_pii=False
+        ).rows
+        payload = build_envelope("token_bundles", before, instance="test")
+        first = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        second = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        assert first.created == 0 and first.updated == 1
+        assert second.created == 0 and second.updated == 1
+        assert session.query(TokenBundle).filter_by(name="RT Bundle").count() == 1
+
+    def test_cluster_is_settings(self, session):
+        built = {e.entity_key: e.cluster for e in build_core_exchangers(session)}
+        assert built["token_bundles"] == "settings"
+
+
 # ── registration + permission catalog ────────────────────────────────────────
 
 
 class TestRegisterCoreExchangers:
-    def test_registers_all_seven(self, session):
+    def test_registers_all_core_entities(self, session):
         from vbwd.services.data_exchange.registry import data_exchange_registry
 
         data_exchange_registry.clear()
@@ -613,7 +826,41 @@ class TestRegisterCoreExchangers:
             "email_templates",
             "currencies",
             "countries",
+            "taxes",
+            "token_bundles",
         }
+        data_exchange_registry.clear()
+
+    def test_tax_classes_entity_is_gone(self, session):
+        keys = {e.entity_key for e in build_core_exchangers(session)}
+        assert "tax_classes" not in keys
+
+    def test_taxes_cluster_is_settings(self, session):
+        built = {e.entity_key: e.cluster for e in build_core_exchangers(session)}
+        assert built["taxes"] == "settings"
+
+    def test_manifest_lists_tax_entities_for_settings_admin(self, session):
+        from vbwd.services.data_exchange.registry import data_exchange_registry
+
+        class _SettingsUser:
+            class _Role:
+                value = "ADMIN"
+
+            role = _Role()
+
+            def has_permission(self, name):
+                return name in {"settings.view", "settings.manage"}
+
+        data_exchange_registry.clear()
+        register_core_exchangers(session)
+        manifest = data_exchange_registry.manifest_for(_SettingsUser())
+        by_key = {item["entity_key"]: item for item in manifest}
+        assert "tax_classes" not in by_key
+        for key in ("taxes", "countries", "token_bundles"):
+            assert key in by_key
+            assert by_key[key]["supported_formats"] == ["csv", "json"]
+            assert by_key[key]["can_export"] is True
+            assert by_key[key]["can_import"] is True
         data_exchange_registry.clear()
 
     def test_clusters_are_correct(self, session):

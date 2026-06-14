@@ -196,8 +196,13 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         admin_countries_bp,
         admin_plugins_bp,
         admin_tax_bp,
+        admin_currencies_bp,
+        admin_user_groups_bp,
     )
     from vbwd.routes.admin.access import access_bp as admin_access_bp
+    from vbwd.routes.admin.tags_custom_fields import (
+        admin_tags_custom_fields_bp,
+    )
     from vbwd.routes.admin.data_exchange import data_exchange_bp
     from vbwd.routes.admin.frontend_plugins import frontend_plugins_bp
     from vbwd.routes.config import config_bp
@@ -206,6 +211,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.routes.webhooks import webhooks_bp
     from vbwd.routes.api_keys import api_keys_bp
     from vbwd.routes.admin.api_keys import admin_api_keys_bp
+    from vbwd.routes.device_token_routes import device_tokens_bp
 
     csrf.exempt(auth_bp)
     csrf.exempt(user_bp)
@@ -220,7 +226,10 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(admin_countries_bp)
     csrf.exempt(admin_plugins_bp)
     csrf.exempt(admin_tax_bp)
+    csrf.exempt(admin_currencies_bp)
+    csrf.exempt(admin_user_groups_bp)
     csrf.exempt(admin_access_bp)
+    csrf.exempt(admin_tags_custom_fields_bp)
     csrf.exempt(data_exchange_bp)
     csrf.exempt(frontend_plugins_bp)
     csrf.exempt(token_bundles_bp)
@@ -229,6 +238,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(webhooks_bp)
     csrf.exempt(api_keys_bp)
     csrf.exempt(admin_api_keys_bp)
+    csrf.exempt(device_tokens_bp)
 
     # Initialize DI container
     from vbwd.container import Container
@@ -248,6 +258,37 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     def inject_db_session():
         """Inject db session into container for each request."""
         container.db_session.override(db.session)
+
+    # S84: let the core-settings currency validators enforce catalog
+    # membership without the settings module importing the DB layer (no import
+    # cycle). The provider runs inside the active request/app context (PUT
+    # /admin/settings) and reads the live catalog through the repository.
+    from vbwd.services.core_settings_store import (
+        register_currency_catalog_provider,
+    )
+    from vbwd.repositories.currency_repository import CurrencyRepository
+
+    def _currency_catalog_codes():
+        return {row.code for row in CurrencyRepository(db.session).list_all()}
+
+    register_currency_catalog_provider(_currency_catalog_codes)
+
+    # S77: register the core ``user`` entity type so tags/custom-fields can be
+    # attached to users out of the box. Plugins register their own types in
+    # their ``on_enable``; core names no plugin domain here.
+    from vbwd.services.entity_type_registry import (
+        EntityTypeRegistration,
+        register_entity_type,
+    )
+
+    register_entity_type(EntityTypeRegistration("user", "User", "users.manage"))
+    # Invoices are core-owned and immutable; each line snapshots its source
+    # item's tags/CF at issue time (no live join to the source product/plan).
+    register_entity_type(
+        EntityTypeRegistration(
+            "invoice_line_item", "Invoice line item", "invoices.manage"
+        )
+    )
 
     # Register event handlers (now db_session is available)
     with app.app_context():
@@ -326,9 +367,13 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_countries_bp)
     app.register_blueprint(admin_plugins_bp)
     app.register_blueprint(admin_tax_bp)
+    app.register_blueprint(admin_currencies_bp)
+    app.register_blueprint(admin_user_groups_bp)
     app.register_blueprint(admin_access_bp)
+    app.register_blueprint(admin_tags_custom_fields_bp)
     app.register_blueprint(api_keys_bp)
     app.register_blueprint(admin_api_keys_bp)
+    app.register_blueprint(device_tokens_bp)
     app.register_blueprint(data_exchange_bp)
     app.register_blueprint(frontend_plugins_bp)
     app.register_blueprint(token_bundles_bp)
@@ -483,6 +528,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.cli.plugins import plugins_cli
     from vbwd.cli.seed_rbac import seed_rbac_command
     from vbwd.cli.seed_countries import seed_countries_command
+    from vbwd.cli.seed_taxes import seed_taxes_command
     from vbwd.cli.seed_payment_methods import seed_payment_methods_command
     from vbwd.cli.seed import seed_command
     from vbwd.cli.data_exchange import data_exchange_group
@@ -493,6 +539,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(plugins_cli)
     app.cli.add_command(seed_rbac_command)
     app.cli.add_command(seed_countries_command)
+    app.cli.add_command(seed_taxes_command)
     app.cli.add_command(seed_payment_methods_command)
     app.cli.add_command(seed_command)
     app.cli.add_command(data_exchange_group)

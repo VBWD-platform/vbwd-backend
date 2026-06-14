@@ -1,6 +1,7 @@
 """Payment provider plugin interface."""
-from abc import abstractmethod
-from typing import Dict, Any, Optional
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Dict, Any, List, Optional
 from decimal import Decimal
 from uuid import UUID
 from enum import Enum
@@ -35,6 +36,90 @@ class PaymentResult:
         self.status = status
         self.error_message = error_message
         self.metadata = metadata or {}
+
+
+class PayoutError(Exception):
+    """Typed payout failure raised by ``PayoutProvider.create_payout``.
+
+    Liskov: every implementer raises exactly this (no provider-specific
+    exception leaks to the caller); the caller decides how to react
+    (the withdraw plugin marks the request failed and refunds).
+    """
+
+
+@dataclass
+class PayoutResult:
+    """Result of an accepted payout."""
+
+    provider_payout_id: str
+    status: str
+
+
+class PayoutProvider(ABC):
+    """
+    Opt-in payout capability for payment provider plugins (S79 D1).
+
+    Core only defines this contract and never calls it — the withdraw
+    plugin discovers implementers via
+    ``PluginManager.get_enabled_plugins()`` + ``isinstance``. Narrow
+    port (ISP): exactly the three methods below. A provider opts in by
+    additionally inheriting this ABC, e.g.
+    ``class PayPalPlugin(PaymentProviderPlugin, PayoutProvider)``.
+    """
+
+    @abstractmethod
+    def get_payout_destination_schema(self) -> List[Dict[str, Any]]:
+        """
+        Describe the destination form fields for this provider.
+
+        Returns:
+            List of field descriptors, each with at least
+            ``name`` / ``type`` / ``label_key``
+            (e.g. ``[{"name": "email", "type": "email",
+            "label_key": "withdraw.paypal_email"}]``).
+        """
+        pass
+
+    @abstractmethod
+    def create_payout(
+        self,
+        amount: Decimal,
+        currency: str,
+        destination: Dict[str, Any],
+        reference_id: str,
+    ) -> PayoutResult:
+        """
+        Send money to the given destination.
+
+        Args:
+            amount: Payout amount in ``currency``
+            currency: Currency code (ISO 4217)
+            destination: Provider-specific destination, shaped per
+                :meth:`get_payout_destination_schema`
+            reference_id: Caller's idempotency/audit reference
+                (the withdraw request id)
+
+        Returns:
+            PayoutResult with the provider's payout id and status
+
+        Raises:
+            PayoutError: If the provider rejects or fails the payout
+        """
+        pass
+
+    @abstractmethod
+    def get_payout_status(self, provider_payout_id: str) -> str:
+        """
+        Fetch the provider-side status of a previously created payout.
+
+        Args:
+            provider_payout_id: Id returned in :class:`PayoutResult`
+
+        Returns:
+            Provider-neutral status string (e.g. "processing",
+            "completed", "failed")
+        """
+        pass
 
 
 class PaymentProviderPlugin(BasePlugin):

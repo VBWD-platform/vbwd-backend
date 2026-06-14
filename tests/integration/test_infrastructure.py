@@ -76,7 +76,6 @@ class TestDockerInfrastructure:
             "vbwd_currency",
             "vbwd_tax",
             "vbwd_user",
-            "vbwd_price",
             "vbwd_tax_rate",
             "vbwd_user_case",
             "vbwd_user_details",
@@ -208,10 +207,15 @@ class TestDockerInfrastructure:
             pytest.fail(f"UUID support check failed: {e}")
 
     def test_database_enums_created(self):
-        """Test PostgreSQL enum types are created."""
+        """Test PostgreSQL enum types are created.
+
+        Note: ``userrole`` is intentionally absent — the user role is no longer
+        a native Postgres enum; it is a varchar foreign key to the
+        ``vbwd_user_role`` lookup table (verified by
+        ``test_user_role_lookup_table_created``).
+        """
         expected_enums = [
             "userstatus",
-            "userrole",
             "subscriptionstatus",
             "invoicestatus",
             "billingperiod",
@@ -232,8 +236,35 @@ class TestDockerInfrastructure:
 
                 for enum in expected_enums:
                     assert enum in enum_types, f"Enum type '{enum}' not found"
+                # The legacy native role enum must be gone.
+                assert "userrole" not in enum_types, (
+                    "Native 'userrole' enum should have been dropped in favour "
+                    "of the vbwd_user_role lookup table"
+                )
         except Exception as e:
             pytest.fail(f"Enum types check failed: {e}")
+
+    def test_user_role_lookup_table_created(self):
+        """The ``vbwd_user_role`` lookup table exists and is seeded."""
+        try:
+            engine = create_engine(get_database_url())
+            with engine.connect() as connection:
+                role_ids = {
+                    row[0]
+                    for row in connection.execute(
+                        text("SELECT id FROM vbwd_user_role")
+                    ).fetchall()
+                }
+            assert role_ids == {
+                "SUPER_ADMIN",
+                "ADMIN",
+                "USER",
+                "VENDOR",
+                "BOT",
+                "GUEST",
+            }
+        except Exception as e:
+            pytest.fail(f"User role lookup table check failed: {e}")
 
     def test_cross_service_communication_python_to_postgres(self):
         """Test Python service can communicate with PostgreSQL service."""

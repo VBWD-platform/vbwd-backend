@@ -1,6 +1,8 @@
-"""Unit tests for admin tax routes — Sprint 15c.
+"""Unit tests for admin tax routes — Sprint 15c (S72.3 flatten).
 
-Tests CRUD for tax rates and tax classes via the admin API.
+Tests CRUD for tax rates via the admin API. The ``TaxClass`` model was
+flattened into a denormalized ``tax_class`` string on ``Tax``; the class CRUD
+routes are gone and a tax carries ``tax_class`` (a plain label) in/out.
 All routes require @require_permission('settings.manage').
 """
 from unittest.mock import patch
@@ -197,6 +199,44 @@ class TestTaxRateCRUD:
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
+    def test_delete_in_use_rate_returns_409_not_500(
+        self, mock_repo_cls, mock_auth_cls, client
+    ):
+        """An in-use tax (FK RESTRICT from a *_tax join table) → 409, not 500."""
+        from sqlalchemy.exc import IntegrityError
+
+        user = make_user_with_permissions("settings.manage")
+        _mock_auth(mock_repo_cls, mock_auth_cls, user)
+
+        code = _unique_code("VAT_INUSE")
+        rate_id = client.post(
+            "/api/v1/admin/tax/rates",
+            json={"name": "In Use", "code": code, "rate": 10.0},
+            headers=_auth_headers(),
+        ).get_json()["rate"]["id"]
+
+        # Simulate the ON DELETE RESTRICT FK violation on commit.
+        with patch(
+            "vbwd.routes.admin.tax.db.session.commit",
+            side_effect=IntegrityError("DELETE", {}, Exception("fk")),
+        ):
+            resp = client.delete(
+                f"/api/v1/admin/tax/rates/{rate_id}",
+                headers=_auth_headers(),
+            )
+
+        assert resp.status_code == 409
+        assert "in use" in resp.get_json()["error"].lower()
+        # Rolled back — the tax still exists.
+        assert (
+            client.get(
+                f"/api/v1/admin/tax/rates/{rate_id}", headers=_auth_headers()
+            ).status_code
+            == 200
+        )
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
     def test_duplicate_code_rejected(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
@@ -259,210 +299,113 @@ class TestTaxRateCRUD:
         rates = response.get_json()["rates"]
         assert all(r["country_code"] == "ES" for r in rates)
 
-
-class TestTaxClassCRUD:
-    """Tax class CRUD operations."""
-
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_create_class(self, mock_repo_cls, mock_auth_cls, client):
+    def test_filter_by_tax_class(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
-        class_code = _unique_code("cls")
-        response = client.post(
-            "/api/v1/admin/tax/classes",
+        code_std = _unique_code("VAT_STD")
+        code_red = _unique_code("VAT_RED")
+        client.post(
+            "/api/v1/admin/tax/rates",
             json={
-                "name": "Standard",
-                "code": class_code,
-                "description": "Standard tax rate",
-                "default_rate": 19.0,
-                "is_default": True,
+                "name": "VAT Standard",
+                "code": code_std,
+                "rate": 19.0,
+                "tax_class": "standard",
             },
             headers=_auth_headers(),
         )
-        assert response.status_code == 201
-        data = response.get_json()
-        assert data["tax_class"]["code"] == class_code
-        assert data["tax_class"]["is_default"] is True
-
-    @patch("vbwd.middleware.auth.AuthService")
-    @patch("vbwd.middleware.auth.UserRepository")
-    def test_list_classes(self, mock_repo_cls, mock_auth_cls, client):
-        user = make_user_with_permissions("settings.manage")
-        _mock_auth(mock_repo_cls, mock_auth_cls, user)
-
-        class_code = _unique_code("cls")
         client.post(
-            "/api/v1/admin/tax/classes",
+            "/api/v1/admin/tax/rates",
             json={
-                "name": "Zero Rate",
-                "code": class_code,
-                "default_rate": 0,
+                "name": "VAT Reduced",
+                "code": code_red,
+                "rate": 7.0,
+                "tax_class": "reduced",
             },
             headers=_auth_headers(),
         )
         response = client.get(
-            "/api/v1/admin/tax/classes",
+            "/api/v1/admin/tax/rates?tax_class=standard",
             headers=_auth_headers(),
         )
         assert response.status_code == 200
-        assert "classes" in response.get_json()
+        rates = response.get_json()["rates"]
+        assert all(r["tax_class"] == "standard" for r in rates)
+        assert any(r["code"] == code_std for r in rates)
+        assert not any(r["code"] == code_red for r in rates)
+
+
+class TestTaxRateWithTaxClassLabel:
+    """Tax rate carries a denormalized ``tax_class`` string (S72.3 flatten)."""
 
     @patch("vbwd.middleware.auth.AuthService")
     @patch("vbwd.middleware.auth.UserRepository")
-    def test_update_class(self, mock_repo_cls, mock_auth_cls, client):
+    def test_create_rate_with_tax_class(self, mock_repo_cls, mock_auth_cls, client):
         user = make_user_with_permissions("settings.manage")
         _mock_auth(mock_repo_cls, mock_auth_cls, user)
 
-        class_code = _unique_code("cls")
-        create_response = client.post(
-            "/api/v1/admin/tax/classes",
-            json={
-                "name": "Reduced",
-                "code": class_code,
-                "default_rate": 7.0,
-            },
-            headers=_auth_headers(),
-        )
-        class_id = create_response.get_json()["tax_class"]["id"]
-
-        update_response = client.put(
-            f"/api/v1/admin/tax/classes/{class_id}",
-            json={"default_rate": 8.0},
-            headers=_auth_headers(),
-        )
-        assert update_response.status_code == 200
-        assert update_response.get_json()["tax_class"]["default_rate"] == "8.00"
-
-    @patch("vbwd.middleware.auth.AuthService")
-    @patch("vbwd.middleware.auth.UserRepository")
-    def test_delete_class(self, mock_repo_cls, mock_auth_cls, client):
-        user = make_user_with_permissions("settings.manage")
-        _mock_auth(mock_repo_cls, mock_auth_cls, user)
-
-        class_code = _unique_code("cls")
-        create_response = client.post(
-            "/api/v1/admin/tax/classes",
-            json={
-                "name": "Luxury",
-                "code": class_code,
-                "default_rate": 25.0,
-            },
-            headers=_auth_headers(),
-        )
-        class_id = create_response.get_json()["tax_class"]["id"]
-
-        delete_response = client.delete(
-            f"/api/v1/admin/tax/classes/{class_id}",
-            headers=_auth_headers(),
-        )
-        assert delete_response.status_code == 200
-
-    @patch("vbwd.middleware.auth.AuthService")
-    @patch("vbwd.middleware.auth.UserRepository")
-    def test_duplicate_class_code_rejected(self, mock_repo_cls, mock_auth_cls, client):
-        user = make_user_with_permissions("settings.manage")
-        _mock_auth(mock_repo_cls, mock_auth_cls, user)
-
-        class_code = _unique_code("cls")
-        client.post(
-            "/api/v1/admin/tax/classes",
-            json={
-                "name": "Dup Class",
-                "code": class_code,
-                "default_rate": 5.0,
-            },
-            headers=_auth_headers(),
-        )
-        response = client.post(
-            "/api/v1/admin/tax/classes",
-            json={
-                "name": "Dup Class Again",
-                "code": class_code,
-                "default_rate": 10.0,
-            },
-            headers=_auth_headers(),
-        )
-        assert response.status_code == 400
-        assert "already exists" in response.get_json()["error"]
-
-    @patch("vbwd.middleware.auth.AuthService")
-    @patch("vbwd.middleware.auth.UserRepository")
-    def test_setting_default_unsets_previous(
-        self, mock_repo_cls, mock_auth_cls, client
-    ):
-        user = make_user_with_permissions("settings.manage")
-        _mock_auth(mock_repo_cls, mock_auth_cls, user)
-
-        class_code_first = _unique_code("cls")
-        class_code_second = _unique_code("cls")
-        first_response = client.post(
-            "/api/v1/admin/tax/classes",
-            json={
-                "name": "First Default",
-                "code": class_code_first,
-                "default_rate": 19.0,
-                "is_default": True,
-            },
-            headers=_auth_headers(),
-        )
-        first_id = first_response.get_json()["tax_class"]["id"]
-
-        client.post(
-            "/api/v1/admin/tax/classes",
-            json={
-                "name": "Second Default",
-                "code": class_code_second,
-                "default_rate": 20.0,
-                "is_default": True,
-            },
-            headers=_auth_headers(),
-        )
-
-        # First one should no longer be default
-        response = client.get(
-            "/api/v1/admin/tax/classes",
-            headers=_auth_headers(),
-        )
-        classes = response.get_json()["classes"]
-        first_class = next((c for c in classes if c["id"] == first_id), None)
-        if first_class:
-            assert first_class["is_default"] is False
-
-
-class TestTaxRateWithClass:
-    """Tax rate linked to tax class."""
-
-    @patch("vbwd.middleware.auth.AuthService")
-    @patch("vbwd.middleware.auth.UserRepository")
-    def test_create_rate_with_class(self, mock_repo_cls, mock_auth_cls, client):
-        user = make_user_with_permissions("settings.manage")
-        _mock_auth(mock_repo_cls, mock_auth_cls, user)
-
-        class_code = _unique_code("cls")
         code = _unique_code("VAT_DE")
-        class_response = client.post(
-            "/api/v1/admin/tax/classes",
-            json={
-                "name": "Standard Linked",
-                "code": class_code,
-                "default_rate": 19.0,
-            },
-            headers=_auth_headers(),
-        )
-        class_id = class_response.get_json()["tax_class"]["id"]
-
         rate_response = client.post(
             "/api/v1/admin/tax/rates",
             json={
-                "name": "VAT DE Linked",
+                "name": "VAT DE Labelled",
                 "code": code,
                 "rate": 19.0,
                 "country_code": "DE",
-                "tax_class_id": class_id,
+                "tax_class": "standard",
             },
             headers=_auth_headers(),
         )
         assert rate_response.status_code == 201
-        assert rate_response.get_json()["rate"]["tax_class_id"] == class_id
+        body = rate_response.get_json()["rate"]
+        assert body["tax_class"] == "standard"
+        assert "tax_class_id" not in body
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_update_rate_sets_tax_class(self, mock_repo_cls, mock_auth_cls, client):
+        user = make_user_with_permissions("settings.manage")
+        _mock_auth(mock_repo_cls, mock_auth_cls, user)
+
+        code = _unique_code("VAT_UPD")
+        create_response = client.post(
+            "/api/v1/admin/tax/rates",
+            json={"name": "VAT Upd", "code": code, "rate": 19.0},
+            headers=_auth_headers(),
+        )
+        rate_id = create_response.get_json()["rate"]["id"]
+
+        update_response = client.put(
+            f"/api/v1/admin/tax/rates/{rate_id}",
+            json={"tax_class": "reduced"},
+            headers=_auth_headers(),
+        )
+        assert update_response.status_code == 200
+        assert update_response.get_json()["rate"]["tax_class"] == "reduced"
+
+
+class TestTaxClassRoutesGone:
+    """The flattened ``TaxClass`` model has no CRUD routes anymore."""
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_list_classes_route_gone(self, mock_repo_cls, mock_auth_cls, client):
+        user = make_user_with_permissions("settings.manage")
+        _mock_auth(mock_repo_cls, mock_auth_cls, user)
+        response = client.get("/api/v1/admin/tax/classes", headers=_auth_headers())
+        assert response.status_code == 404
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_create_class_route_gone(self, mock_repo_cls, mock_auth_cls, client):
+        user = make_user_with_permissions("settings.manage")
+        _mock_auth(mock_repo_cls, mock_auth_cls, user)
+        response = client.post(
+            "/api/v1/admin/tax/classes",
+            json={"name": "Standard", "code": "standard", "default_rate": 19.0},
+            headers=_auth_headers(),
+        )
+        assert response.status_code == 404

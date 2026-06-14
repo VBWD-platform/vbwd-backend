@@ -135,8 +135,13 @@ def update_details():
     # S08 — pull service from container.
     user_service = current_app.container.user_service()
 
-    # Update details
-    details = user_service.update_user_details(user_id, data)
+    # Update details (S74 — business account requires a company name).
+    from vbwd.models.user_details import AccountTypeValidationError
+
+    try:
+        details = user_service.update_user_details(user_id, data)
+    except AccountTypeValidationError as account_error:
+        return jsonify({"error": str(account_error)}), 400
 
     return jsonify(user_details_schema.dump(details)), 200
 

@@ -18,6 +18,10 @@ class UserData:
     permissions: Optional[list] = None
     user_access_levels: Optional[list] = None
     user_permissions: Optional[list] = None
+    # Billing-identity type (S74) surfaced to the fe auth store so the
+    # display-side resolver can apply the business-viewer netto overlay (S85.4
+    # / D9). Defaults to "private" when the user has no UserDetails.
+    account_type: Optional[str] = None
 
 
 @dataclass

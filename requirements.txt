@@ -45,7 +45,12 @@ stripe==14.3.0
 
 # HTTP Clients (Payment Gateways, External APIs)
 httpx==0.25.2
+# HTTP/2 support for httpx (required by the APNs client, S66)
+h2==4.1.0
 requests==2.31.0
+
+# RSS/Atom feed parsing (S81 — wp_import plugin, D1: no hand-rolled XML)
+feedparser==6.0.11
 
 # WebSockets (Real-time notifications)
 flask-socketio==5.3.6

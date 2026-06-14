@@ -33,12 +33,24 @@ services:
       - VBWD_FE_ADMIN_PLUGINS_CONFIG_JSON=/app/var/plugins/fe-admin-plugins-config.json
       - VBWD_FE_USER_PLUGINS_JSON=/app/var/plugins/fe-user-plugins.json
       - VBWD_FE_USER_PLUGINS_CONFIG_JSON=/app/var/plugins/fe-user-plugins-config.json
+      # APNs push notifications (S66). Unset = pushes disabled (no-op send,
+      # one boot warning) — dev/CI work without Apple credentials.
+      - VBWD_APNS_KEY_PATH=${VBWD_APNS_KEY_PATH:-}
+      - VBWD_APNS_KEY_ID=${VBWD_APNS_KEY_ID:-}
+      - VBWD_APNS_TEAM_ID=${VBWD_APNS_TEAM_ID:-}
+      - VBWD_APNS_BUNDLE_ID=${VBWD_APNS_BUNDLE_ID:-}
+      - VBWD_APNS_USE_SANDBOX=${VBWD_APNS_USE_SANDBOX:-true}
     volumes:
       - .:/app
       # Shared plugin state directory (default: ../var relative to
       # vbwd-backend/). Override by exporting VBWD_VAR_DIR before running
       # docker compose up. Must match whatever fe-admin / fe-user mount.
       - ${VBWD_VAR_DIR:-../var}:/app/var
+      # APNs .p8 signing key (S66): mount the Apple key file READ-ONLY as a
+      # secret and point VBWD_APNS_KEY_PATH at it. NEVER commit the key or
+      # bake it into an image. Example:
+      #   - /secure/host/path/AuthKey_ABCDE12345.p8:/run/secrets/apns_key.p8:ro
+      # with VBWD_APNS_KEY_PATH=/run/secrets/apns_key.p8
     depends_on:
       postgres:
         condition: service_healthy

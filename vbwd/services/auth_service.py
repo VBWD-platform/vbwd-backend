@@ -9,7 +9,7 @@ from uuid import UUID
 from vbwd.interfaces.auth import IAuthService, AuthResult, UserData
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.models.user import User
-from vbwd.models.enums import UserStatus, UserRole
+from vbwd.models.enums import UserStatus, UserRole, AccountType
 from vbwd.config import get_config
 
 
@@ -83,10 +83,11 @@ class AuthService(IAuthService):
         if not user:
             return AuthResult(success=False, error="Invalid credentials")
 
-        # BOT accounts are server-authored identities that must never
-        # authenticate interactively (S60). Reject with the SAME generic
-        # response as a wrong password — no role disclosure, no token.
-        if user.role == UserRole.BOT:
+        # BOT (S60) and GUEST (S86.1) accounts are server-provisioned
+        # identities that must never authenticate interactively. Reject with
+        # the SAME generic response as a wrong password — no role disclosure,
+        # no token.
+        if user.role in (UserRole.BOT, UserRole.GUEST):
             return AuthResult(success=False, error="Invalid credentials")
 
         # Check if user is active
@@ -112,6 +113,9 @@ class AuthService(IAuthService):
             permissions=user_dict.get("permissions", []),
             user_access_levels=user_dict.get("user_access_levels", []),
             user_permissions=user_dict.get("user_permissions", []),
+            account_type=user_dict.get("details", {}).get(
+                "account_type", AccountType.PRIVATE.value
+            ),
         )
 
         return AuthResult(success=True, user_id=user.id, token=token, user=user_data)  # type: ignore[arg-type]
@@ -169,25 +173,34 @@ class AuthService(IAuthService):
         except Exception:
             return False
 
-    def _generate_token(self, user_id: UUID, email: str) -> str:
-        """Generate JWT token for user.
+    def generate_access_token(
+        self,
+        user_id: UUID,
+        email: str,
+        *,
+        expiration_hours: Optional[float] = None,
+    ) -> str:
+        """Mint a standard access token (the same payload shape `verify_token`
+        and `require_auth` expect).
 
-        Args:
-            user_id: User UUID
-            email: User email
-
-        Returns:
-            JWT token string
+        Server-provisioned identities (e.g. the meinchat widget GUEST, S86.3)
+        reuse this single mint path so their token authorises the normal
+        membership-gated routes with a short, caller-chosen TTL — instead of
+        re-implementing the JWT payload/secret elsewhere (DRY).
         """
-        expiration_hours = getattr(self._config, "JWT_EXPIRATION_HOURS", 24)
+        default_hours = getattr(self._config, "JWT_EXPIRATION_HOURS", 24)
+        hours = default_hours if expiration_hours is None else expiration_hours
         payload = {
             "user_id": str(user_id),
             "email": email,
-            "exp": utcnow() + timedelta(hours=expiration_hours),
+            "exp": utcnow() + timedelta(hours=hours),
             "iat": utcnow(),
         }
-        token = jwt.encode(payload, self._config.SECRET_KEY, algorithm="HS256")
-        return token
+        return jwt.encode(payload, self._config.SECRET_KEY, algorithm="HS256")
+
+    def _generate_token(self, user_id: UUID, email: str) -> str:
+        """Generate a default-TTL access token for an interactive login."""
+        return self.generate_access_token(user_id, email)
 
     def _validate_email(self, email: str) -> bool:
         """Validate email format.

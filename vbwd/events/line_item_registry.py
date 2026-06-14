@@ -7,7 +7,7 @@ at startup via BasePlugin.register_line_item_handlers().
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Tuple
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,19 @@ class ILineItemHandler(ABC):
         """
         return None
 
+    def resolve_catalog_entity_ref(self, line_item: Any) -> Optional[Tuple[str, str]]:
+        """Resolve the source ``(entity_type, catalog_id)`` for a line this owns.
+
+        Used by the invoice line-item snapshot (S77): the snapshot must know
+        BOTH the source's registered ``entity_type`` (e.g. ``"tarif_plan"``,
+        ``"shop_product"``) and its catalog id so it can copy the source's
+        tags/custom-fields onto the line. Non-abstract (ISP): a handler that
+        maps no source entity inherits the ``None`` default, and a handler must
+        return ``None`` for line items it does not own so the registry can poll
+        handlers without a processing context.
+        """
+        return None
+
     def is_recurring_line_item(self, line_item: Any) -> bool:
         """Whether this line item represents a recurring charge.
 
@@ -168,6 +181,28 @@ class LineItemHandlerRegistry:
                 continue
             if resolved is not None:
                 return resolved
+        return None
+
+    def resolve_catalog_entity_ref(self, line_item: Any) -> Optional[Tuple[str, str]]:
+        """First handler that owns this line resolves its source entity ref.
+
+        Context-free (called from the invoice snapshot at line creation, not
+        payment processing). Each handler self-filters by item type and returns
+        ``None`` when the line item is not its own.
+        """
+        for handler in self._handlers:
+            try:
+                ref = handler.resolve_catalog_entity_ref(line_item)
+            except Exception as exception:
+                logger.warning(
+                    "[line-item-registry] %s.resolve_catalog_entity_ref raised %s: %s",
+                    type(handler).__name__,
+                    type(exception).__name__,
+                    exception,
+                )
+                continue
+            if ref is not None:
+                return ref
         return None
 
     def is_recurring_line_item(self, line_item: Any) -> bool:

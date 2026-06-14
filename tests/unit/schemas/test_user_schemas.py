@@ -147,6 +147,24 @@ class TestUserDetailsUpdateSchema:
         assert result["company"] == "Acme Corp"
         assert result["tax_number"] == "DE123456789"
 
+    def test_has_account_type_field(self):
+        """UserDetailsUpdateSchema should include account_type field (S74)."""
+        schema = UserDetailsUpdateSchema()
+        assert "account_type" in schema.fields
+
+    def test_accepts_valid_account_type(self):
+        schema = UserDetailsUpdateSchema()
+        result = schema.load({"account_type": "business"})
+        assert result["account_type"] == "business"
+
+    def test_rejects_unknown_account_type(self):
+        from marshmallow import ValidationError
+
+        schema = UserDetailsUpdateSchema()
+        with pytest.raises(ValidationError) as exc_info:
+            schema.load({"account_type": "enterprise"})
+        assert "account_type" in exc_info.value.messages
+
 
 class TestUserProfileSchema:
     """Tests for UserProfileSchema."""

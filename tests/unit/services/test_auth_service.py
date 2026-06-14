@@ -179,6 +179,67 @@ class TestAuthServiceLogin:
         # Verify repository was called
         mock_user_repo.find_by_email.assert_called_once_with(email)
 
+    def test_login_user_payload_includes_business_account_type(
+        self, auth_service, mock_user_repo
+    ):
+        """Login user payload carries account_type from UserDetails (S85.4 / D9)."""
+        from vbwd.models.user_details import UserDetails
+        from vbwd.models.enums import AccountType
+
+        email = "biz@example.com"
+        password = "SecurePassword123!"
+
+        mock_user = User()
+        mock_user.id = uuid4()
+        mock_user.email = email
+        mock_user.status = UserStatus.ACTIVE
+        mock_user.role = UserRole.USER
+        details = UserDetails()
+        details.account_type = AccountType.BUSINESS.value
+        details.company = "ACME GmbH"
+        mock_user.details = details
+        import bcrypt
+
+        mock_user.password_hash = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
+
+        mock_user_repo.find_by_email.return_value = mock_user
+
+        result = auth_service.login(email, password)
+
+        assert result.success is True
+        assert result.user is not None
+        assert result.user.account_type == AccountType.BUSINESS.value
+
+    def test_login_user_payload_defaults_account_type_to_private(
+        self, auth_service, mock_user_repo
+    ):
+        """Login user payload defaults account_type to private when no details (D9)."""
+        from vbwd.models.enums import AccountType
+
+        email = "noprofile@example.com"
+        password = "SecurePassword123!"
+
+        mock_user = User()
+        mock_user.id = uuid4()
+        mock_user.email = email
+        mock_user.status = UserStatus.ACTIVE
+        mock_user.role = UserRole.USER
+        import bcrypt
+
+        mock_user.password_hash = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
+
+        mock_user_repo.find_by_email.return_value = mock_user
+
+        result = auth_service.login(email, password)
+
+        assert result.success is True
+        assert result.user is not None
+        assert result.user.account_type == AccountType.PRIVATE.value
+
     def test_login_fails_for_unknown_email(self, auth_service, mock_user_repo):
         """Test login fails for unknown email."""
         email = "unknown@example.com"
@@ -345,6 +406,43 @@ class TestAuthServiceToken:
 
         # Assertions
         assert result is None
+
+
+class TestAuthServiceGenerateAccessToken:
+    """S86.3 — the public mint path reused by server-provisioned identities
+    (e.g. the meinchat widget GUEST). The minted token MUST round-trip through
+    `verify_token` (the same check `require_auth` runs) and honour a short TTL."""
+
+    @pytest.fixture
+    def auth_service(self):
+        from vbwd.services.auth_service import AuthService
+
+        return AuthService(user_repository=Mock())
+
+    def test_generated_token_verifies_back_to_user_id(self, auth_service):
+        user_id = uuid4()
+        token = auth_service.generate_access_token(user_id, "guest@widget.local")
+        assert auth_service.verify_token(token) == user_id
+
+    def test_short_ttl_token_expires(self, auth_service):
+        import jwt
+        from vbwd.config import get_config
+
+        user_id = uuid4()
+        # A negative TTL produces an already-expired token; verify rejects it.
+        token = auth_service.generate_access_token(
+            user_id, "guest@widget.local", expiration_hours=-1
+        )
+        assert auth_service.verify_token(token) is None
+        # The payload still carries the standard shape (user_id + email).
+        decoded = jwt.decode(
+            token,
+            get_config().SECRET_KEY,
+            algorithms=["HS256"],
+            options={"verify_exp": False},
+        )
+        assert decoded["user_id"] == str(user_id)
+        assert decoded["email"] == "guest@widget.local"
 
 
 class TestAuthServicePassword:

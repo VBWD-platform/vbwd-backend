@@ -2,6 +2,7 @@
 from vbwd.extensions import db
 from vbwd.models.base import BaseModel
 from vbwd.models.enums import UserStatus, UserRole
+from vbwd.models.user_role import ROLE_ID_LENGTH
 
 
 class User(BaseModel):
@@ -27,8 +28,20 @@ class User(BaseModel):
         default=UserStatus.PENDING,
         index=True,
     )
+    # ``native_enum=False`` keeps the ORM attribute a ``UserRole`` member
+    # (so ``user.role == UserRole.ADMIN`` still holds) while the underlying
+    # column is a plain ``VARCHAR`` the FK can target. The canonical slugs live
+    # in the ``vbwd_user_role`` lookup table (see ``user_role.py``); the FK
+    # enforces referential integrity at the database level. (The plural
+    # ``vbwd_user_roles`` is the unrelated RBAC user-role join table.)
     role = db.Column(
-        db.Enum(UserRole, native_enum=True, create_constraint=False),
+        db.Enum(
+            UserRole,
+            native_enum=False,
+            length=ROLE_ID_LENGTH,
+            create_constraint=False,
+        ),
+        db.ForeignKey("vbwd_user_role.id"),
         nullable=False,
         default=UserRole.USER,
     )

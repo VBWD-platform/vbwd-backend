@@ -35,8 +35,16 @@ def _fake_bundle(name):
     return bundle
 
 
+# These tests pin the caching contract, not pricing. Stub the S85.2 Price
+# enrichment so the route does not need a seeded currency / Priceable bundle.
+@patch(
+    "vbwd.routes.token_bundles._bundle_dict_with_price",
+    side_effect=lambda bundle: bundle.to_dict(),
+)
 @patch("vbwd.routes.token_bundles.TokenBundleRepository")
-def test_second_list_call_is_served_from_cache(mock_repo_cls, app, client, cache):
+def test_second_list_call_is_served_from_cache(
+    mock_repo_cls, _mock_price, app, client, cache
+):
     mock_repo_cls.return_value.find_active.return_value = [_fake_bundle("Starter")]
 
     first = client.get("/api/v1/token-bundles/")
@@ -50,8 +58,12 @@ def test_second_list_call_is_served_from_cache(mock_repo_cls, app, client, cache
     assert cache.get(TOKEN_BUNDLES_LIST_CACHE_KEY) is not None
 
 
+@patch(
+    "vbwd.routes.token_bundles._bundle_dict_with_price",
+    side_effect=lambda bundle: bundle.to_dict(),
+)
 @patch("vbwd.routes.token_bundles.TokenBundleRepository")
-def test_invalidation_forces_requery(mock_repo_cls, app, client, cache):
+def test_invalidation_forces_requery(mock_repo_cls, _mock_price, app, client, cache):
     mock_repo_cls.return_value.find_active.return_value = [_fake_bundle("Starter")]
 
     client.get("/api/v1/token-bundles/")

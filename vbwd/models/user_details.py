@@ -2,6 +2,30 @@
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from vbwd.extensions import db
 from vbwd.models.base import BaseModel
+from vbwd.models.enums import AccountType
+
+
+class AccountTypeValidationError(ValueError):
+    """Raised when an account-type / company combination is invalid (S74)."""
+
+
+def validate_account_type(account_type, company) -> None:
+    """Validate a resulting account-type + company pair.
+
+    ``account_type`` may be ``None`` (field untouched / defaulting to
+    private), an allowed value, or an unknown value. ``company`` is the
+    resulting company name on the row after the update is applied.
+
+    Raises:
+        AccountTypeValidationError: unknown account type, or a business
+            account without a company name.
+    """
+    if account_type is None:
+        return
+    if account_type not in AccountType.values():
+        raise AccountTypeValidationError(f"Invalid account type: {account_type}")
+    if account_type == AccountType.BUSINESS.value and not (company or "").strip():
+        raise AccountTypeValidationError("Company is required for a business account")
 
 
 class UserDetails(BaseModel):
@@ -33,6 +57,14 @@ class UserDetails(BaseModel):
     # New fields for Sprint 03
     company = db.Column(db.String(255))
     tax_number = db.Column(db.String(100))
+
+    # S74 — billing-identity type: "private" or "business". Plain string
+    # column (not a PG enum); allowed values live in AccountType.
+    account_type = db.Column(
+        db.String(16),
+        nullable=False,
+        server_default=AccountType.PRIVATE.value,
+    )
     config = db.Column(JSONB, default=dict)  # User preferences: language, theme, etc.
     balance = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
 
@@ -69,6 +101,7 @@ class UserDetails(BaseModel):
             "phone": self.phone,
             "company": self.company,
             "tax_number": self.tax_number,
+            "account_type": self.account_type or AccountType.PRIVATE.value,
             "config": self.config or {},
             "balance": float(self.balance) if self.balance is not None else 0.00,
         }

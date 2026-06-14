@@ -43,6 +43,9 @@ class UserRole(CaseInsensitiveEnum):
     # Server-authored, non-privileged identity (e.g. a contact-form sender
     # provisioned by a plugin). BOT accounts cannot log in interactively.
     BOT = "BOT"
+    # Server-provisioned, public-scope-only identity (e.g. a widget visitor
+    # provisioned by a plugin). GUEST accounts cannot log in interactively.
+    GUEST = "GUEST"
 
 
 class SubscriptionStatus(enum.Enum):
@@ -114,6 +117,9 @@ class TokenTransactionType(enum.Enum):
     BONUS = "BONUS"
     ADJUSTMENT = "ADJUSTMENT"
     SUBSCRIPTION = "SUBSCRIPTION"
+    # S79 — debit/credit entries written by withdraw-to-money requests
+    # (native PG enum value added by migration 20260612_1100_withdraw_tx_type)
+    WITHDRAW = "WITHDRAW"
 
 
 class AddonSubscriptionStatus(enum.Enum):
@@ -122,3 +128,22 @@ class AddonSubscriptionStatus(enum.Enum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"
     CANCELLED = "CANCELLED"
+
+
+class AccountType(str, enum.Enum):
+    """Billing-identity type for a user account (S74).
+
+    The on-disk ``vbwd_user_details.account_type`` column is a plain
+    ``String(16)`` (not a Postgres enum), so the canonical values are stored
+    lowercase. This ``str`` enum is the single source of truth for the
+    allowed values and is used by the model default, the schemas, and the
+    service-layer validation.
+    """
+
+    PRIVATE = "private"
+    BUSINESS = "business"
+
+    @classmethod
+    def values(cls) -> tuple:
+        """Return the allowed string values in declaration order."""
+        return tuple(member.value for member in cls)

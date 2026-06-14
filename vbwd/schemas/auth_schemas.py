@@ -89,6 +89,8 @@ class UserDataSchema(Schema):
     permissions = fields.List(fields.Str(), allow_none=True)
     user_access_levels = fields.List(fields.Nested(RoleSchema), allow_none=True)
     user_permissions = fields.List(fields.Str(), allow_none=True)
+    # Billing-identity type surfaced to the fe auth store (S85.4 / D9).
+    account_type = fields.Str(allow_none=True)
 
 
 class AuthResponseSchema(Schema):

@@ -1,5 +1,5 @@
 """InvoiceLineItem domain model."""
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from vbwd.extensions import db
 from vbwd.models.base import BaseModel
 from vbwd.models.enums import LineItemType
@@ -39,7 +39,16 @@ class InvoiceLineItem(BaseModel):
     description = db.Column(db.String(255), nullable=False)
     quantity = db.Column(db.Integer, nullable=False, default=1)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)
-    total_price = db.Column(db.Numeric(10, 2), nullable=False)
+    total_price = db.Column(db.Numeric(10, 2), nullable=False)  # gross
+    # S85.4: first-class per-line tax disclosure. ``net_amount`` + ``tax_amount``
+    # are the recorded netto / Σtax split for the charged gross (``total_price``);
+    # ``tax_breakdown`` holds the per-rate lines ``[{"code","rate","amount"}]``
+    # from the core ``Price`` VO. Generic JSONB the plugins populate — core stays
+    # agnostic (no plugin model is imported here). Rounding to cents happens at
+    # the plugin invoice-creation boundary, the one legitimate place (D4/D8).
+    net_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    tax_amount = db.Column(db.Numeric(10, 2), nullable=True, default=0)
+    tax_breakdown = db.Column(JSONB, nullable=True, default=list)
     extra_data = db.Column("metadata", db.JSON, nullable=True, default=dict)
 
     def _resolve_catalog_item_id(self) -> str | None:
@@ -84,6 +93,15 @@ class InvoiceLineItem(BaseModel):
             "quantity": self.quantity,
             "unit_price": str(self.unit_price),
             "amount": str(self.total_price),
+            # S85.4: per-line tax disclosure. Net falls back to the gross when
+            # absent (taxless / legacy line); tax defaults to 0; breakdown to [].
+            "net_amount": str(self.net_amount)
+            if self.net_amount is not None
+            else str(self.total_price),
+            "tax_amount": str(self.tax_amount)
+            if self.tax_amount is not None
+            else "0.00",
+            "tax_breakdown": self.tax_breakdown or [],
         }
         catalog_id = self._resolve_catalog_item_id()
         if catalog_id:

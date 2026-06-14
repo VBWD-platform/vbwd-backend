@@ -36,12 +36,17 @@ def update_settings():
 
     Returns:
         200: Updated settings
+        400: A known key carried an invalid value (nothing persisted)
     """
     data = request.get_json() or {}
+    try:
+        updated = update_core_settings(data)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
     return (
         jsonify(
             {
-                "settings": update_core_settings(data),
+                "settings": updated,
                 "message": "Settings updated successfully",
             }
         ),

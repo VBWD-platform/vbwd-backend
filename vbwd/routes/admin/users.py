@@ -31,6 +31,7 @@ def create_user():
         409: Email already exists
     """
     # S23 — body shape unchanged; logic moved to UserService.admin_create.
+    from vbwd.models.user_details import AccountTypeValidationError
     from vbwd.services.user_service import AdminUserUpdateError, UserService
 
     payload = request.get_json() or {}
@@ -41,7 +42,7 @@ def create_user():
 
     try:
         created_user = service.admin_create(payload, db.session)
-    except AdminUserUpdateError as validation_error:
+    except (AdminUserUpdateError, AccountTypeValidationError) as validation_error:
         message = str(validation_error)
         # Email-collision is a 409 conflict; everything else is 400.
         status_code = 409 if "already exists" in message else 400
@@ -173,6 +174,7 @@ def update_user(user_id):
         400: Validation error (invalid password or balance)
     """
     # S23 — body shape unchanged; logic moved to UserService.admin_update.
+    from vbwd.models.user_details import AccountTypeValidationError
     from vbwd.services.user_service import AdminUserUpdateError, UserService
 
     payload = request.get_json() or {}
@@ -182,7 +184,7 @@ def update_user(user_id):
     )
     try:
         saved_user = service.admin_update(user_id, payload, db.session)
-    except AdminUserUpdateError as validation_error:
+    except (AdminUserUpdateError, AccountTypeValidationError) as validation_error:
         return jsonify({"error": str(validation_error)}), 400
 
     if saved_user is None:

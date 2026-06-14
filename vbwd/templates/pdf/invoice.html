@@ -109,7 +109,8 @@
       <h3>Billed to</h3>
       <p><strong>{{ customer.name or customer.email }}</strong></p>
       {% if customer.email and customer.name %}<p>{{ customer.email }}</p>{% endif %}
-      {% if customer.company %}<p>{{ customer.company }}</p>{% endif %}
+      {% if customer.company and customer.company != customer.name %}<p>{{ customer.company }}</p>{% endif %}
+      {% if customer.tax_number %}<p>{{ customer.tax_number }}</p>{% endif %}
       {% if customer.address %}<p>{{ customer.address }}</p>{% endif %}
       {% if customer.phone %}<p>{{ customer.phone }}</p>{% endif %}
     </div>

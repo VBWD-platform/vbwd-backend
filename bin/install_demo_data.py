@@ -18,7 +18,7 @@ from vbwd.extensions import Session
 from vbwd.models.user import User
 from vbwd.models.user_details import UserDetails
 from vbwd.models.currency import Currency
-from vbwd.models.price import Price
+from vbwd.services.core_settings_store import update_core_settings
 from plugins.subscription.subscription.models.tarif_plan import TarifPlan
 from plugins.subscription.subscription.models.tarif_plan_category import (
     TarifPlanCategory,
@@ -55,8 +55,6 @@ try:
             name="Euro",
             symbol="€",
             exchange_rate=Decimal("1.0"),
-            is_default=True,
-            is_active=True,
         )
         session.add(eur)
         session.flush()
@@ -71,14 +69,19 @@ try:
             name="US Dollar",
             symbol="$",
             exchange_rate=Decimal("1.08"),
-            is_default=False,
-            is_active=True,
         )
         session.add(usd)
         session.flush()
         print(f"  Created: USD (id={usd.id})")
     else:
         print(f"  Exists: USD (id={usd.id})")
+
+    # S84: the active set + default live in the core settings JSON (single
+    # source of truth) — not on dropped ``is_active``/``is_default`` columns.
+    update_core_settings(
+        {"default_currency": "EUR", "active_currencies": ["EUR", "USD"]}
+    )
+    print("  Settings: default=EUR, active=[EUR, USD]")
 
     print("\n=== Creating Tarif Plans ===")
 
@@ -161,24 +164,11 @@ try:
     for d in plans_data:
         plan = session.query(TarifPlan).filter_by(slug=d["slug"]).first()
         if not plan:
-            price_obj = Price(
-                price_float=float(d["price"]),
-                price_decimal=d["price"],
-                currency_id=eur.id,
-                net_amount=d["price"],
-                gross_amount=d["price"],
-                taxes={},
-            )
-            session.add(price_obj)
-            session.flush()
             plan = TarifPlan(
                 name=d["name"],
                 slug=d["slug"],
                 description=d.get("description", ""),
-                price_float=float(d["price"]),
-                price_id=price_obj.id,
-                price=d["price"],
-                currency="EUR",
+                price=float(d["price"]),
                 billing_period=d["billing_period"],
                 trial_days=d.get("trial_days", 0),
                 features=d["features"],
@@ -187,7 +177,7 @@ try:
             )
             session.add(plan)
             session.flush()
-            print(f"  Created: {plan.name} - €{plan.price_float}")
+            print(f"  Created: {plan.name} - €{plan.price}")
         else:
             if d.get("trial_days", 0):
                 plan.trial_days = d["trial_days"]
@@ -311,24 +301,11 @@ try:
     for d in plugin_plans_data:
         plan = session.query(TarifPlan).filter_by(slug=d["slug"]).first()
         if not plan:
-            price_obj = Price(
-                price_float=0.0,
-                price_decimal=Decimal("0.00"),
-                currency_id=eur.id,
-                net_amount=Decimal("0.00"),
-                gross_amount=Decimal("0.00"),
-                taxes={},
-            )
-            session.add(price_obj)
-            session.flush()
             plan = TarifPlan(
                 name=d["name"],
                 slug=d["slug"],
                 description="",
-                price_float=0.0,
-                price_id=price_obj.id,
-                price=Decimal("0.00"),
-                currency="EUR",
+                price=0.0,
                 billing_period=BillingPeriod.YEARLY,
                 trial_days=0,
                 features={},
@@ -541,7 +518,6 @@ try:
                 slug=d["slug"],
                 description=d["description"],
                 price=d["price"],
-                currency="EUR",
                 billing_period=d["billing_period"].value,
                 config=d["config"],
                 is_active=True,

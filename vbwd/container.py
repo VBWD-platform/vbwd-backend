@@ -8,6 +8,7 @@ from vbwd.repositories.invoice_line_item_repository import InvoiceLineItemReposi
 from vbwd.repositories.currency_repository import CurrencyRepository
 from vbwd.repositories.tax_repository import TaxRepository
 from vbwd.repositories.password_reset_repository import PasswordResetRepository
+from vbwd.repositories.device_token_repository import DeviceTokenRepository
 from vbwd.repositories.token_bundle_repository import TokenBundleRepository
 from vbwd.repositories.token_bundle_purchase_repository import (
     TokenBundlePurchaseRepository,
@@ -22,12 +23,19 @@ from vbwd.services.user_service import UserService
 from vbwd.services.currency_service import CurrencyService
 from vbwd.services.tax_service import TaxService
 from vbwd.services.password_reset_service import PasswordResetService
+from vbwd.services.device_token_service import DeviceTokenService
 from vbwd.services.activity_logger import ActivityLogger
 from vbwd.services.token_service import TokenService
 from vbwd.services.invoice_service import InvoiceService
 from vbwd.services.pdf_service import PdfService, build_default_template_env
 from vbwd.services.refund_service import RefundService
 from vbwd.services.filesystem import build_uploads_pinned_manager
+from vbwd.services.core_settings_store import (
+    get_core_settings,
+    update_core_settings,
+)
+from vbwd.services.tags_and_custom_fields import resolve_tags_and_custom_fields
+from vbwd.pricing.price_factory import PriceFactory
 
 from vbwd.events.domain import DomainEventDispatcher
 
@@ -80,6 +88,10 @@ class Container(containers.DeclarativeContainer):
 
     tax_repository = providers.Factory(TaxRepository, session=db_session)
 
+    device_token_repository = providers.Factory(
+        DeviceTokenRepository, session=db_session
+    )
+
     # ==================
     # Services
     # ==================
@@ -93,10 +105,26 @@ class Container(containers.DeclarativeContainer):
     )
 
     currency_service = providers.Factory(
-        CurrencyService, currency_repository=currency_repository
+        CurrencyService,
+        currency_repo=currency_repository,
+        settings_reader=get_core_settings,
+        settings_writer=update_core_settings,
     )
 
     tax_service = providers.Factory(TaxService, tax_repository=tax_repository)
+
+    # S85.0: the single price-math entry point (D1). Depends only on the core
+    # settings reader + CurrencyService — plugin-agnostic (dispatches off the
+    # Priceable protocol, never a concrete sellable type).
+    price_factory = providers.Factory(
+        PriceFactory,
+        settings_reader=get_core_settings,
+        currency_service=currency_service,
+    )
+
+    device_token_service = providers.Factory(
+        DeviceTokenService, repository=device_token_repository
+    )
 
     token_service = providers.Factory(
         TokenService,
@@ -149,6 +177,12 @@ class Container(containers.DeclarativeContainer):
         user_repository=user_repository,
         reset_repository=password_reset_repository,
     )
+
+    # S77: generic tags & custom-fields port. Core owns the tables, so the
+    # default impl IS the production impl (no no-op fallback); it binds to the
+    # live db.session at resolve time. Consumers opt in by registering their
+    # entity_type and resolving this port (no plugin import).
+    tags_and_custom_fields = providers.Singleton(resolve_tags_and_custom_fields)
 
     # ==================
     # Event System

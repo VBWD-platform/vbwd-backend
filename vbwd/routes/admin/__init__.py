@@ -8,6 +8,8 @@ from vbwd.routes.admin.payment_methods import admin_payment_methods_bp
 from vbwd.routes.admin.countries import admin_countries_bp
 from vbwd.routes.admin.plugins import admin_plugins_bp
 from vbwd.routes.admin.tax import admin_tax_bp
+from vbwd.routes.admin.currency import admin_currencies_bp
+from vbwd.routes.admin.user_groups import admin_user_groups_bp
 
 __all__ = [
     "admin_users_bp",
@@ -19,4 +21,6 @@ __all__ = [
     "admin_countries_bp",
     "admin_plugins_bp",
     "admin_tax_bp",
+    "admin_currencies_bp",
+    "admin_user_groups_bp",
 ]

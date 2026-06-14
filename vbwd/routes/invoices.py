@@ -50,6 +50,45 @@ def _format_date(value) -> str:
     return str(value)[:10]
 
 
+def _build_customer_party(user) -> dict:
+    """Assemble the billing party for an invoice (S74).
+
+    A business account renders with its company name as the primary
+    identity plus the VAT (tax number); a private account renders with the
+    person's name. Email/phone are included for both.
+    """
+    from vbwd.models.enums import AccountType
+
+    details = getattr(user, "details", None)
+    person_name = ""
+    company = ""
+    tax_number = ""
+    phone = ""
+    address = ""
+    account_type = AccountType.PRIVATE.value
+    if details is not None:
+        first_name = getattr(details, "first_name", "") or ""
+        last_name = getattr(details, "last_name", "") or ""
+        person_name = (first_name + " " + last_name).strip()
+        company = getattr(details, "company", "") or ""
+        tax_number = getattr(details, "tax_number", "") or ""
+        phone = getattr(details, "phone", "") or ""
+        address = getattr(details, "address", "") or ""
+        account_type = getattr(details, "account_type", None) or account_type
+
+    is_business = account_type == AccountType.BUSINESS.value
+    # Business → company is the party identity (name line); private → person.
+    primary_name = company if is_business else person_name
+    return {
+        "name": primary_name,
+        "email": getattr(user, "email", "") or "",
+        "company": company,
+        "tax_number": tax_number if is_business else "",
+        "phone": phone,
+        "address": address,
+    }
+
+
 def _build_invoice_pdf_context(invoice, user) -> dict:
     """Shape the invoice into the flat dict the template expects."""
     currency = invoice.currency or "EUR"
@@ -72,28 +111,11 @@ def _build_invoice_pdf_context(invoice, user) -> dict:
     tax_amount = getattr(invoice, "tax_amount", None)
     total_amount = getattr(invoice, "total_amount", None) or invoice.amount
 
-    customer_details = getattr(user, "details", None)
-    customer_name = ""
-    customer_company = ""
-    customer_phone = ""
-    customer_address = ""
-    if customer_details is not None:
-        first_name = getattr(customer_details, "first_name", "") or ""
-        last_name = getattr(customer_details, "last_name", "") or ""
-        customer_name = (first_name + " " + last_name).strip()
-        customer_company = getattr(customer_details, "company", "") or ""
-        customer_phone = getattr(customer_details, "phone", "") or ""
-        customer_address = getattr(customer_details, "address", "") or ""
+    customer_party = _build_customer_party(user)
 
     return {
         "company": _company_context(),
-        "customer": {
-            "name": customer_name,
-            "email": getattr(user, "email", "") or "",
-            "company": customer_company,
-            "phone": customer_phone,
-            "address": customer_address,
-        },
+        "customer": customer_party,
         "invoice": {
             "id": str(invoice.id),
             "invoice_number": invoice.invoice_number,

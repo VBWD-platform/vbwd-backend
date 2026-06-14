@@ -7,7 +7,7 @@ import bcrypt
 from vbwd.interfaces.auth import IUserService
 from vbwd.models.enums import UserRole, UserStatus
 from vbwd.models.user import User
-from vbwd.models.user_details import UserDetails
+from vbwd.models.user_details import UserDetails, validate_account_type
 from vbwd.repositories.user_details_repository import UserDetailsRepository
 from vbwd.repositories.user_repository import UserRepository
 
@@ -27,6 +27,7 @@ _USER_DETAIL_FIELDS = (
     "country",
     "company",
     "tax_number",
+    "account_type",
 )
 
 
@@ -91,6 +92,7 @@ class UserService(IUserService):
             for key, value in details.items():
                 if hasattr(user_details, key):
                     setattr(user_details, key, value)
+            self._validate_account_type(user_details, details)
             return self._user_details_repo.update(user_details)
         else:
             # Create new details
@@ -102,7 +104,21 @@ class UserService(IUserService):
                 if hasattr(user_details, key):
                     setattr(user_details, key, value)
 
+            self._validate_account_type(user_details, details)
             return self._user_details_repo.save(user_details)
+
+    def _validate_account_type(
+        self, user_details: UserDetails, payload: Mapping[str, Any]
+    ) -> None:
+        """Validate account-type only when the payload touches it (S74).
+
+        Validation runs against the *resulting* row state so a payload that
+        only flips ``account_type`` to business is rejected unless a company
+        is already (or simultaneously) set.
+        """
+        if "account_type" not in payload:
+            return
+        validate_account_type(user_details.account_type, user_details.company)
 
     def update_user_status(self, user_id: UUID, status: UserStatus) -> Optional[User]:
         """Update user status.
@@ -191,8 +207,13 @@ class UserService(IUserService):
             "postal_code",
             "country",
             "phone",
+            "company",
+            "tax_number",
         ):
             setattr(user_details, field, details_payload.get(field))
+        if "account_type" in details_payload:
+            user_details.account_type = details_payload["account_type"]
+        validate_account_type(user_details.account_type, user_details.company)
         session.add(user_details)
         session.commit()
         user.details = user_details
@@ -226,9 +247,13 @@ class UserService(IUserService):
         self._apply_password(user, payload)
         self._ensure_details_row(user, payload, session)
         self._apply_detail_fields(user, payload)
+        details = cast(Optional[UserDetails], user.details)
+        if details is not None:
+            self._validate_account_type(details, payload)
         self._apply_legacy_name(user, payload)
         self._apply_balance(user, payload)
         self._apply_token_balance(user, payload, session)
+        self._apply_group_slugs(user, payload)
 
         return self._user_repo.save(user)
 
@@ -347,3 +372,22 @@ class UserService(IUserService):
             existing.balance = token_value
         else:
             session.add(UserTokenBalance(user_id=user.id, balance=token_value))
+
+    def _apply_group_slugs(self, user: User, payload: Mapping[str, Any]) -> None:
+        # S73 — the core user update payload may carry a replace-set of group
+        # slugs. Membership is written through the core port (never importing the
+        # UserGroup model here), so admin-controlled groups round-trip on save.
+        if "group_slugs" not in payload:
+            return
+        slugs = payload["group_slugs"]
+        if not isinstance(slugs, (list, tuple)):
+            raise AdminUserUpdateError("group_slugs must be a list")
+        from uuid import UUID
+
+        from vbwd.services.user_group_membership import (
+            resolve_user_group_membership,
+        )
+
+        resolve_user_group_membership().set_user_groups(
+            UUID(str(user.id)), [str(slug) for slug in slugs if slug]
+        )

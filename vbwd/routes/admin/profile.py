@@ -3,7 +3,11 @@ from flask import Blueprint, jsonify, request, g
 from vbwd.middleware.auth import require_auth, require_admin
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.extensions import db
-from vbwd.models.user_details import UserDetails
+from vbwd.models.user_details import (
+    AccountTypeValidationError,
+    UserDetails,
+    validate_account_type,
+)
 
 admin_profile_bp = Blueprint(
     "admin_profile", __name__, url_prefix="/api/v1/admin/profile"
@@ -92,6 +96,7 @@ def update_profile():
         "last_name",
         "company",
         "tax_number",
+        "account_type",
         "phone",
         "address_line_1",
         "address_line_2",
@@ -103,6 +108,14 @@ def update_profile():
     for field in allowed_fields:
         if field in data:
             setattr(user.details, field, data[field])
+
+    # S74 — validate account type / company only when the field is touched.
+    if "account_type" in data:
+        try:
+            validate_account_type(user.details.account_type, user.details.company)
+        except AccountTypeValidationError as account_error:
+            db.session.rollback()
+            return jsonify({"error": str(account_error)}), 400
 
     # Handle config separately (merge with existing)
     if "config" in data and isinstance(data["config"], dict):
