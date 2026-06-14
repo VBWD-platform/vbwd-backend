@@ -27,13 +27,42 @@ def reset_schema_and_create_all(db):
     (a separate pooled connection can carry a pre-DROP snapshot and then
     duplicate/skip objects). The caller must have imported every model whose
     table should exist before calling this.
+
+    Under the whole-suite gate several plugin suites share one ``*_test`` DB and
+    each calls this from its own session-scoped ``app`` fixture. A sibling
+    suite's pooled connection can sit idle-in-transaction holding an
+    ``AccessShareLock`` on the ``public`` namespace, which deadlocks this
+    ``DROP SCHEMA`` (it needs ``AccessExclusiveLock``). A test-DB reset
+    legitimately owns the whole database, so we first terminate every *other*
+    backend on it, then guard the DROP with a short ``lock_timeout`` so it fails
+    fast and retries rather than blocking forever.
     """
     db.session.remove()
+    _terminate_other_backends(db)
     with db.engine.connect() as connection:
+        connection.execute(text("SET lock_timeout = '30s'"))
         connection.execute(text("DROP SCHEMA public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))
         connection.commit()
         db.metadata.create_all(bind=connection)
+        connection.commit()
+
+
+def _terminate_other_backends(db):
+    """Close every other connection to this database before a schema reset.
+
+    Idle pooled connections from sibling suites' session-scoped engines (still
+    alive for the whole pytest session) can hold namespace locks that deadlock
+    ``DROP SCHEMA``. ``pg_terminate_backend`` returns those connections to a
+    clean state; SQLAlchemy transparently re-opens them when next used.
+    """
+    with db.engine.connect() as connection:
+        connection.execute(
+            text(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+            )
+        )
         connection.commit()
 
 
