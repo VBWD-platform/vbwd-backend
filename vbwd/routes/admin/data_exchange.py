@@ -210,7 +210,7 @@ def import_entity(key: str):
     if not data_exchange_registry.can_import(exchanger, g.user):
         return jsonify({"error": "Permission denied"}), 403
 
-    with profiling.start_operation() as stage_profile:
+    with profiling.start_operation(**_profile_target(exchanger)) as stage_profile:
         body, status = _do_import_entity(key, exchanger)
     if status == 200:
         return _with_profile(jsonify(body), stage_profile), 200
@@ -272,6 +272,22 @@ def _import_ndjson_upload(key: str, exchanger):
     except EnvelopeError as exc:
         return {"error": str(exc)}, 400
     return result.to_dict(), 200
+
+
+def _profile_target(exchanger) -> dict:
+    """Profiler kwargs (table + session) so op-end sizing targets the right table.
+
+    Best-effort: an exchanger missing these attributes yields ``{}`` (catalog/size
+    fields stay ``None``); the profiler is load-gated regardless.
+    """
+    target: dict = {}
+    table_name = getattr(exchanger, "table_name", None)
+    session = getattr(exchanger, "session", None)
+    if table_name is not None:
+        target["table_name"] = table_name
+    if session is not None:
+        target["session"] = session
+    return target
 
 
 def _with_profile(response, stage_profile):

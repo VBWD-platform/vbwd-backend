@@ -124,6 +124,16 @@ class BaseModelExchanger(EntityExchanger):
         # test or a per-entity override) wins. Resolved once at construction.
         self._row_cap = resolve_default_row_cap() if row_cap is None else row_cap
 
+    @property
+    def table_name(self) -> Optional[str]:
+        """The model's SQL ``__tablename__`` (for the profiler's size query)."""
+        return getattr(self._model_class, "__tablename__", None)
+
+    @property
+    def session(self) -> Any:
+        """The SQLAlchemy session backing this exchanger (profiler catalog query)."""
+        return self._session
+
     # ── export ───────────────────────────────────────────────────────────
 
     def export(self, selector: ExportSelector, *, include_pii: bool) -> Envelope:

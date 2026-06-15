@@ -119,7 +119,7 @@ def export_command(
         _fail(f"entity '{entity}' does not support csv export")
 
     selector = _build_selector(export_all, ids)
-    with profiling.start_operation() as stage_profile:
+    with profiling.start_operation(**_profile_target(exchanger)) as stage_profile:
         if export_format == NDJSON_FORMAT:
             row_count = _export_ndjson(
                 exchanger, entity, selector, include_pii, outfile
@@ -197,6 +197,22 @@ def _export_ndjson(
     return rows_written
 
 
+def _profile_target(exchanger) -> dict:
+    """Profiler kwargs (table + session) for sizing the right table at op end.
+
+    Best-effort: an exchanger without these attributes simply yields ``{}`` so the
+    catalog/size fields stay ``None`` (the profiler is load-gated anyway).
+    """
+    target: dict = {}
+    table_name = getattr(exchanger, "table_name", None)
+    session = getattr(exchanger, "session", None)
+    if table_name is not None:
+        target["table_name"] = table_name
+    if session is not None:
+        target["session"] = session
+    return target
+
+
 def _maybe_print_profile(enabled: bool, stage_profile) -> None:
     """Emit the stage-timing one-liner to stderr when asked + the load flag is on."""
     if enabled and profiling.profiling_enabled():
@@ -260,7 +276,7 @@ def import_command(
         NDJSON_FORMAT if file.endswith(".ndjson") else JSON_FORMAT
     )
 
-    with profiling.start_operation() as stage_profile:
+    with profiling.start_operation(**_profile_target(exchanger)) as stage_profile:
         if resolved_format == NDJSON_FORMAT:
             result = _import_ndjson(exchanger, file, mode, dry_run)
         else:
