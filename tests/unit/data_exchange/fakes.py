@@ -48,15 +48,37 @@ class FakeRepository:
     def __init__(self, rows: Optional[List[FakeRecord]] = None):
         self._rows: dict = {row.code: row for row in (rows or [])}
         self.committed = False
+        # Observability for the bulk-seed batching assertion: how many times the
+        # bulk-insert API was called (= number of batches).
+        self.bulk_add_calls = 0
 
     def find_all(self) -> List[FakeRecord]:
         return list(self._rows.values())
+
+    def iter_rows(self, batch_size: int = 5000):
+        """Stream rows like the real ``BaseRepository.iter_rows`` (paged)."""
+        for row in list(self._rows.values()):
+            yield row
 
     def find_by_natural_key(self, value: str) -> Optional[FakeRecord]:
         return self._rows.get(value)
 
     def add(self, row: FakeRecord) -> None:
         self._rows[row.code] = row
+
+    def bulk_add(self, instances: List[FakeRecord]) -> None:
+        self.bulk_add_calls += 1
+        for row in instances:
+            self._rows[row.code] = row
+
+    def find_natural_keys_with_prefix(self, prefix: str) -> List[str]:
+        return [code for code in self._rows if code.startswith(prefix)]
+
+    def delete_natural_keys_with_prefix(self, prefix: str) -> int:
+        matched = [code for code in self._rows if code.startswith(prefix)]
+        for code in matched:
+            del self._rows[code]
+        return len(matched)
 
     def delete_all(self) -> None:
         self._rows.clear()
@@ -68,12 +90,19 @@ class FakeSession:
     def __init__(self):
         self.committed = False
         self.rolled_back = False
+        # Counters for the streaming-import flush + bulk-seed batching specs.
+        self.commit_count = 0
+        self.flush_count = 0
 
     def commit(self) -> None:
         self.committed = True
+        self.commit_count += 1
 
     def rollback(self) -> None:
         self.rolled_back = True
+
+    def flush(self) -> None:
+        self.flush_count += 1
 
 
 class FakeExportOnlyExchanger(EntityExchanger):

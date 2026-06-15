@@ -253,6 +253,13 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     # Override db_session for app initialization (required for event handlers)
     with app.app_context():
         container.db_session.override(db.session)
+        # S89 Slice 2b: install the load-gated data-exchange stage-timing hook on
+        # the engine. The hook is inert unless VBWD_DATA_EXCHANGE_PROFILE is set
+        # AND an export/import operation span is active, so production pays only a
+        # cheap flag read per statement.
+        from vbwd.services.data_exchange import profiling
+
+        profiling.install_cursor_timing(db.engine)
 
     @app.before_request
     def inject_db_session():

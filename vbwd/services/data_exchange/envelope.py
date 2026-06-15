@@ -18,12 +18,17 @@ import json
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 ENVELOPE_KEY = "vbwd_export"
 ENVELOPE_VERSION = 1
 MANIFEST_FILENAME = "manifest.json"
 ASSETS_DIR = "assets/"
+
+# Streamed NDJSON artefact (S89 Slice 1): the first line is an envelope header
+# (no rows), every subsequent line is one row object. ``format`` distinguishes
+# it from the buffered JSON envelope so an importer can validate the kind.
+NDJSON_FORMAT = "ndjson"
 
 # Zip-bomb guard: cap the total uncompressed size read from a bundle.
 DEFAULT_MAX_BUNDLE_BYTES = 50 * 1024 * 1024
@@ -79,6 +84,99 @@ def validate_envelope(data: object, expected_key: str) -> List[dict]:
     if not isinstance(rows, list):
         raise EnvelopeError(f"'{expected_key}' must be a list of rows")
     return rows
+
+
+# ── NDJSON (streamed) ──────────────────────────────────────────────────────
+
+
+def build_ndjson_header(entity_key: str, *, instance: str) -> dict:
+    """The first NDJSON line: an envelope header carrying provenance, no rows."""
+    return {
+        ENVELOPE_KEY: entity_key,
+        "version": ENVELOPE_VERSION,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "instance": instance,
+        "format": NDJSON_FORMAT,
+    }
+
+
+def iter_ndjson_lines(
+    entity_key: str,
+    chunks: Iterable[List[dict]],
+    *,
+    instance: str,
+) -> Iterator[str]:
+    """Yield NDJSON text lines (newline-terminated): header first, then rows.
+
+    Streams ``chunks`` (the exchanger's :meth:`iter_export` output) one row at a
+    time so neither the writer nor the response ever holds the whole dataset.
+    """
+    header = build_ndjson_header(entity_key, instance=instance)
+    yield json.dumps(header, default=str) + "\n"
+    for chunk in chunks:
+        for row in chunk:
+            yield json.dumps(row, default=str) + "\n"
+
+
+def validate_ndjson_header(lines: Iterator[str], expected_key: str) -> dict:
+    """Consume + validate the first non-blank NDJSON line as the envelope header.
+
+    Advances ``lines`` past the header so the caller iterates rows next. Raises
+    :class:`EnvelopeError` when the header is missing, not an object, names a
+    different export kind, or uses an unsupported version — never silently
+    accepts a body without provenance.
+    """
+    for raw_line in lines:
+        if not raw_line.strip():
+            continue
+        try:
+            header = json.loads(raw_line)
+        except ValueError as exc:
+            raise EnvelopeError(f"NDJSON header line is not valid JSON: {exc}") from exc
+        if not isinstance(header, dict):
+            raise EnvelopeError("NDJSON header line must be a JSON object")
+        kind = header.get(ENVELOPE_KEY)
+        if kind is None:
+            raise EnvelopeError(
+                f"NDJSON header is missing '{ENVELOPE_KEY}' (the export kind)"
+            )
+        if kind != expected_key:
+            raise EnvelopeError(
+                f"unexpected export kind '{kind}', expected '{expected_key}'"
+            )
+        version = header.get("version")
+        if version is not None and version != ENVELOPE_VERSION:
+            raise EnvelopeError(
+                f"unsupported envelope version '{version}', expected {ENVELOPE_VERSION}"
+            )
+        return header
+    raise EnvelopeError("NDJSON stream is empty: missing the envelope header line")
+
+
+def iter_ndjson_rows(lines: Iterator[str]) -> Iterator[dict]:
+    """Yield each row object after the header, reporting a bad line by number.
+
+    The caller must have already consumed the header via
+    :func:`validate_ndjson_header`; row line numbering starts at 2 (line 1 is the
+    header). A malformed line raises :class:`EnvelopeError` naming the line
+    number — never a silent skip (the spec's hard requirement).
+    """
+    line_number = 1
+    for raw_line in lines:
+        line_number += 1
+        if not raw_line.strip():
+            continue
+        try:
+            parsed = json.loads(raw_line)
+        except ValueError as exc:
+            raise EnvelopeError(
+                f"malformed NDJSON row on line {line_number}: {exc}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise EnvelopeError(
+                f"NDJSON row on line {line_number} must be a JSON object"
+            )
+        yield parsed
 
 
 # ── CSV ──────────────────────────────────────────────────────────────────

@@ -49,6 +49,24 @@ class BaseRepository(Generic[T]):
         """Count total entities."""
         return self._session.query(self._model).count()
 
+    def iter_rows(self, batch_size: int = 5000):
+        """Yield every row, streaming in ``batch_size`` server-side batches.
+
+        Used by the data-exchange chunked export (S89) so a large export never
+        materialises the whole table at once: ``yield_per`` keeps the result set
+        windowed at ``batch_size`` rows. Returns an iterator, not a list.
+        """
+        return self._session.query(self._model).yield_per(batch_size)
+
+    def bulk_add(self, instances: List[Any]) -> None:
+        """Insert a batch of instances via the session's bulk-save API.
+
+        Used by the load-test bulk-seed generator (S89) so a large seed inserts
+        through ORM bulk operations (still the repository layer, never raw SQL),
+        far cheaper than per-row ``add``.
+        """
+        self._session.bulk_save_objects(instances)
+
     def save(self, entity: Any, expected_version: Optional[int] = None) -> Any:
         """
         Save entity with optimistic locking.

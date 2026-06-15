@@ -493,3 +493,84 @@ def test_bundle_import_round_trip(mock_repo, mock_auth, client):
 def test_unsupported_operation_error_is_importable():
     """Sanity: the export-only Liskov exception type is exported by the port."""
     assert issubclass(UnsupportedOperationError, Exception)
+
+
+# ── S89: NDJSON streaming export/import + server-side stage timing ───────────
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_export_ndjson_streams_header_then_rows(mock_repo, mock_auth, client):
+    _mock_auth(mock_repo, mock_auth, _superadmin())
+    response = client.post(
+        "/api/v1/admin/data-exchange/widgets/export",
+        headers=_headers(),
+        json={"all": True, "format": "ndjson"},
+    )
+    assert response.status_code == 200
+    assert response.mimetype == "application/x-ndjson"
+    lines = [line for line in response.get_data(as_text=True).splitlines() if line]
+    header = json.loads(lines[0])
+    assert header["vbwd_export"] == "widgets"
+    assert header["format"] == "ndjson"
+    rows = [json.loads(line) for line in lines[1:]]
+    assert rows[0]["code"] == "a"
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_import_ndjson_upload_streams_rows(mock_repo, mock_auth, client):
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
+    ndjson = (
+        json.dumps({"vbwd_export": "widgets", "version": 1, "format": "ndjson"})
+        + "\n"
+        + json.dumps({"code": "x", "label": "X"})
+        + "\n"
+        + json.dumps({"code": "y", "label": "Y"})
+        + "\n"
+    )
+    response = client.post(
+        "/api/v1/admin/data-exchange/widgets/import",
+        headers=_headers(),
+        data={
+            "file": (io.BytesIO(ndjson.encode("utf-8")), "widgets.ndjson"),
+            "mode": "upsert",
+            "format": "ndjson",
+        },
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["created"] == 2
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_import_no_profile_header_when_flag_off(
+    mock_repo, mock_auth, client, monkeypatch
+):
+    monkeypatch.delenv("VBWD_DATA_EXCHANGE_PROFILE", raising=False)
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
+    response = client.post(
+        "/api/v1/admin/data-exchange/widgets/import",
+        headers=_headers(),
+        json={"payload": {"widgets": [{"code": "x"}]}, "mode": "upsert"},
+    )
+    assert response.status_code == 200
+    assert "Server-Timing" not in response.headers
+    assert "_profile" not in response.get_json()
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_import_emits_profile_when_flag_on(mock_repo, mock_auth, client, monkeypatch):
+    monkeypatch.setenv("VBWD_DATA_EXCHANGE_PROFILE", "1")
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
+    response = client.post(
+        "/api/v1/admin/data-exchange/widgets/import",
+        headers=_headers(),
+        json={"payload": {"widgets": [{"code": "x"}]}, "mode": "upsert"},
+    )
+    assert response.status_code == 200
+    assert "Server-Timing" in response.headers
+    assert "_profile" in response.get_json()

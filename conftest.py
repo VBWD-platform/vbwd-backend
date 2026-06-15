@@ -23,6 +23,24 @@ from sqlalchemy.engine import Engine
 _engines: "weakref.WeakSet[Engine]" = weakref.WeakSet()
 
 
+def pytest_configure(config):
+    """Register the shared ``no_db_isolation`` marker once for the whole repo.
+
+    Plugin integration suites isolate each test in a rolled-back transaction
+    (``vbwd/testing/integration_db.rollback_isolation``), which binds the scoped
+    session to one connection and rolls it back. A test marked
+    ``no_db_isolation`` runs WITHOUT that wrapper — it needs a real
+    ``db.engine`` (e.g. a migration test that opens its OWN connection and rolls
+    back itself, or a race spec that contends across genuinely separate
+    connections) and is responsible for cleaning up anything it commits.
+    """
+    config.addinivalue_line(
+        "markers",
+        "no_db_isolation: run without the rolled-back-transaction isolation "
+        "(the test manages its own connection/cleanup).",
+    )
+
+
 @event.listens_for(Engine, "engine_connect")
 def _remember_engine(connection, *args):
     """Record each engine as it hands out a connection."""

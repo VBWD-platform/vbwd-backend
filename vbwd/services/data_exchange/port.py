@@ -8,7 +8,7 @@ without naming any domain.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, Iterator, List, Optional
 
 # The two UI groupings an exchanger may declare. Generic, not domain vocabulary.
 CLUSTER_SALES = "sales"
@@ -62,6 +62,24 @@ class ZipExport:
 
     rows: List[dict] = field(default_factory=list)
     assets: Dict[str, bytes] = field(default_factory=dict)
+
+
+@dataclass
+class BulkSeedResult:
+    """Outcome of the load-test bulk-seed generator (S89 Slice 2)."""
+
+    entity: str
+    created: int = 0
+    skipped: int = 0
+    deleted: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "entity": self.entity,
+            "created": self.created,
+            "skipped": self.skipped,
+            "deleted": self.deleted,
+        }
 
 
 @dataclass
@@ -121,6 +139,66 @@ class EntityExchanger(ABC):
         Export-only exchangers raise :class:`UnsupportedOperationError`.
         ``dry_run`` computes counts then rolls back (never writes).
         """
+
+    def iter_export(
+        self,
+        selector: ExportSelector,
+        *,
+        chunk_size: int,
+        include_pii: bool,
+    ) -> Iterator[List[dict]]:
+        """Stream the export in ``chunk_size`` batches (S89 Slice 1).
+
+        Optional hook. The default wraps :meth:`export` and yields its rows as a
+        single chunk, so every exchanger is NDJSON-streamable; an exchanger over
+        a large table overrides this to page the query (bounded memory). The
+        concatenation of the yielded chunks equals ``export().rows`` (Liskov).
+        """
+        yield self.export(selector, include_pii=include_pii).rows
+
+    def import_ndjson(
+        self,
+        lines: Iterable[str],
+        *,
+        mode: str,
+        dry_run: bool,
+        chunk_size: int,
+    ) -> "ImportResult":
+        """Stream-import an NDJSON artefact (header line + one row per line).
+
+        Optional hook. An export-only exchanger raises
+        :class:`UnsupportedOperationError`; an importable one streams the rows in
+        ``chunk_size`` batches so import is bounded-memory. The default buffers
+        the rows and delegates to :meth:`import_` (correct, not yet streaming) so
+        any exchanger supports NDJSON import out of the box.
+        """
+        from vbwd.services.data_exchange.envelope import (
+            ENVELOPE_KEY,
+            iter_ndjson_rows,
+            validate_ndjson_header,
+        )
+
+        line_iterator = iter(lines)
+        validate_ndjson_header(line_iterator, self.entity_key)
+        rows = list(iter_ndjson_rows(line_iterator))
+        payload = {ENVELOPE_KEY: self.entity_key, self.entity_key: rows}
+        return self.import_(payload, mode=mode, dry_run=dry_run)
+
+    def bulk_seed(
+        self,
+        count: int,
+        *,
+        reset: bool = False,
+        batch_size: int = 1000,
+    ) -> "BulkSeedResult":
+        """Generate ``count`` deterministic load-test rows (S89 Slice 2).
+
+        Optional hook. An exchanger that cannot manufacture rows (export-only, or
+        a structurally non-seedable entity) raises
+        :class:`UnsupportedOperationError` rather than silently doing nothing
+        (Liskov). :class:`BaseModelExchanger` implements the generic case.
+        """
+        raise UnsupportedOperationError(f"{self.entity_key} does not support bulk-seed")
 
     def export_zip(self, selector: ExportSelector, *, include_pii: bool) -> ZipExport:
         """Export rows plus their binary assets for a ZIP bundle.

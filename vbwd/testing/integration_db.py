@@ -1,93 +1,111 @@
 """Shared integration-test database hygiene helpers.
 
-Many plugin integration suites share a single ``*_test`` database. The old
-per-test ``create_all()`` / ``drop_all()`` pattern strands state when several
-suites run together (the whole-backend ``bin/pre-commit-check.sh --full`` run):
+Tests must clean up after themselves and MUST NOT wipe the database — no
+``TRUNCATE``-all, no ``DROP SCHEMA``. Many plugin integration suites share a
+single ``*_test`` database, so a wipe-based isolation in one suite poisons every
+other suite running in the same ``bin/pre-commit-check.sh --full`` session (a
+sibling's ``drop_all()`` strands ENUM types or removes a shared table another
+suite still needs).
 
-  1. ``MetaData.drop_all()`` drops tables but **not** standalone PostgreSQL
-     ``ENUM`` types, so a later ``create_all()`` — in the same suite or another
-     plugin's — fails with ``CREATE TYPE userstatus ... already exists``
-     (``duplicate key ... pg_type_typname_nsp_index``).
-  2. A sibling suite's ``drop_all()`` removes a shared table another suite still
-     needs, so its seeder fails with ``relation "vbwd_user" does not exist``.
-
-These helpers reset the schema **once per session** (dropping tables *and*
-enums by recreating the ``public`` schema) and isolate each test by
-``TRUNCATE``, mirroring the cms suite's proven approach. Core test
-infrastructure — agnostic, imports no plugin.
+Instead, the schema is built **once per process** with
+``create_all(checkfirst=True)`` (never dropped), canonical baseline rows are
+committed once, and each test runs inside a transaction that is **rolled back**
+at teardown — the rollback IS the cleanup, nothing the test writes ever persists.
+This is also far faster than per-test ``TRUNCATE`` of the whole catalog. Core
+test infrastructure — agnostic, imports no plugin.
 """
-from sqlalchemy import inspect, text
+from contextlib import contextmanager
+
+from sqlalchemy import inspect
+
+# ---------------------------------------------------------------------------
+# Self-cleaning isolation (no DB wipe) — the supported approach.
+#
+# Tests must clean up after themselves and MUST NOT wipe the database (no
+# ``TRUNCATE``-all, no ``DROP SCHEMA``). Each test runs inside a transaction
+# bound to a single connection; at teardown the transaction is rolled back, so
+# nothing the test wrote ever persists — the rollback IS the cleanup. The schema
+# is built once per process with ``create_all(checkfirst=True)`` (never dropped),
+# and canonical baseline reference rows (RBAC roles) are committed once.
+#
+# Flask-SQLAlchemy 3.1's ``Session.get_bind`` returns ``engines[None]`` (the
+# default engine) before honouring a session-level bind, so we join the external
+# transaction by temporarily pointing ``engines[None]`` at the live connection
+# and putting the scoped session in ``create_savepoint`` mode (a service-level
+# ``commit()`` inside the test becomes a SAVEPOINT release, so the test sees its
+# own writes while the outer transaction stays open to roll back).
+# ---------------------------------------------------------------------------
 
 
-def reset_schema_and_create_all(db):
-    """Drop the ``public`` schema (tables + ENUM types) and rebuild it once.
+def ensure_schema_and_baseline(db):
+    """Build any missing tables and commit canonical baseline rows (idempotent).
 
-    Runs the DROP/CREATE and ``create_all()`` on a single fresh connection so
-    ``create_all()``'s ``checkfirst`` reflection sees the just-cleared catalog
-    (a separate pooled connection can carry a pre-DROP snapshot and then
-    duplicate/skip objects). The caller must have imported every model whose
-    table should exist before calling this.
+    Many plugin integration suites share ONE ``*_test`` database in a single
+    ``bin/pre-commit-check.sh --full`` process, all using the same
+    ``vbwd.extensions.db`` instance. Each suite's session-scoped ``app`` fixture
+    imports its own models (registering more tables in ``db.metadata``) and then
+    calls this helper. We therefore must run ``create_all`` on EVERY call, not
+    just the first: a one-shot per-process guard would build only the tables the
+    first suite to run had registered, leaving every later suite's tables
+    missing (``relation "..." does not exist``).
 
-    Under the whole-suite gate several plugin suites share one ``*_test`` DB and
-    each calls this from its own session-scoped ``app`` fixture. A sibling
-    suite's pooled connection can sit idle-in-transaction holding an
-    ``AccessShareLock`` on the ``public`` namespace, which deadlocks this
-    ``DROP SCHEMA`` (it needs ``AccessExclusiveLock``). A test-DB reset
-    legitimately owns the whole database, so we first terminate every *other*
-    backend on it, then guard the DROP with a short ``lock_timeout`` so it fails
-    fast and retries rather than blocking forever.
+    ``create_all`` uses ``checkfirst=True`` (the SQLAlchemy default), so it only
+    emits DDL for tables that do not yet exist — it never drops or wipes data and
+    is cheap to call repeatedly. Commits the canonical RBAC role rows (idempotent
+    — guarded on existing rows) so any ``User`` created inside a test's
+    rolled-back transaction satisfies its role FK. The caller must have imported
+    every model whose table should exist before calling.
     """
-    db.session.remove()
-    _terminate_other_backends(db)
-    with db.engine.connect() as connection:
-        connection.execute(text("SET lock_timeout = '30s'"))
-        connection.execute(text("DROP SCHEMA public CASCADE"))
-        connection.execute(text("CREATE SCHEMA public"))
-        connection.commit()
-        db.metadata.create_all(bind=connection)
-        connection.commit()
+    db.create_all()
+    _seed_canonical_rbac(db)
 
 
-def _terminate_other_backends(db):
-    """Close every other connection to this database before a schema reset.
-
-    Idle pooled connections from sibling suites' session-scoped engines (still
-    alive for the whole pytest session) can hold namespace locks that deadlock
-    ``DROP SCHEMA``. ``pg_terminate_backend`` returns those connections to a
-    clean state; SQLAlchemy transparently re-opens them when next used.
-    """
-    with db.engine.connect() as connection:
-        connection.execute(
-            text(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
-            )
-        )
-        connection.commit()
-
-
-def truncate_all_tables(db):
-    """Clear data from every existing table without touching the schema.
-
-    Runs on its own short-lived autocommit-scoped connection (``engine.begin``)
-    rather than ``db.session`` so it cannot deadlock against a transaction a
-    prior test left open. Truncating on SETUP is robust against a prior test
-    that left rows behind.
-    """
-    db.session.remove()
+def _seed_canonical_rbac(db) -> None:
+    """Commit the canonical RBAC role rows once if absent (idempotent)."""
     table_names = inspect(db.engine).get_table_names(schema="public")
-    if not table_names:
+    if "vbwd_user_role" not in table_names:
         return
-    quoted = ", ".join(f'public."{name}"' for name in table_names)
-    with db.engine.begin() as connection:
-        connection.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE"))
-        # Re-seed the canonical RBAC role rows the TRUNCATE wiped, so any User
-        # created afterwards (the test-data seeder's admin, or a test fixture)
-        # does not violate the ``vbwd_user.role`` FK to ``vbwd_user_role``.
-        # Through the model catalog, never raw DDL.
-        if "vbwd_user_role" in table_names:
-            from sqlalchemy import insert
+    from vbwd.models.user_role import RoleDefinition, canonical_role_rows
 
-            from vbwd.models.user_role import RoleDefinition, canonical_role_rows
+    if db.session.query(RoleDefinition).first() is not None:
+        db.session.remove()
+        return
+    from sqlalchemy import insert
 
-            connection.execute(insert(RoleDefinition.__table__), canonical_role_rows())
+    db.session.execute(insert(RoleDefinition.__table__), canonical_role_rows())
+    db.session.commit()
+    db.session.remove()
+
+
+@contextmanager
+def rollback_isolation(db):
+    """Run a test in a transaction that is rolled back on teardown.
+
+    The test sees its own writes (even after a service-level ``commit()``), but
+    nothing persists past the test — self-cleaning, no wipe. Restores the real
+    engine binding afterwards so the next test starts clean.
+    """
+    engines = db.engines
+    real_engine = engines[None]
+    connection = real_engine.connect()
+    transaction = connection.begin()
+    engines[None] = connection
+    db.session.remove()
+    db.session.configure(join_transaction_mode="create_savepoint")
+    try:
+        yield db
+    finally:
+        # Restore the real engine binding NO MATTER WHAT — a failure while
+        # rolling back or closing the connection must not leave ``engines[None]``
+        # pointing at a dead Connection, which would break every later test in
+        # the process (``db.engine`` would no longer be an Engine).
+        try:
+            db.session.remove()
+        finally:
+            try:
+                transaction.rollback()
+            finally:
+                try:
+                    connection.close()
+                finally:
+                    engines[None] = real_engine

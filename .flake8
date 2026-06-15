@@ -1,0 +1,7 @@
+[flake8]
+# The cms-ai plugin vendors a third-party ``loopai`` tree (gitignored, concept
+# reference only — never imported or run). It is absent in CI (gitignored) but
+# present locally where it is vendored; exclude it so the local lint gate
+# matches CI. This is additive to the gate's CLI --exclude / --extend-ignore.
+extend-exclude =
+    plugins/cms-ai/cms-ai/loopai,

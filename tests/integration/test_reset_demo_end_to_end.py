@@ -25,9 +25,47 @@ REQUIRED_TABLES = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _restore_test_data_after(app):
+    """Re-seed the gate's test-data after EVERY test in this module.
+
+    Every test here runs the destructive ``DemoSeeder.run()``, which purges and
+    rebuilds the demo catalog and COMMITS to the shared live integration database
+    (these core integration tests run against the api's ``vbwd`` DB, not an
+    isolated ``_test`` one). That removes the ``seed-test-data`` test user's plan
+    + subscription + invoice the gate seeds once before Part C, breaking later
+    HTTP suites (``test_user_frontend_endpoints``) that run after this module
+    alphabetically. The test that disturbs shared state owns restoring it, so we
+    re-seed on teardown of every test — including ``test_reset_demo_is_idempotent``
+    which runs ``DemoSeeder.run()`` directly without the ``seeded`` fixture.
+    """
+    import os
+
+    yield
+
+    from vbwd.extensions import db
+    from vbwd.testing.test_data_seeder import TestDataSeeder
+
+    with app.app_context():
+        previous_seed_flag = os.environ.get("TEST_DATA_SEED")
+        os.environ["TEST_DATA_SEED"] = "true"
+        try:
+            TestDataSeeder(db.session).seed()
+        finally:
+            if previous_seed_flag is None:
+                os.environ.pop("TEST_DATA_SEED", None)
+            else:
+                os.environ["TEST_DATA_SEED"] = previous_seed_flag
+
+
 @pytest.fixture
 def seeded(app):
-    """Run the full demo seed once and yield the active session."""
+    """Run the full demo seed once and yield the active session.
+
+    The shared-DB restore that this destructive run requires lives in the
+    autouse ``_restore_test_data_after`` fixture so it also covers the tests that
+    call ``DemoSeeder.run()`` directly.
+    """
     from vbwd.extensions import db
     from vbwd.cli._demo_seeder import DemoSeeder
 

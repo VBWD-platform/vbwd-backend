@@ -27,14 +27,41 @@ def _mock_auth(mock_repo_cls, mock_auth_cls, user):
 
 
 @pytest.fixture(autouse=True)
-def isolated_settings(tmp_path, monkeypatch):
-    """Throwaway VBWD_VAR_DIR + a known active set/default for each test."""
+def isolated_settings(tmp_path, monkeypatch, app):
+    """Throwaway VBWD_VAR_DIR + a known active set/default for each test.
+
+    The known active set (``["EUR", "USD"]``) is validated against the live
+    catalog, so both rows must exist before the update — ensure them here
+    (idempotent) the same way ``seeded_gbp`` ensures GBP.
+    """
     monkeypatch.setenv("VBWD_VAR_DIR", str(tmp_path))
+    from vbwd.extensions import db
+    from vbwd.models.currency import Currency
     from vbwd.services.core_settings_store import update_core_settings
 
-    update_core_settings(
-        {"active_currencies": ["EUR", "USD"], "default_currency": "EUR"}
-    )
+    catalog = {
+        "EUR": ("Euro", "€", Decimal("1.0")),
+        "USD": ("US Dollar", "$", Decimal("1.08")),
+    }
+    with app.app_context():
+        for code, (name, symbol, rate) in catalog.items():
+            existing = db.session.query(Currency).filter_by(code=code).first()
+            if not existing:
+                db.session.add(
+                    Currency(
+                        id=uuid4(),
+                        code=code,
+                        name=name,
+                        symbol=symbol,
+                        exchange_rate=rate,
+                        decimal_places=2,
+                    )
+                )
+        db.session.commit()
+
+        update_core_settings(
+            {"active_currencies": ["EUR", "USD"], "default_currency": "EUR"}
+        )
     return tmp_path
 
 

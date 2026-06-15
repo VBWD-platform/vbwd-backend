@@ -7,15 +7,29 @@ enforced here; ``replace_all`` is additionally superadmin-gated server-side.
 import io
 import json
 
-from flask import Blueprint, g, jsonify, request, send_file
+from flask import (
+    Blueprint,
+    Response,
+    g,
+    jsonify,
+    request,
+    send_file,
+    stream_with_context,
+)
 
 from vbwd.middleware.auth import require_admin, require_auth
-from vbwd.services.data_exchange.base_model_exchanger import RowCapExceededError
+from vbwd.services.data_exchange import profiling
+from vbwd.services.data_exchange.base_model_exchanger import (
+    EXPORT_CHUNK_SIZE,
+    RowCapExceededError,
+)
 from vbwd.services.data_exchange.envelope import (
+    NDJSON_FORMAT,
     BundleEntry,
     EnvelopeError,
     build_bundle,
     build_envelope,
+    iter_ndjson_lines,
     read_bundle,
     rows_to_csv,
     validate_envelope,
@@ -39,6 +53,7 @@ JSON_FORMAT = "json"
 ZIP_FORMAT = "zip"
 ROW_CAP_STATUS = 413
 ZIP_MAGIC = b"PK\x03\x04"
+NDJSON_MIMETYPE = "application/x-ndjson"
 
 
 def _instance_name() -> str:
@@ -101,6 +116,9 @@ def export_entity(key: str):
             )
         return _export_zip(exchanger, key, selector, include_pii=include_pii)
 
+    if export_format == NDJSON_FORMAT:
+        return _export_ndjson(exchanger, key, selector, include_pii=include_pii)
+
     try:
         rows = exchanger.export(selector, include_pii=include_pii).rows
     except UnsupportedOperationError as exc:
@@ -148,23 +166,68 @@ def _export_zip(exchanger, key: str, selector, *, include_pii: bool):
     )
 
 
+def _export_ndjson(exchanger, key: str, selector, *, include_pii: bool):
+    """Stream a single entity as NDJSON (header line + one row per line).
+
+    Uses ``stream_with_context`` so peak RSS is bounded by ``chunk_size``, not by
+    the total row count (S89 Slice 1). An export-only/unsupported entity is
+    rejected up front (before any bytes are sent) by pulling the header eagerly;
+    once streaming has begun the status line is already committed, so a lazy
+    row-cap breach mid-stream is a measured finding for the harness, not a 4xx.
+    """
+    chunks = exchanger.iter_export(
+        selector, chunk_size=EXPORT_CHUNK_SIZE, include_pii=include_pii
+    )
+    line_stream = iter_ndjson_lines(key, chunks, instance=_instance_name())
+    try:
+        first_line = next(line_stream)
+    except StopIteration:
+        first_line = ""
+    except UnsupportedOperationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RowCapExceededError as exc:
+        return jsonify({"error": str(exc)}), ROW_CAP_STATUS
+
+    def generate():
+        if first_line:
+            yield first_line
+        for line in line_stream:
+            yield line
+
+    response = Response(stream_with_context(generate()), mimetype=NDJSON_MIMETYPE)
+    response.headers["Content-Disposition"] = f"attachment; filename=vbwd-{key}.ndjson"
+    return response
+
+
 @data_exchange_bp.route("/<key>/import", methods=["POST"])
 @require_auth
 @require_admin
 def import_entity(key: str):
-    """Import a single entity (JSON body or multipart file)."""
+    """Import a single entity (JSON body, multipart file, ZIP, or NDJSON)."""
     exchanger = data_exchange_registry.get(key)
     if exchanger is None:
         return jsonify({"error": f"unknown entity '{key}'"}), 404
     if not data_exchange_registry.can_import(exchanger, g.user):
         return jsonify({"error": "Permission denied"}), 403
 
+    with profiling.start_operation() as stage_profile:
+        body, status = _do_import_entity(key, exchanger)
+    if status == 200:
+        return _with_profile(jsonify(body), stage_profile), 200
+    return jsonify(body), status
+
+
+def _do_import_entity(key: str, exchanger):
+    """Run the single-entity import → (response_body, status). 200 on success."""
+    if _is_ndjson_upload():
+        return _import_ndjson_upload(key, exchanger)
+
     payload, assets, mode, dry_run, error = _read_import_request(key, exchanger)
     if error is not None:
-        return jsonify({"error": error}), 400
+        return {"error": error}, 400
 
     if mode == MODE_REPLACE_ALL and not _is_superadmin():
-        return jsonify({"error": "replace_all requires superadmin"}), 403
+        return {"error": "replace_all requires superadmin"}, 403
 
     if assets:
         payload = exchanger.attach_assets(payload, assets)
@@ -172,10 +235,59 @@ def import_entity(key: str):
     try:
         result = exchanger.import_(payload, mode=mode, dry_run=dry_run)
     except UnsupportedOperationError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return {"error": str(exc)}, 400
     except EnvelopeError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify(result.to_dict()), 200
+        return {"error": str(exc)}, 400
+    return result.to_dict(), 200
+
+
+def _is_ndjson_upload() -> bool:
+    """True when a multipart upload is NDJSON (by ``format`` field or suffix)."""
+    if not request.files:
+        return False
+    if request.form.get("format") == NDJSON_FORMAT:
+        return True
+    uploaded = request.files.get("file")
+    filename = getattr(uploaded, "filename", "") or ""
+    return filename.endswith(".ndjson")
+
+
+def _import_ndjson_upload(key: str, exchanger):
+    """Stream-import an uploaded NDJSON file in bounded-memory batches."""
+    uploaded = request.files.get("file")
+    mode = request.form.get("mode", "upsert")
+    dry_run = request.form.get("dry_run", "false").lower() == "true"
+    if uploaded is None:
+        return {"error": "no file uploaded"}, 400
+    if mode == MODE_REPLACE_ALL and not _is_superadmin():
+        return {"error": "replace_all requires superadmin"}, 403
+
+    line_stream = (raw_line.decode("utf-8") for raw_line in uploaded.stream)
+    try:
+        result = exchanger.import_ndjson(
+            line_stream, mode=mode, dry_run=dry_run, chunk_size=EXPORT_CHUNK_SIZE
+        )
+    except UnsupportedOperationError as exc:
+        return {"error": str(exc)}, 400
+    except EnvelopeError as exc:
+        return {"error": str(exc)}, 400
+    return result.to_dict(), 200
+
+
+def _with_profile(response, stage_profile):
+    """Attach the server-side stage timing to a JSON response when load-gated.
+
+    Adds the standard ``Server-Timing`` header and a ``_profile`` field to the
+    JSON body. Inert (byte-identical response) unless the load env flag is set.
+    """
+    if not profiling.profiling_enabled():
+        return response
+    response.headers["Server-Timing"] = stage_profile.server_timing_header()
+    payload = response.get_json(silent=True)
+    if isinstance(payload, dict):
+        payload["_profile"] = stage_profile.to_dict()
+        response.set_data(json.dumps(payload))
+    return response
 
 
 def _read_import_request(key: str, exchanger):
