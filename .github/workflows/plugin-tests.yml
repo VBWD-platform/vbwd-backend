@@ -83,7 +83,7 @@ jobs:
             [ghrm]="subscription"
             [stripe]="subscription"
             [paypal]="subscription"
-            [meinchat]="subscription"
+            [meinchat]="subscription cms"
             [subscription]="bot_base bot_telegram"
           )
           deps_for_this="${DEPS[${{ matrix.plugin }}]:-}"
