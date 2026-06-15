@@ -619,7 +619,7 @@ try:
     if test_user and free_plan:
         existing_inv = (
             session.query(UserInvoice)
-            .filter_by(user_id=test_user.id, tarif_plan_id=free_plan.id)
+            .filter_by(invoice_number="INV-DEMO-FREE-001")
             .first()
         )
         if not existing_inv:
@@ -632,11 +632,12 @@ try:
                 )
                 .first()
             )
+            # Core UserInvoice has no plan/subscription FK after the subscription
+            # extraction — the subscription link lives on the SUBSCRIPTION line
+            # item below (item_id == subscription.id).
             inv = UserInvoice(
                 user_id=test_user.id,
-                tarif_plan_id=free_plan.id,
-                subscription_id=test_sub.id if test_sub else None,
-                invoice_number=f"INV-DEMO-FREE-001",
+                invoice_number="INV-DEMO-FREE-001",
                 amount=Decimal("0.00"),
                 currency="EUR",
                 status=InvoiceStatus.PAID,
@@ -652,7 +653,7 @@ try:
             session.flush()
             line = InvoiceLineItem(
                 invoice_id=inv.id,
-                item_id=free_plan.id,
+                item_id=test_sub.id if test_sub else free_plan.id,
                 description=free_plan.name,
                 quantity=1,
                 unit_price=Decimal("0.00"),
