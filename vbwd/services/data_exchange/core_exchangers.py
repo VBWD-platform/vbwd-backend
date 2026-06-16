@@ -26,6 +26,7 @@ from vbwd.models.country import Country
 from vbwd.models.currency import Currency
 from vbwd.models.custom_field_def import CustomFieldDef
 from vbwd.models.invoice import UserInvoice
+from vbwd.models.llm_connection import LlmConnection
 from vbwd.models.payment_method import PaymentMethod
 from vbwd.models.role import Permission, Role
 from vbwd.models.tag import Tag
@@ -132,6 +133,63 @@ def _build_currencies_exchanger(session: Any) -> BaseModelExchanger:
             "exchange_rate",
             "decimal_places",
         ],
+        supported_formats=frozenset({"json", "csv"}),
+    )
+
+
+# ── llm_connections (api_key omitted on export, lands inactive on import) ─────
+
+# Placeholder key planted on import so the NOT-NULL ``api_key`` is satisfied
+# while the connection lands inactive pending a real key (D-ExportKey). It is
+# encrypted at rest like any key and never resolves a usable client (the
+# connection is inactive, so the resolver refuses it).
+_IMPORT_PLACEHOLDER_KEY = "import-pending-set-a-real-key"
+
+
+class LlmConnectionsExchanger(BaseModelExchanger):
+    """``llm_connections`` exchanger: key omitted on export, inactive on import.
+
+    The api_key is a ``secret_field`` so it is stripped from every export and
+    never copied on import (the live key can't leak via CSV/JSON — D-ExportKey).
+    An imported row lands ``is_active=False`` with a placeholder key, so an admin
+    must supply a real key + activate before it can be used.
+    """
+
+    def _build_instance(self, row: dict) -> Any:
+        instance = super()._build_instance(row)
+        # Land inactive pending a key; clear any default flag a stale export
+        # carried so import can never silently become the live default.
+        instance.is_active = False
+        instance.is_default = False
+        if not getattr(instance, "api_key", None):
+            instance.api_key = _IMPORT_PLACEHOLDER_KEY
+        return instance
+
+
+def _build_llm_connections_exchanger(session: Any) -> BaseModelExchanger:
+    return LlmConnectionsExchanger(
+        entity_key="llm_connections",
+        label="LLM Connections",
+        cluster=CLUSTER_SETTINGS,
+        natural_key="slug",
+        model_class=LlmConnection,
+        repository=_SessionModelRepository(session, LlmConnection, "slug"),
+        session=session,
+        public_fields=[
+            "slug",
+            "connection_name",
+            "api_endpoint",
+            "api_key",
+            "model",
+            "provider",
+            "temperature",
+            "max_tokens",
+            "timeout",
+            "is_active",
+            "is_default",
+        ],
+        # The api_key never serialises on export and is never copied on import.
+        secret_fields=frozenset({"api_key"}),
         supported_formats=frozenset({"json", "csv"}),
     )
 
@@ -892,6 +950,7 @@ def build_core_exchangers(
         AccessLevelsExchanger(session),
         EmailTemplatesExchanger(template_dir),
         _build_currencies_exchanger(session),
+        _build_llm_connections_exchanger(session),
         CountriesExchanger(session),
         _build_token_bundles_exchanger(session),
         _build_taxes_exchanger(session),

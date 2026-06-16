@@ -6,6 +6,7 @@ from vbwd.repositories.user_details_repository import UserDetailsRepository
 from vbwd.repositories.invoice_repository import InvoiceRepository
 from vbwd.repositories.invoice_line_item_repository import InvoiceLineItemRepository
 from vbwd.repositories.currency_repository import CurrencyRepository
+from vbwd.repositories.llm_connection_repository import LlmConnectionRepository
 from vbwd.repositories.tax_repository import TaxRepository
 from vbwd.repositories.password_reset_repository import PasswordResetRepository
 from vbwd.repositories.device_token_repository import DeviceTokenRepository
@@ -21,6 +22,7 @@ from vbwd.repositories.token_repository import (
 from vbwd.services.auth_service import AuthService
 from vbwd.services.user_service import UserService
 from vbwd.services.currency_service import CurrencyService
+from vbwd.services.llm_connection_service import LlmConnectionService
 from vbwd.services.tax_service import TaxService
 from vbwd.services.password_reset_service import PasswordResetService
 from vbwd.services.device_token_service import DeviceTokenService
@@ -86,6 +88,10 @@ class Container(containers.DeclarativeContainer):
 
     currency_repository = providers.Factory(CurrencyRepository, session=db_session)
 
+    llm_connection_repository = providers.Factory(
+        LlmConnectionRepository, session=db_session
+    )
+
     tax_repository = providers.Factory(TaxRepository, session=db_session)
 
     device_token_repository = providers.Factory(
@@ -112,6 +118,20 @@ class Container(containers.DeclarativeContainer):
     )
 
     tax_service = providers.Factory(TaxService, tax_repository=tax_repository)
+
+    # S97: the admin-managed LLM Connection registry + the plugin-facing client
+    # resolver. ``llm_client(slug=None)`` returns a ready, connection-bound
+    # ``LlmClient`` (slug -> that connection, else the active default) — the
+    # exact call site every consuming plugin uses via ``container.llm_client``.
+    llm_connection_service = providers.Factory(
+        LlmConnectionService,
+        repository=llm_connection_repository,
+    )
+
+    llm_client = providers.Callable(
+        lambda service, slug=None: service.llm_client(slug),
+        llm_connection_service,
+    )
 
     # S85.0: the single price-math entry point (D1). Depends only on the core
     # settings reader + CurrencyService — plugin-agnostic (dispatches off the

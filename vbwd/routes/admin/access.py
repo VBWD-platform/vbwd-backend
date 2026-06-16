@@ -45,6 +45,16 @@ CORE_PERMISSIONS = [
         "label": "Manage user API keys",
         "group": "API Keys",
     },
+    {
+        "key": "llm.connections.view",
+        "label": "View LLM connections",
+        "group": "LLM Connections",
+    },
+    {
+        "key": "llm.connections.manage",
+        "label": "Manage LLM connections",
+        "group": "LLM Connections",
+    },
 ]
 
 # User-facing permission for self-service API-key management. Seeded into the

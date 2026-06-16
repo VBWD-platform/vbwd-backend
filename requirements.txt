@@ -43,6 +43,11 @@ Jinja2==3.1.3
 # Payment Providers
 stripe==14.3.0
 
+# LLM providers (S97 — core LLM Connection Manager; extracted from cms-ai).
+# Imported lazily by vbwd/llm/adapter.py only when a real client is built.
+openai==2.41.1
+anthropic==0.109.1
+
 # HTTP Clients (Payment Gateways, External APIs)
 httpx==0.25.2
 # HTTP/2 support for httpx (required by the APNs client, S66)

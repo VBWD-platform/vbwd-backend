@@ -28,6 +28,7 @@ from vbwd.models.tag import Tag
 from vbwd.models.entity_tag import EntityTag
 from vbwd.models.custom_field_def import CustomFieldDef
 from vbwd.models.custom_field_value import CustomFieldValue
+from vbwd.models.llm_connection import LlmConnection
 from vbwd.models.enums import (
     UserStatus,
     UserRole,
@@ -70,6 +71,7 @@ __all__ = [
     "EntityTag",
     "CustomFieldDef",
     "CustomFieldValue",
+    "LlmConnection",
     "UserAccessLevel",
     "UserGroup",
     # Association tables

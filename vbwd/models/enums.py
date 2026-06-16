@@ -120,6 +120,11 @@ class TokenTransactionType(enum.Enum):
     # S79 — debit/credit entries written by withdraw-to-money requests
     # (native PG enum value added by migration 20260612_1100_withdraw_tx_type)
     WITHDRAW = "WITHDRAW"
+    # S92 Track B — token commission paid to a referral coupon's issuer on
+    # redemption (generic ledger vocabulary; written by the referral plugin
+    # through core TokenService). Native PG value added by migration
+    # 20260615_1000_referral_commission_tx.
+    REFERRAL_COMMISSION = "REFERRAL_COMMISSION"
 
 
 class AddonSubscriptionStatus(enum.Enum):

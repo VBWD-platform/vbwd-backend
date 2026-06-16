@@ -197,6 +197,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         admin_plugins_bp,
         admin_tax_bp,
         admin_currencies_bp,
+        admin_llm_connections_bp,
         admin_user_groups_bp,
     )
     from vbwd.routes.admin.access import access_bp as admin_access_bp
@@ -227,6 +228,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(admin_plugins_bp)
     csrf.exempt(admin_tax_bp)
     csrf.exempt(admin_currencies_bp)
+    csrf.exempt(admin_llm_connections_bp)
     csrf.exempt(admin_user_groups_bp)
     csrf.exempt(admin_access_bp)
     csrf.exempt(admin_tags_custom_fields_bp)
@@ -375,6 +377,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_plugins_bp)
     app.register_blueprint(admin_tax_bp)
     app.register_blueprint(admin_currencies_bp)
+    app.register_blueprint(admin_llm_connections_bp)
     app.register_blueprint(admin_user_groups_bp)
     app.register_blueprint(admin_access_bp)
     app.register_blueprint(admin_tags_custom_fields_bp)
