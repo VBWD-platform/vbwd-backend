@@ -82,7 +82,7 @@ def test_super_admin_can_delete_system_role(mock_repo_cls, mock_auth_cls, app, c
     role_id = _make_system_role(app)
     try:
         resp = client.delete(
-            f"/api/v1/admin/access/levels/{role_id}", headers=_auth_headers()
+            f"/api/v1/admin/access/roles/{role_id}", headers=_auth_headers()
         )
         assert resp.status_code == 200, resp.get_json()
         from vbwd.extensions import db
@@ -101,7 +101,7 @@ def test_admin_cannot_delete_system_role(mock_repo_cls, mock_auth_cls, app, clie
     role_id = _make_system_role(app)
     try:
         resp = client.delete(
-            f"/api/v1/admin/access/levels/{role_id}", headers=_auth_headers()
+            f"/api/v1/admin/access/roles/{role_id}", headers=_auth_headers()
         )
         assert resp.status_code == 400, resp.get_json()
         from vbwd.extensions import db
@@ -125,7 +125,7 @@ def test_super_admin_can_delete_system_user_level(
     level_id = _make_system_user_level(app)
     try:
         resp = client.delete(
-            f"/api/v1/admin/access/user-levels/{level_id}", headers=_auth_headers()
+            f"/api/v1/admin/access/levels/{level_id}", headers=_auth_headers()
         )
         assert resp.status_code == 200, resp.get_json()
         from vbwd.extensions import db
@@ -146,7 +146,7 @@ def test_admin_cannot_delete_system_user_level(
     level_id = _make_system_user_level(app)
     try:
         resp = client.delete(
-            f"/api/v1/admin/access/user-levels/{level_id}", headers=_auth_headers()
+            f"/api/v1/admin/access/levels/{level_id}", headers=_auth_headers()
         )
         assert resp.status_code == 400, resp.get_json()
         from vbwd.extensions import db

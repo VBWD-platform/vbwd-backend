@@ -117,11 +117,11 @@ class DefaultUserPermissionGrant(IUserPermissionGrant):
         *,
         linked_plan_slug: Optional[str] = None,
     ) -> UUID:
-        from vbwd.models.user_access_level import UserAccessLevel
+        from vbwd.models.user_access_level import AccessLevel
 
         level = self._access_level_service().find_by_slug(slug)
         if level is None:
-            level = UserAccessLevel(
+            level = AccessLevel(
                 id=uuid4(),
                 name=name,
                 slug=slug,

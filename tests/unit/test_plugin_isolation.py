@@ -96,7 +96,7 @@ class TestRoleCRUDBulletproof:
 
         # Get system roles
         response = client.get(
-            "/api/v1/admin/access/levels",
+            "/api/v1/admin/access/roles",
             headers={"Authorization": "Bearer valid"},
         )
         levels = response.get_json()["levels"]
@@ -104,7 +104,7 @@ class TestRoleCRUDBulletproof:
 
         for role in system_roles:
             delete_resp = client.delete(
-                f"/api/v1/admin/access/levels/{role['id']}",
+                f"/api/v1/admin/access/roles/{role['id']}",
                 headers={"Authorization": "Bearer valid"},
             )
             assert (
@@ -120,7 +120,7 @@ class TestRoleCRUDBulletproof:
 
         # Create a role
         response = client.post(
-            "/api/v1/admin/access/levels",
+            "/api/v1/admin/access/roles",
             json={
                 "name": "Test Dup",
                 "slug": "test-dup-isolation",
@@ -131,7 +131,7 @@ class TestRoleCRUDBulletproof:
 
         # Try to create with same slug
         response2 = client.post(
-            "/api/v1/admin/access/levels",
+            "/api/v1/admin/access/roles",
             json={
                 "name": "Test Dup 2",
                 "slug": "test-dup-isolation",
@@ -143,6 +143,6 @@ class TestRoleCRUDBulletproof:
         # Cleanup
         role_id = response.get_json()["level"]["id"]
         client.delete(
-            f"/api/v1/admin/access/levels/{role_id}",
+            f"/api/v1/admin/access/roles/{role_id}",
             headers={"Authorization": "Bearer valid"},
         )

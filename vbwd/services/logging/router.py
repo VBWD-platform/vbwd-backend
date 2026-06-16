@@ -115,6 +115,11 @@ class VbwdLogRouter(logging.Handler):
             stream = derive_stream(record.levelno)
             if stream is None:
                 return
+            # S90 G2 — app-log verbosity floor. At ``warning`` the info stream
+            # stops being written; at ``error`` info+warnings stop. Default
+            # ``info`` keeps today's behaviour. (events.log is a separate path.)
+            if record.levelno < self._config.min_level:
+                return
             scope = derive_scope(record.name)
             json_scope, relative_path = self._target(scope, stream)
             line = self._build_line(record, json_scope, stream)

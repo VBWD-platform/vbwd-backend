@@ -5,7 +5,7 @@ from uuid import UUID
 
 from vbwd.extensions import db
 from vbwd.models.user import User
-from vbwd.models.user_access_level import UserAccessLevel
+from vbwd.models.user_access_level import AccessLevel
 
 logger = logging.getLogger(__name__)
 
@@ -20,27 +20,23 @@ class UserAccessLevelService:
     def __init__(self, session=None):
         self._session = session or db.session
 
-    def find_by_slug(self, slug: str) -> Optional[UserAccessLevel]:
+    def find_by_slug(self, slug: str) -> Optional[AccessLevel]:
         """Find an access level by slug."""
-        return (
-            self._session.query(UserAccessLevel)
-            .filter(UserAccessLevel.slug == slug)
-            .first()
-        )
+        return self._session.query(AccessLevel).filter(AccessLevel.slug == slug).first()
 
-    def find_by_linked_plan_slug(self, plan_slug: str) -> Optional[UserAccessLevel]:
+    def find_by_linked_plan_slug(self, plan_slug: str) -> Optional[AccessLevel]:
         """Find an access level linked to a specific plan slug."""
         return (
-            self._session.query(UserAccessLevel)
-            .filter(UserAccessLevel.linked_plan_slug == plan_slug)
+            self._session.query(AccessLevel)
+            .filter(AccessLevel.linked_plan_slug == plan_slug)
             .first()
         )
 
-    def find_all_by_linked_plan_slug(self, plan_slug: str) -> List[UserAccessLevel]:
+    def find_all_by_linked_plan_slug(self, plan_slug: str) -> List[AccessLevel]:
         """Find all access levels linked to a specific plan slug."""
         return (
-            self._session.query(UserAccessLevel)
-            .filter(UserAccessLevel.linked_plan_slug == plan_slug)
+            self._session.query(AccessLevel)
+            .filter(AccessLevel.linked_plan_slug == plan_slug)
             .all()
         )
 
@@ -57,7 +53,7 @@ class UserAccessLevelService:
             logger.warning("Cannot assign access level: user %s not found", user_id)
             return False
 
-        level = self._session.get(UserAccessLevel, level_id)
+        level = self._session.get(AccessLevel, level_id)
         if not level:
             logger.warning("Cannot assign access level: level %s not found", level_id)
             return False
@@ -85,7 +81,7 @@ class UserAccessLevelService:
             logger.warning("Cannot revoke access level: user %s not found", user_id)
             return False
 
-        level = self._session.get(UserAccessLevel, level_id)
+        level = self._session.get(AccessLevel, level_id)
         if not level:
             logger.warning("Cannot revoke access level: level %s not found", level_id)
             return False
@@ -113,7 +109,7 @@ class UserAccessLevelService:
                 revoked_count += 1
         return revoked_count
 
-    def get_user_levels(self, user_id: UUID) -> List[UserAccessLevel]:
+    def get_user_levels(self, user_id: UUID) -> List[AccessLevel]:
         """Get all access levels assigned to a user."""
         user = self._session.get(User, user_id)
         if not user:

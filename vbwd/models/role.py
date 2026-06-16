@@ -1,15 +1,17 @@
-"""Role and Permission models for RBAC."""
+"""AdminRole and Permission models for RBAC (System B — gates ``/admin``)."""
 from vbwd.extensions import db
 from vbwd.models.base import BaseModel
 
 
-# Association table for role-permission many-to-many
+# Association table for admin-role-permission many-to-many.
+# Module-level variable name kept as ``role_permissions`` for back-compat; only
+# the table-name literal changed to ``vbwd_admin_role_permissions``.
 role_permissions = db.Table(
-    "vbwd_role_permissions",
+    "vbwd_admin_role_permissions",
     db.Column(
         "role_id",
         db.UUID(as_uuid=True),
-        db.ForeignKey("vbwd_role.id"),
+        db.ForeignKey("vbwd_admin_role.id"),
         primary_key=True,
     ),
     db.Column(
@@ -20,9 +22,11 @@ role_permissions = db.Table(
     ),
 )
 
-# Association table for user-role many-to-many
+# Association table for user-admin-role many-to-many.
+# Module-level variable name kept as ``user_roles`` for back-compat; only the
+# table-name literal changed to ``vbwd_user_admin_role``.
 user_roles = db.Table(
-    "vbwd_user_roles",
+    "vbwd_user_admin_role",
     db.Column(
         "user_id",
         db.UUID(as_uuid=True),
@@ -32,21 +36,21 @@ user_roles = db.Table(
     db.Column(
         "role_id",
         db.UUID(as_uuid=True),
-        db.ForeignKey("vbwd_role.id"),
+        db.ForeignKey("vbwd_admin_role.id"),
         primary_key=True,
     ),
 )
 
 
-class Role(BaseModel):
+class AdminRole(BaseModel):
     """
-    Role model for RBAC.
+    Admin-role model for RBAC (System B — gates ``/admin``).
 
     Roles group permissions together and can be assigned to users.
     System roles (is_system=True) cannot be deleted.
     """
 
-    __tablename__ = "vbwd_role"
+    __tablename__ = "vbwd_admin_role"
 
     name = db.Column(db.String(100), unique=True, nullable=False, index=True)
     slug = db.Column(db.String(100), unique=True, nullable=False, index=True)
@@ -94,7 +98,11 @@ class Role(BaseModel):
         }
 
     def __repr__(self) -> str:
-        return f"<Role(slug='{self.slug}')>"
+        return f"<AdminRole(slug='{self.slug}')>"
+
+
+# Transitional back-compat alias: plugin tests + some core code import ``Role``.
+Role = AdminRole
 
 
 class Permission(BaseModel):

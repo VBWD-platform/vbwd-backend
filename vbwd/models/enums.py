@@ -81,15 +81,6 @@ class BillingPeriod(enum.Enum):
     ONE_TIME = "ONE_TIME"
 
 
-class UserCaseStatus(enum.Enum):
-    """User case status."""
-
-    DRAFT = "DRAFT"
-    ACTIVE = "ACTIVE"
-    COMPLETED = "COMPLETED"
-    ARCHIVED = "ARCHIVED"
-
-
 class PurchaseStatus(enum.Enum):
     """Token bundle purchase status."""
 

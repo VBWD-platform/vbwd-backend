@@ -1,6 +1,6 @@
 """S01 Part B — IAccessLevelContentProvider port contract.
 
-Core's admin /api/v1/admin/access/user-levels/<id>/content route must reach
+Core's admin /api/v1/admin/access/levels/<id>/content route must reach
 plugin-owned restricted-content data through this multi-provider registry,
 never by importing plugin models. Tests cover:
 

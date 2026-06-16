@@ -18,92 +18,16 @@ class TestRBACService:
         """Create RBAC service with mock repository."""
         return RBACService(mock_role_repo)
 
-    def test_has_permission_returns_true_when_user_has_permission(
-        self, rbac_service, mock_role_repo
-    ):
-        """User with role that has permission returns True."""
-        user_id = uuid4()
-        mock_role_repo.user_has_role.return_value = False
-        mock_role_repo.get_user_permissions.return_value = {"users.view", "users.edit"}
-
-        result = rbac_service.has_permission(user_id, "users.view")
-
-        assert result is True
-        mock_role_repo.get_user_permissions.assert_called_once_with(user_id)
-
-    def test_has_permission_returns_false_when_user_lacks_permission(
-        self, rbac_service, mock_role_repo
-    ):
-        """User without permission returns False."""
-        user_id = uuid4()
-        mock_role_repo.user_has_role.return_value = False
-        mock_role_repo.get_user_permissions.return_value = {"users.view"}
-
-        result = rbac_service.has_permission(user_id, "users.delete")
-
-        assert result is False
-
-    def test_admin_has_all_permissions(self, rbac_service, mock_role_repo):
-        """Admin role has all permissions."""
-        user_id = uuid4()
-        mock_role_repo.user_has_role.return_value = True  # Is admin
-
-        result = rbac_service.has_permission(user_id, "any.permission")
-
-        assert result is True
-        mock_role_repo.user_has_role.assert_called_with(user_id, "admin")
-
-    def test_has_any_permission_returns_true_when_has_one(
-        self, rbac_service, mock_role_repo
-    ):
-        """Returns True when user has at least one permission."""
-        user_id = uuid4()
-        mock_role_repo.user_has_role.return_value = False
-        mock_role_repo.get_user_permissions.return_value = {"users.view"}
-
-        result = rbac_service.has_any_permission(user_id, ["users.view", "users.edit"])
-
-        assert result is True
-
-    def test_has_any_permission_returns_false_when_has_none(
-        self, rbac_service, mock_role_repo
-    ):
-        """Returns False when user has no matching permissions."""
-        user_id = uuid4()
-        mock_role_repo.user_has_role.return_value = False
-        mock_role_repo.get_user_permissions.return_value = {"reports.view"}
-
-        result = rbac_service.has_any_permission(user_id, ["users.view", "users.edit"])
-
-        assert result is False
-
-    def test_has_all_permissions_returns_true_when_has_all(
-        self, rbac_service, mock_role_repo
-    ):
-        """Returns True when user has all permissions."""
-        user_id = uuid4()
-        mock_role_repo.user_has_role.return_value = False
-        mock_role_repo.get_user_permissions.return_value = {
-            "users.view",
-            "users.edit",
-            "reports.view",
-        }
-
-        result = rbac_service.has_all_permissions(user_id, ["users.view", "users.edit"])
-
-        assert result is True
-
-    def test_has_all_permissions_returns_false_when_missing_one(
-        self, rbac_service, mock_role_repo
-    ):
-        """Returns False when user is missing a permission."""
-        user_id = uuid4()
-        mock_role_repo.user_has_role.return_value = False
-        mock_role_repo.get_user_permissions.return_value = {"users.view"}
-
-        result = rbac_service.has_all_permissions(user_id, ["users.view", "users.edit"])
-
-        assert result is False
+    def test_dead_check_methods_removed(self, rbac_service):
+        """S94 Slice 3 — the parallel permission-check path was removed; the
+        single live check is ``User.has_permission``. RBACService keeps only
+        its assign/grant + read helpers.
+        """
+        for dead in ("has_permission", "has_any_permission", "has_all_permissions"):
+            assert not hasattr(rbac_service, dead), (
+                f"RBACService.{dead} should have been removed "
+                "(live check is User.has_permission)."
+            )
 
     def test_assign_role_delegates_to_repository(self, rbac_service, mock_role_repo):
         """Role assignment is delegated to repository."""

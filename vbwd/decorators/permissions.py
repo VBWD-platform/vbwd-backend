@@ -1,138 +1,20 @@
-"""Permission and feature guard decorators."""
+"""Feature-entitlement guard decorators.
+
+The permission/role guards (``require_auth``, ``require_permission``,
+``require_admin``, ``require_user_permission``) live in
+``vbwd/middleware/auth.py`` — that is the single, live authorization path.
+
+The duplicate JWT-flavour ``require_permission`` / ``require_all_permissions``
+/ ``require_role`` decorators that once lived here were dead (zero route
+importers; they called ``RBACService`` check methods that nothing else used)
+and were removed in S90 Slice 2 / S94 G4. What remains are the
+entitlement-port hooks below, which resolve a generic
+``IEntitlementProvider`` (so core stays agnostic of the subscription plugin).
+"""
 from functools import wraps
 from typing import Callable, Any
-from flask import current_app, jsonify, g
+from flask import jsonify, g
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
-
-
-def require_permission(*permissions: str) -> Callable:
-    """
-    Decorator to require at least one of the specified permissions.
-
-    Usage:
-        @require_permission("users.view", "users.manage")
-        def list_users():
-            ...
-
-    Args:
-        permissions: Permission names (any one required)
-
-    Returns:
-        Decorated function
-    """
-
-    def decorator(fn: Callable) -> Callable:
-        @wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            verify_jwt_in_request()
-            user_id = get_jwt_identity()
-
-            rbac = getattr(current_app, "container").rbac_service()
-
-            if not rbac.has_any_permission(user_id, list(permissions)):
-                return (
-                    jsonify(
-                        {
-                            "error": "Insufficient permissions",
-                            "required": list(permissions),
-                            "code": "PERMISSION_DENIED",
-                        }
-                    ),
-                    403,
-                )
-
-            return fn(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def require_all_permissions(*permissions: str) -> Callable:
-    """
-    Decorator to require ALL specified permissions.
-
-    Usage:
-        @require_all_permissions("users.view", "reports.view")
-        def user_reports():
-            ...
-
-    Args:
-        permissions: Permission names (all required)
-
-    Returns:
-        Decorated function
-    """
-
-    def decorator(fn: Callable) -> Callable:
-        @wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            verify_jwt_in_request()
-            user_id = get_jwt_identity()
-
-            rbac = getattr(current_app, "container").rbac_service()
-
-            if not rbac.has_all_permissions(user_id, list(permissions)):
-                return (
-                    jsonify(
-                        {
-                            "error": "Insufficient permissions",
-                            "required": list(permissions),
-                            "code": "PERMISSION_DENIED",
-                        }
-                    ),
-                    403,
-                )
-
-            return fn(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def require_role(*roles: str) -> Callable:
-    """
-    Decorator to require at least one of the specified roles.
-
-    Usage:
-        @require_role("admin", "moderator")
-        def admin_action():
-            ...
-
-    Args:
-        roles: Role names (any one required)
-
-    Returns:
-        Decorated function
-    """
-
-    def decorator(fn: Callable) -> Callable:
-        @wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            verify_jwt_in_request()
-            user_id = get_jwt_identity()
-
-            rbac = getattr(current_app, "container").rbac_service()
-            user_roles = rbac.get_user_roles(user_id)
-
-            if not any(role in user_roles for role in roles):
-                return (
-                    jsonify(
-                        {
-                            "error": "Insufficient role",
-                            "required": list(roles),
-                            "code": "ROLE_REQUIRED",
-                        }
-                    ),
-                    403,
-                )
-
-            return fn(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
 
 
 def require_feature(feature_name: str) -> Callable:

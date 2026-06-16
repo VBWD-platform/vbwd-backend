@@ -79,6 +79,10 @@ def require_admin(f):
             return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
 
+    # S90 — surface admin-panel gating to the route-exposure oracle. This is an
+    # authorisation gate (admin-only), so the oracle treats it as satisfying the
+    # "mutating route must be authorisation-gated" bar alongside required_permission.
+    decorated_function.requires_admin = True  # type: ignore[attr-defined]
     return decorated_function
 
 

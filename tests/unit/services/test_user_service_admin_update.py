@@ -22,7 +22,6 @@ def details_stub():
         last_name=None,
         phone=None,
         address_line_1=None,
-        balance=None,
     )
 
 
@@ -120,19 +119,13 @@ def test_explicit_first_name_wins_over_legacy_name(service, user_stub, session):
     assert user_stub.details.first_name == "Grace"
 
 
-def test_negative_balance_raises(service, session):
-    with pytest.raises(AdminUserUpdateError, match="negative"):
-        service.admin_update("user-1", {"balance": -1}, session)
-
-
-def test_invalid_balance_raises(service, session):
-    with pytest.raises(AdminUserUpdateError, match="Invalid balance"):
-        service.admin_update("user-1", {"balance": "not-a-number"}, session)
-
-
-def test_valid_balance_updates_details(service, user_stub, session):
+def test_dead_balance_field_is_ignored(service, user_stub, session):
+    """S94 Slice 1 — ``UserDetails.balance`` was dead (live money is
+    UserTokenBalance). A stray ``balance`` key in the admin payload is now a
+    no-op: it neither raises, nor sets an attribute, nor forces a details row.
+    """
     service.admin_update("user-1", {"balance": "99.50"}, session)
-    assert user_stub.details.balance == 99.50
+    assert not hasattr(user_stub.details, "balance")
 
 
 def test_negative_token_balance_raises(service, session):

@@ -31,4 +31,10 @@ def require_debug_enabled(view_func):
             abort(404)
         return view_func(*args, **kwargs)
 
+    # S90 — let the route-exposure oracle recognise a debug-gated route via an
+    # introspectable marker (mirrors the requires_auth/required_permission
+    # markers in middleware/auth.py) instead of re-parsing source. A
+    # debug-gated route is hidden (404) in production, so the oracle treats the
+    # marker as a distinct, acceptable protection class.
+    decorated_view.requires_debug_enabled = True  # type: ignore[attr-defined]
     return decorated_view

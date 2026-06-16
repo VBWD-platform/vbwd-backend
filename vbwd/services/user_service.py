@@ -251,7 +251,6 @@ class UserService(IUserService):
         if details is not None:
             self._validate_account_type(details, payload)
         self._apply_legacy_name(user, payload)
-        self._apply_balance(user, payload)
         self._apply_token_balance(user, payload, session)
         self._apply_group_slugs(user, payload)
 
@@ -298,8 +297,7 @@ class UserService(IUserService):
         # Create a UserDetails row only if the payload touches a details field.
         has_detail = any(field in payload for field in _USER_DETAIL_FIELDS)
         has_name = bool(payload.get("name"))
-        has_balance = "balance" in payload
-        if not (has_detail or has_name or has_balance):
+        if not (has_detail or has_name):
             return
         if user.details:
             return
@@ -332,22 +330,6 @@ class UserService(IUserService):
         first, _, last = name.strip().partition(" ")
         details.first_name = first
         details.last_name = last
-
-    def _apply_balance(self, user: User, payload: Mapping[str, Any]) -> None:
-        if "balance" not in payload:
-            return
-        try:
-            balance_value = float(payload["balance"])
-        except (TypeError, ValueError) as bad_balance:
-            raise AdminUserUpdateError("Invalid balance value") from bad_balance
-        if balance_value < 0:
-            raise AdminUserUpdateError("Balance cannot be negative")
-        # SQLAlchemy relationship descriptor typing — cast the instance-level
-        # attribute back to the concrete model type for mypy.
-        details = cast(Optional[UserDetails], user.details)
-        if details is None:
-            return
-        details.balance = balance_value
 
     def _apply_token_balance(
         self, user: User, payload: Mapping[str, Any], session

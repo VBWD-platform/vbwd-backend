@@ -50,7 +50,7 @@ def _wipe_rbac(session):
     """Remove all role/permission rows so each test starts clean."""
     # Clear the user↔role link first: since S39 seeds an admin-with-role at
     # app startup, a leftover user_roles row otherwise makes DELETE FROM
-    # vbwd_role violate vbwd_user_roles_role_id_fkey.
+    # vbwd_admin_role violate vbwd_user_admin_role_role_id_fkey.
     session.execute(user_roles.delete())
     session.execute(role_permissions.delete())
     session.execute(user_access_level_permissions.delete())

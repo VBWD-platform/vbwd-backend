@@ -1,15 +1,15 @@
-"""User Access Level model for fe-user permission control."""
+"""Access Level model for fe-user permission control."""
 from vbwd.extensions import db
 from vbwd.models.base import BaseModel
 
 
-# Association: user_access_level <-> permission (many-to-many)
+# Association: access_level <-> permission (many-to-many)
 user_access_level_permissions = db.Table(
-    "vbwd_user_access_level_permissions",
+    "vbwd_access_level_permissions",
     db.Column(
         "user_access_level_id",
         db.UUID(as_uuid=True),
-        db.ForeignKey("vbwd_user_access_level.id"),
+        db.ForeignKey("vbwd_access_level.id"),
         primary_key=True,
     ),
     db.Column(
@@ -22,7 +22,11 @@ user_access_level_permissions = db.Table(
 
 # Association: user <-> user_access_level (many-to-many)
 user_user_access_levels = db.Table(
-    "vbwd_user_user_access_levels",
+    # S94 Slice 5 — renamed from the ambiguous ``vbwd_user_user_access_levels``
+    # to match the S73 ``vbwd_user_group_rel`` convention. The Python handle +
+    # ORM ``assigned_user_access_levels`` backref are unchanged, so services/
+    # plugins are untouched; only the backing table moved.
+    "vbwd_user_access_level_rel",
     db.Column(
         "user_id",
         db.UUID(as_uuid=True),
@@ -32,22 +36,22 @@ user_user_access_levels = db.Table(
     db.Column(
         "user_access_level_id",
         db.UUID(as_uuid=True),
-        db.ForeignKey("vbwd_user_access_level.id"),
+        db.ForeignKey("vbwd_access_level.id"),
         primary_key=True,
     ),
 )
 
 
-class UserAccessLevel(BaseModel):
+class AccessLevel(BaseModel):
     """
-    User access level — controls fe-user feature visibility.
+    Access level — controls fe-user feature visibility.
 
-    Unlike admin access levels (vbwd_role), these apply to
+    Unlike admin roles (vbwd_admin_role), these apply to
     regular users in the user-facing app. Plans auto-assign
     default levels via the subscription plugin.
     """
 
-    __tablename__ = "vbwd_user_access_level"
+    __tablename__ = "vbwd_access_level"
 
     name = db.Column(db.String(100), unique=True, nullable=False, index=True)
     slug = db.Column(db.String(100), unique=True, nullable=False, index=True)
@@ -95,4 +99,10 @@ class UserAccessLevel(BaseModel):
         }
 
     def __repr__(self) -> str:
-        return f"<UserAccessLevel(slug='{self.slug}')>"
+        return f"<AccessLevel(slug='{self.slug}')>"
+
+
+# Transitional alias (S94 Slice 6a / DC-3): plugins still import
+# ``UserAccessLevel`` — the alias keeps them working without code edits while
+# core migrates to the unambiguous ``AccessLevel`` name.
+UserAccessLevel = AccessLevel

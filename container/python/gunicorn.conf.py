@@ -9,8 +9,11 @@ max_requests = 1000
 max_requests_jitter = 50
 
 # Logging
-accesslog = "/app/logs/access.log"
-errorlog = "/app/logs/error.log"
+# S90 G3 — write access/error to stdout/stderr ("-") so Docker's json-file
+# driver (max-size/max-file, set in the prod compose) rotates them. Writing to
+# /app/logs/*.log would grow unbounded — Docker only rotates container streams.
+accesslog = "-"
+errorlog = "-"
 loglevel = os.getenv("LOG_LEVEL", "info")
 
 # For development with reload

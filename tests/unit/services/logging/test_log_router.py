@@ -30,6 +30,7 @@ from vbwd.services.logging import (
     EventLogSubscriber,
     LoggingConfig,
     VbwdLogRouter,
+    parse_log_level,
     redact,
 )
 
@@ -119,6 +120,80 @@ def test_below_info_is_ignored(memory_manager):
     router = VbwdLogRouter(filesystem_manager=memory_manager)
     router.emit(_make_record("vbwd.x", logging.DEBUG, "noise"))
     assert not memory_manager.exists("logs", "core/info.log")
+
+
+# ---------------------------------------------------------------------------
+# S90 G2 — app-log verbosity floor (VBWD_LOG_LEVEL)
+# ---------------------------------------------------------------------------
+
+
+def test_min_level_warning_drops_info_keeps_warning_and_error(memory_manager):
+    """At min_level=WARNING the info stream stops; warning/error still route."""
+    config = LoggingConfig(min_level=logging.WARNING)
+    router = VbwdLogRouter(filesystem_manager=memory_manager, config=config)
+
+    router.emit(_make_record("vbwd.x", logging.INFO, "chatter"))
+    router.emit(_make_record("vbwd.x", logging.WARNING, "heads up"))
+    router.emit(_make_record("vbwd.x", logging.ERROR, "boom"))
+
+    assert not memory_manager.exists("logs", "core/info.log")
+    assert json.loads(_read_lines(memory_manager, "core/warnings.log")[0])["msg"] == (
+        "heads up"
+    )
+    assert json.loads(_read_lines(memory_manager, "core/error.log")[0])["msg"] == "boom"
+
+
+def test_min_level_error_drops_info_and_warnings(memory_manager):
+    config = LoggingConfig(min_level=logging.ERROR)
+    router = VbwdLogRouter(filesystem_manager=memory_manager, config=config)
+
+    router.emit(_make_record("vbwd.x", logging.INFO, "chatter"))
+    router.emit(_make_record("vbwd.x", logging.WARNING, "heads up"))
+    router.emit(_make_record("vbwd.x", logging.ERROR, "boom"))
+
+    assert not memory_manager.exists("logs", "core/info.log")
+    assert not memory_manager.exists("logs", "core/warnings.log")
+    assert json.loads(_read_lines(memory_manager, "core/error.log")[0])["msg"] == "boom"
+
+
+def test_default_min_level_writes_all_three_streams_as_today(memory_manager):
+    """Unset/default (INFO) is identical to the original behaviour."""
+    router = VbwdLogRouter(filesystem_manager=memory_manager)
+
+    router.emit(_make_record("vbwd.x", logging.INFO, "i"))
+    router.emit(_make_record("vbwd.x", logging.WARNING, "w"))
+    router.emit(_make_record("vbwd.x", logging.ERROR, "e"))
+
+    assert memory_manager.exists("logs", "core/info.log")
+    assert memory_manager.exists("logs", "core/warnings.log")
+    assert memory_manager.exists("logs", "core/error.log")
+
+
+def test_parse_log_level_maps_names_and_falls_back_on_garbage():
+    assert parse_log_level("warning") == logging.WARNING
+    assert parse_log_level("ERROR") == logging.ERROR
+    assert parse_log_level("debug") == logging.DEBUG
+    assert parse_log_level("info") == logging.INFO
+    # An invalid value never crashes — it falls back to INFO (today's default).
+    assert parse_log_level("loud") == logging.INFO
+    assert parse_log_level("") == logging.INFO
+    assert parse_log_level(None) == logging.INFO
+
+
+def test_event_stream_is_exempt_from_the_min_level_floor(local_manager):
+    """events.log is a security/audit record, NOT app verbosity — it must be
+    written even when the app-log floor is at error."""
+    bus = EventBus()
+    EventLogSubscriber(filesystem_manager=local_manager).register(bus)
+    # The router floor is irrelevant to the subscriber path, but assert the
+    # two are independent by configuring the strictest floor alongside.
+    VbwdLogRouter(
+        filesystem_manager=local_manager,
+        config=LoggingConfig(min_level=logging.ERROR),
+    )
+    bus.publish("contact.submitted", {"email": "a@b.c"})
+
+    assert local_manager.exists("logs", "core/events.log")
 
 
 # ---------------------------------------------------------------------------

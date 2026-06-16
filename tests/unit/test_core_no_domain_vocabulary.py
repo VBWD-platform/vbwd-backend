@@ -118,6 +118,20 @@ ALLOWLIST: set[tuple[str, str]] = {
     # manager knows files, not domains; the SEO plugin (S58.2) writes through
     # this namespace via the DI container. Pure filesystem vocabulary.
     ("vbwd/services/filesystem/_common.py", "seo"),
+    # --- (g) Route-exposure allowlist (S90 G1) ---------------------------
+    # ``route_audit.py`` carries the PUBLIC_ALLOWLIST: a SECURITY inventory of
+    # the URL *paths* that are public-by-design (so the route-exposure oracle +
+    # ``flask prod-readiness`` can prove no CRUD route ships unprotected). The
+    # banned-word hits are the literal public route PATHS of plugins
+    # (``/api/v1/tarif-plans``, ``/api/v1/subscription/public/...``,
+    # ``/api/v1/ghrm/packages/by-plan/<plan_id>``, ``/sitemap.xml``) and their
+    # justification strings — a path allowlist, NOT core reading a plugin
+    # domain field. Same structural pattern as the SSE whitelist in bucket (c):
+    # could later become a plugin-declared public-route registry; deferred.
+    ("vbwd/security/route_audit.py", "tarif"),
+    ("vbwd/security/route_audit.py", "subscription"),
+    ("vbwd/security/route_audit.py", "plan_id"),
+    ("vbwd/security/route_audit.py", "sitemap"),
 }
 
 _TERM_RE = {

@@ -23,59 +23,13 @@ class RBACService:
         """
         self.role_repo = role_repository
 
-    def has_permission(self, user_id: UUID, permission_name: str) -> bool:
-        """
-        Check if user has a specific permission.
-
-        Admin users have all permissions.
-
-        Args:
-            user_id: User UUID
-            permission_name: Name of permission to check
-
-        Returns:
-            True if user has the permission
-        """
-        # Admin has all permissions
-        if self.role_repo.user_has_role(user_id, self.ADMIN_ROLE):
-            return True
-
-        permissions = self.get_user_permissions(user_id)
-        return permission_name in permissions
-
-    def has_any_permission(self, user_id: UUID, permission_names: List[str]) -> bool:
-        """
-        Check if user has any of the specified permissions.
-
-        Args:
-            user_id: User UUID
-            permission_names: List of permission names to check
-
-        Returns:
-            True if user has at least one permission
-        """
-        if self.role_repo.user_has_role(user_id, self.ADMIN_ROLE):
-            return True
-
-        permissions = self.get_user_permissions(user_id)
-        return bool(permissions & set(permission_names))
-
-    def has_all_permissions(self, user_id: UUID, permission_names: List[str]) -> bool:
-        """
-        Check if user has all specified permissions.
-
-        Args:
-            user_id: User UUID
-            permission_names: List of permission names to check
-
-        Returns:
-            True if user has all permissions
-        """
-        if self.role_repo.user_has_role(user_id, self.ADMIN_ROLE):
-            return True
-
-        permissions = self.get_user_permissions(user_id)
-        return set(permission_names).issubset(permissions)
+    # NOTE: the parallel permission-*check* path (has_permission /
+    # has_any_permission / has_all_permissions) was removed in S94 Slice 3.
+    # The single live runtime check is ``User.has_permission`` /
+    # ``User.has_user_permission`` (vbwd/models/user.py), exercised by the
+    # ``@require_permission`` / ``@require_user_permission`` middleware. This
+    # service keeps only the assign/grant + read helpers the live code uses
+    # (RBAC seeding, S69 permission grants).
 
     def get_user_permissions(self, user_id: UUID) -> Set[str]:
         """

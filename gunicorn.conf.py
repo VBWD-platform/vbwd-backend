@@ -38,10 +38,15 @@ worker_class = os.getenv("GUNICORN_WORKER_CLASS", "gthread")
 _default_threads = build_engine_options()["pool_size"]
 threads = int(os.getenv("GUNICORN_THREADS", _default_threads))
 
-# Lower timeout (was 120) to a load-shedding value: a worker stuck on an
-# overloaded DB recycles in ~30 s instead of hanging up to 2 minutes (the old
-# 19 s+ waits / RemoteDisconnected). Bounds p99 under overload by `timeout`.
-timeout = int(os.getenv("GUNICORN_TIMEOUT", 30))
+# Worker timeout. A 30 s load-shedding value (recycle a worker stuck on an
+# overloaded DB instead of hanging ~2 min) is too low now that synchronous LLM
+# endpoints are pervasive — cms-ai generate, bot replies, and the S97/S98 LLM
+# paths legitimately take 30-60 s+, and a request exceeding `timeout` is
+# SIGKILLed → nginx 502 (e.g. an article generates no body). 120 s covers those
+# (nginx already allows 300 s on /api/v1/plugins/cms-ai/) while still bounding a
+# truly hung worker. Override per deployment via GUNICORN_TIMEOUT; lower it where
+# no LLM endpoints are served and tight p99 load-shedding matters more.
+timeout = int(os.getenv("GUNICORN_TIMEOUT", 120))
 keepalive = 5
 max_requests = 1000
 max_requests_jitter = 50

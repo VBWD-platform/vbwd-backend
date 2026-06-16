@@ -41,7 +41,7 @@ def _load_create_admin():
 def _wipe_rbac(session):
     # Clear the user↔role link first (see test_rbac_seeder._wipe_rbac): an
     # admin-with-role seeded at app startup otherwise makes DELETE FROM
-    # vbwd_role violate vbwd_user_roles_role_id_fkey.
+    # vbwd_admin_role violate vbwd_user_admin_role_role_id_fkey.
     session.execute(user_roles.delete())
     session.execute(role_permissions.delete())
     session.execute(user_access_level_permissions.delete())

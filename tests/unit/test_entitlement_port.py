@@ -85,3 +85,29 @@ def test_permission_decorators_use_the_port_not_a_container_factory():
     source = inspect.getsource(permissions)
     assert "feature_guard()" not in source
     assert "resolve_entitlement_provider" in source
+
+
+def test_dead_jwt_permission_decorators_are_removed():
+    """S90 Slice 2 / S94 G4: the duplicate JWT-flavour permission/role guards
+    were dead (zero route importers) and are gone. The single live
+    authorization path is ``vbwd/middleware/auth.py``.
+    """
+    from vbwd.decorators import permissions
+
+    for dead in ("require_permission", "require_all_permissions", "require_role"):
+        assert not hasattr(permissions, dead), (
+            f"{dead} should have been removed from vbwd.decorators.permissions "
+            "(the live one lives in vbwd/middleware/auth.py)"
+        )
+
+    # The orphaned RBACService check methods these used must no longer be
+    # referenced anywhere in the module (they are removed in S94 Slice 3).
+    import inspect
+
+    source = inspect.getsource(permissions)
+    assert "has_any_permission" not in source
+    assert "has_all_permissions" not in source
+
+    # Only the entitlement-port hooks remain and are still importable.
+    assert hasattr(permissions, "require_feature")
+    assert hasattr(permissions, "check_usage_limit")

@@ -96,10 +96,12 @@ class TestS27NoRegression:
     harness `RATELIMIT_ENABLED: False` toggle still disables the limiter.
     """
 
-    def test_existing_per_route_overrides_unchanged(self):
-        """Auth routes carry 5000/minute (looser brute-force tolerance) and
-        the events webhook keeps 100/minute (tighter). Both are independent
-        of the global default lift in S27.
+    def test_auth_routes_carry_beta_appropriate_limits(self):
+        """S90 G5/D4 — the auth routes were tightened from the effectively
+        unbounded ``5000 per minute`` to beta anti-abuse caps (owner-approved
+        'Moderate' posture). The events webhook keeps its tighter 100/minute.
+        These are the security-sensitive numbers that must not silently drift
+        back up.
         """
         here = os.path.dirname(os.path.abspath(__file__))
         backend = os.path.dirname(os.path.dirname(os.path.dirname(here)))
@@ -107,9 +109,33 @@ class TestS27NoRegression:
         auth_path = os.path.join(backend, "vbwd", "routes", "auth.py")
         with open(auth_path) as handle:
             auth_source = handle.read()
+
+        # Each security-sensitive auth route + its approved per-minute cap.
+        expected = {
+            "register": "15 per minute",
+            "login": "30 per minute",
+            "check_email": "60 per minute",
+            "forgot_password": "10 per minute",
+            "reset_password": "10 per minute",
+        }
+        for func_name, limit in expected.items():
+            block = re.search(
+                r"@limiter\.limit\(\"(?P<limit>[^\"]+)\"\)\s*\n"
+                r"def " + func_name + r"\(\)",
+                auth_source,
+            )
+            assert (
+                block is not None
+            ), f"POST/GET /{func_name} must stay decorated with @limiter.limit(...)."
+            assert block.group("limit") == limit, (
+                f"/{func_name} must keep its beta cap {limit!r}, "
+                f"found {block.group('limit')!r}."
+            )
+
+        # No route may regress to the old unbounded 5000/minute value.
         assert (
-            '@limiter.limit("5000 per minute")' in auth_source
-        ), "auth routes must keep their 5000/minute override (brute-force tolerance)."
+            "5000 per minute" not in auth_source
+        ), "auth routes must NOT carry the old unbounded 5000/minute override."
 
         events_path = os.path.join(backend, "vbwd", "routes", "events.py")
         with open(events_path) as handle:

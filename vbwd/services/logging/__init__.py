@@ -11,13 +11,14 @@ Both write JSON-lines through the manager (never their own ``open()``), so they
 inherit confinement, the append policy, permissions, and the single var-root,
 and both apply a :func:`redact` pass so secrets never reach disk (Security #6).
 """
-from .config import LoggingConfig
+from .config import LoggingConfig, parse_log_level
 from .redaction import redact
 from .router import VbwdLogRouter
 from .subscriber import EventLogSubscriber
 
 __all__ = [
     "LoggingConfig",
+    "parse_log_level",
     "VbwdLogRouter",
     "EventLogSubscriber",
     "redact",

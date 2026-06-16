@@ -32,8 +32,8 @@ class User(BaseModel):
     # (so ``user.role == UserRole.ADMIN`` still holds) while the underlying
     # column is a plain ``VARCHAR`` the FK can target. The canonical slugs live
     # in the ``vbwd_user_role`` lookup table (see ``user_role.py``); the FK
-    # enforces referential integrity at the database level. (The plural
-    # ``vbwd_user_roles`` is the unrelated RBAC user-role join table.)
+    # enforces referential integrity at the database level. (The
+    # ``vbwd_user_admin_role`` table is the unrelated RBAC admin-role join.)
     role = db.Column(
         db.Enum(
             UserRole,
@@ -63,12 +63,6 @@ class User(BaseModel):
     # via that table's ondelete="CASCADE" FK at the database level.
     invoices = db.relationship(
         "UserInvoice",
-        backref="user",
-        lazy="dynamic",
-        cascade="all, delete-orphan",
-    )
-    cases = db.relationship(
-        "UserCase",
         backref="user",
         lazy="dynamic",
         cascade="all, delete-orphan",

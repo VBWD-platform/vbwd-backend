@@ -7,6 +7,12 @@ services:
       - "5000:5000"
     environment:
       - FLASK_ENV=${FLASK_ENV:-development}
+      # Gunicorn worker timeout. The S48.1 load-shedding default (30s) is too
+      # low for synchronous LLM endpoints (cms-ai generate, bot replies, S97/S98)
+      # which legitimately take 30-60s+ — a request exceeding it is SIGKILLed →
+      # nginx 502 → e.g. an article generates no body. nginx already allows 300s
+      # on /api/v1/plugins/cms-ai/; match it here. Override per deployment.
+      - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-secret-key-change-in-production}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
       - DATABASE_URL=${DATABASE_URL:-postgresql://vbwd:vbwd@postgres:5432/vbwd}

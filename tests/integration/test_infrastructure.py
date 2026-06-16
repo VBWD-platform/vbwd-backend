@@ -77,7 +77,6 @@ class TestDockerInfrastructure:
             "vbwd_tax",
             "vbwd_user",
             "vbwd_tax_rate",
-            "vbwd_user_case",
             "vbwd_user_details",
             "vbwd_user_invoice",
         ]

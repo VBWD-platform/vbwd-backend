@@ -6,11 +6,12 @@ into a real reference table — ``vbwd_user_role`` — so the ``role`` column ca
 be a plain ``VARCHAR`` foreign key with database-level referential integrity,
 instead of a native Postgres ``ENUM`` type.
 
-NOTE on the table name: the RBAC subsystem already owns the *plural*
-``vbwd_user_roles`` table — that is the user-to-RBAC-role many-to-many JOIN
-(``vbwd.models.role.user_roles``), an entirely different concept. This lookup
-of canonical ``UserRole`` values is therefore the *singular* ``vbwd_user_role``
-to avoid colliding with that long-lived join table and its data/migrations.
+NOTE on the table name: the RBAC subsystem already owns the
+``vbwd_user_admin_role`` table — that is the user-to-admin-role many-to-many
+JOIN (``vbwd.models.role.user_roles``), an entirely different concept. This
+lookup of canonical ``UserRole`` values is therefore the *singular*
+``vbwd_user_role`` to avoid colliding with that long-lived join table and its
+data/migrations.
 
 The model is named ``RoleDefinition`` to avoid colliding with the ``UserRole``
 *enum* (which remains the parse/comparison vocabulary the application uses).

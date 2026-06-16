@@ -66,7 +66,6 @@ class UserDetails(BaseModel):
         server_default=AccountType.PRIVATE.value,
     )
     config = db.Column(JSONB, default=dict)  # User preferences: language, theme, etc.
-    balance = db.Column(db.Numeric(10, 2), default=0.00, nullable=False)
 
     @property
     def full_name(self) -> str:
@@ -103,7 +102,6 @@ class UserDetails(BaseModel):
             "tax_number": self.tax_number,
             "account_type": self.account_type or AccountType.PRIVATE.value,
             "config": self.config or {},
-            "balance": float(self.balance) if self.balance is not None else 0.00,
         }
 
     def __repr__(self) -> str:

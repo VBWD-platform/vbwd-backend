@@ -33,6 +33,7 @@ def _install_unified_logging(app: Flask, container) -> None:
             EventLogSubscriber,
             LoggingConfig,
             VbwdLogRouter,
+            parse_log_level,
         )
 
         filesystem_manager = container.filesystem_manager()
@@ -45,7 +46,15 @@ def _install_unified_logging(app: Flask, container) -> None:
         backups = int(
             app.config.get("LOG_BACKUPS", os.getenv("VBWD_LOG_BACKUPS", "") or 5)
         )
-        logging_config = LoggingConfig(max_bytes=max_bytes, backups=backups)
+        # S90 G2 — single app-log verbosity switch. Prod sets
+        # VBWD_LOG_LEVEL=warning so the info stream stops growing; unset/info
+        # is identical to the original behaviour.
+        min_level = parse_log_level(
+            app.config.get("LOG_LEVEL", os.getenv("VBWD_LOG_LEVEL"))
+        )
+        logging_config = LoggingConfig(
+            max_bytes=max_bytes, backups=backups, min_level=min_level
+        )
 
         router = VbwdLogRouter(
             filesystem_manager=filesystem_manager, config=logging_config
@@ -542,6 +551,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     from vbwd.cli.seed_payment_methods import seed_payment_methods_command
     from vbwd.cli.seed import seed_command
     from vbwd.cli.data_exchange import data_exchange_group
+    from vbwd.cli.prod_readiness import prod_readiness_command
 
     app.cli.add_command(seed_test_data_command)
     app.cli.add_command(cleanup_test_data_command)
@@ -553,5 +563,6 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(seed_payment_methods_command)
     app.cli.add_command(seed_command)
     app.cli.add_command(data_exchange_group)
+    app.cli.add_command(prod_readiness_command)
 
     return app

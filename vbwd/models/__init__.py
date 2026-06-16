@@ -2,14 +2,20 @@
 from vbwd.models.user import User
 from vbwd.models.user_role import RoleDefinition
 from vbwd.models.user_details import UserDetails
-from vbwd.models.user_case import UserCase
 from vbwd.models.currency import Currency
 from vbwd.models.tax import Tax, TaxRate
 from vbwd.models.invoice import UserInvoice
 from vbwd.models.invoice_line_item import InvoiceLineItem
 from vbwd.models.password_reset_token import PasswordResetToken
-from vbwd.models.role import Role, Permission, role_permissions, user_roles
+from vbwd.models.role import (
+    AdminRole,
+    Role,
+    Permission,
+    role_permissions,
+    user_roles,
+)
 from vbwd.models.user_access_level import (
+    AccessLevel,
     UserAccessLevel,
     user_access_level_permissions,
     user_user_access_levels,
@@ -35,7 +41,6 @@ from vbwd.models.enums import (
     SubscriptionStatus,
     InvoiceStatus,
     BillingPeriod,
-    UserCaseStatus,
     PurchaseStatus,
     LineItemType,
     TokenTransactionType,
@@ -46,13 +51,13 @@ __all__ = [
     "User",
     "RoleDefinition",
     "UserDetails",
-    "UserCase",
     "Currency",
     "Tax",
     "TaxRate",
     "UserInvoice",
     "InvoiceLineItem",
     "PasswordResetToken",
+    "AdminRole",
     "Role",
     "Permission",
     "FeatureUsage",
@@ -72,6 +77,7 @@ __all__ = [
     "CustomFieldDef",
     "CustomFieldValue",
     "LlmConnection",
+    "AccessLevel",
     "UserAccessLevel",
     "UserGroup",
     # Association tables
@@ -86,7 +92,6 @@ __all__ = [
     "SubscriptionStatus",
     "InvoiceStatus",
     "BillingPeriod",
-    "UserCaseStatus",
     "PurchaseStatus",
     "LineItemType",
     "TokenTransactionType",
