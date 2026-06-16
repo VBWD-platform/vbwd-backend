@@ -120,6 +120,12 @@ class Config:
     CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
     CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "120"))
 
+    # Rate limiting. Default ON (prod enforces the per-route @limiter caps);
+    # the local/integration-test API server sets RATELIMIT_ENABLED=false so the
+    # many fixture logins don't trip the beta auth caps (S90 G5). Unit tests set
+    # their own value via the app fixture's config dict.
+    RATELIMIT_ENABLED = os.getenv("RATELIMIT_ENABLED", "true").lower() == "true"
+
     # Security
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
     JWT_EXPIRATION_HOURS = int(

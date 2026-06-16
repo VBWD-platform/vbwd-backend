@@ -7,6 +7,11 @@ services:
       - "5000:5000"
     environment:
       - FLASK_ENV=${FLASK_ENV:-development}
+      # Local/integration-test server: don't enforce the prod auth rate caps
+      # (S90 G5) — the integration suite does many fixture logins against this
+      # live API and would otherwise hit 429. Prod uses a different compose and
+      # leaves this unset (defaults ON). Override here if you want to test limits.
+      - RATELIMIT_ENABLED=${RATELIMIT_ENABLED:-false}
       # Gunicorn worker timeout. The S48.1 load-shedding default (30s) is too
       # low for synchronous LLM endpoints (cms-ai generate, bot replies, S97/S98)
       # which legitimately take 30-60s+ — a request exceeding it is SIGKILLed →

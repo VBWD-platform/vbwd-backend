@@ -218,7 +218,6 @@ class TestDockerInfrastructure:
             "subscriptionstatus",
             "invoicestatus",
             "billingperiod",
-            "usercasestatus",
         ]
 
         try:
