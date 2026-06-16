@@ -200,10 +200,59 @@ class BaseModelExchanger(EntityExchanger):
                 yield row
 
     def _row_stream(self) -> Iterable[Any]:
+        """Stream every row in bounded-memory pages, surviving session teardown.
+
+        The HTTP NDJSON export drives this lazily under ``stream_with_context``,
+        so iteration continues *after* the view has returned. A server-side
+        ``yield_per`` cursor is bound to the session connection and is
+        invalidated the moment the app-context teardown runs ``session.remove()``
+        (or the connection is otherwise reset) mid-stream — psycopg2 then raises
+        "named cursor isn't valid anymore" and the stream truncates silently at a
+        chunk boundary (the S89 load-test finding: bookings 0 rows, plans/products
+        partial, smaller tables whole). Keyset pagination avoids that: each page
+        is an independent ``ORDER BY id ... LIMIT`` query that completes before we
+        yield, so no long-lived cursor spans the stream and a session reset
+        between pages is harmless. Memory stays bounded to one page.
+
+        Falls back to the repository's ``iter_rows``/``find_all`` for fakes and
+        repos without a real SQLAlchemy session + ``id``-keyed model (unit tests).
+        """
+        if self._supports_keyset_paging():
+            return self._keyset_paged_rows(EXPORT_CHUNK_SIZE)
         iter_rows = getattr(self._repository, "iter_rows", None)
         if callable(iter_rows):
             return iter_rows(EXPORT_CHUNK_SIZE)
         return self._repository.find_all()
+
+    def _supports_keyset_paging(self) -> bool:
+        """True when this exchanger can page by a real, ordered ``id`` column.
+
+        Requires a SQLAlchemy session (``query``) and a class-level ``id``
+        attribute on the model (every ``BaseModel`` has a UUID PK). In-memory
+        fakes have neither, so they keep the legacy ``iter_rows``/``find_all``
+        path.
+        """
+        return hasattr(self._session, "query") and hasattr(self._model_class, "id")
+
+    def _keyset_paged_rows(self, page_size: int) -> Iterator[Any]:
+        """Yield every row, paging by ascending primary key (keyset pagination).
+
+        Each page is a fresh, self-contained query (``WHERE id > :last ORDER BY
+        id LIMIT page_size``), so it never holds an open server-side cursor
+        across a yield. Peak memory is one page of rows.
+        """
+        order_column = getattr(self._model_class, "id")
+        last_id = None
+        while True:
+            query = self._session.query(self._model_class).order_by(order_column)
+            if last_id is not None:
+                query = query.filter(order_column > last_id)
+            page = query.limit(page_size).all()
+            if not page:
+                return
+            for row in page:
+                yield row
+            last_id = page[-1].id
 
     def _row_selected(self, row: Any, wanted: set) -> bool:
         """A row matches when its primary id OR its natural key is requested.

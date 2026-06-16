@@ -189,10 +189,29 @@ def _export_ndjson(exchanger, key: str, selector, *, include_pii: bool):
         return jsonify({"error": str(exc)}), ROW_CAP_STATUS
 
     def generate():
+        emitted = 0
         if first_line:
             yield first_line
-        for line in line_stream:
-            yield line
+        try:
+            for line in line_stream:
+                emitted += 1
+                yield line
+        except Exception:
+            # The stream runs lazily under stream_with_context, after the 200
+            # status + header are already on the wire, so we cannot turn a
+            # mid-stream failure into a 4xx/5xx. We MUST NOT swallow it into a
+            # clean, short body either (that is the silent-truncation bug): log
+            # it loudly with context and re-raise so the WSGI server aborts the
+            # transfer instead of emitting a well-formed but truncated download.
+            from flask import current_app
+
+            current_app.logger.exception(
+                "NDJSON export stream for '%s' failed after %d row line(s); "
+                "aborting the transfer (no silent truncation)",
+                key,
+                emitted,
+            )
+            raise
 
     response = Response(stream_with_context(generate()), mimetype=NDJSON_MIMETYPE)
     response.headers["Content-Disposition"] = f"attachment; filename=vbwd-{key}.ndjson"

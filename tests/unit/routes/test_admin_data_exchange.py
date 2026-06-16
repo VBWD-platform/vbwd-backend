@@ -519,6 +519,55 @@ def test_export_ndjson_streams_header_then_rows(mock_repo, mock_auth, client):
 
 @patch("vbwd.middleware.auth.AuthService")
 @patch("vbwd.middleware.auth.UserRepository")
+def test_export_ndjson_mid_stream_error_is_not_silently_truncated(
+    mock_repo, mock_auth, client
+):
+    """A mid-stream failure must NOT come back as a clean, short 200 body.
+
+    Reproduces the S89 load-test finding: ``iter_export`` (a lazy ``yield_per``
+    DB iterator driven under ``stream_with_context``) raised after emitting some
+    rows, but the generator swallowed it, so the client got 200 OK with a
+    truncated body and no signal that data was lost. The streaming generator
+    must instead fail loudly — propagate the error out of the response so the
+    transfer is aborted, never finish a clean partial download.
+    """
+
+    class _MidStreamFailExchanger(EntityExchanger):
+        entity_key = "widgets"
+        label = "Widgets"
+        cluster = "sales"
+        natural_key = "code"
+        supports_export = True
+        supports_import = False
+        supported_formats = frozenset({"json", "ndjson"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):  # pragma: no cover - unused
+            return Envelope(entity_key="widgets", rows=[])
+
+        def iter_export(self, selector, *, chunk_size, include_pii):
+            yield [{"code": "a"}, {"code": "b"}]
+            raise RuntimeError("boom mid-stream (server-side cursor died)")
+
+        def import_(self, payload, *, mode, dry_run):  # pragma: no cover - unused
+            raise UnsupportedOperationError("export-only")
+
+    data_exchange_registry.register(_MidStreamFailExchanger())
+    _mock_auth(mock_repo, mock_auth, _superadmin())
+    with pytest.raises(RuntimeError, match="boom mid-stream"):
+        response = client.post(
+            "/api/v1/admin/data-exchange/widgets/export",
+            headers=_headers(),
+            json={"all": True, "format": "ndjson"},
+        )
+        # Force the lazy stream to drain — the error must surface here, never as
+        # a silently truncated 200 body.
+        response.get_data()
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
 def test_import_ndjson_upload_streams_rows(mock_repo, mock_auth, client):
     _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
     ndjson = (
