@@ -147,3 +147,43 @@ def test_allowlists_are_exported_from_production_module():
     # Every entry carries a non-empty justification string.
     assert all(bool(reason) for reason in PUBLIC_ALLOWLIST.values())
     assert all(bool(reason) for reason in PUBLIC_MUTATION_ALLOWLIST.values())
+
+
+def test_route_namespace_groups_by_plugin_area():
+    """The namespace helper isolates a route's owning plugin/area."""
+    from vbwd.security.route_audit import _route_namespace
+
+    assert _route_namespace("/api/v1/cms/embed-manifest") == "api/v1/cms"
+    assert _route_namespace("/api/v1/cms/pages/<path:slug>") == "api/v1/cms"
+    assert (
+        _route_namespace("/api/v1/plugins/conekta/webhooks") == "api/v1/plugins/conekta"
+    )
+
+
+def test_stale_check_tolerates_unloaded_plugins_but_still_catches_rot():
+    """A subset-of-plugins boot (e.g. the core ``Tests`` CI installs an active
+    set without the regional payment plugins) must NOT flag the allow-list
+    entries of plugins it didn't load — that is configuration, not rot. But a
+    route removed from a namespace that IS loaded is still genuinely stale.
+    """
+    from flask import Flask
+
+    # A bare app whose only live route sits in the ``api/v1/cms`` namespace:
+    # cms is "loaded" (the namespace has a live sibling) but embed-manifest is
+    # absent, while every regional-payment namespace is entirely absent.
+    app = Flask(__name__)
+    live_bp = Blueprint("cms_namespace_probe", __name__)
+
+    @live_bp.route("/api/v1/cms/pages", methods=["GET"])
+    def _cms_pages():  # pragma: no cover - introspected only
+        return jsonify({"ok": True})
+
+    app.register_blueprint(live_bp)
+
+    stale = find_stale_allowlist_entries(app)
+
+    # A loaded namespace missing a specific allow-listed route → flagged (rot).
+    assert "PUBLIC_ALLOWLIST: /api/v1/cms/embed-manifest" in stale
+    # An entirely-unloaded plugin's entry → skipped, not reported as rot.
+    assert not any("conekta" in entry for entry in stale)
+    assert not any("loopai-adapter" in entry for entry in stale)

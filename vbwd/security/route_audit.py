@@ -337,21 +337,51 @@ def describe_offender(route: RouteAudit) -> str:
     return f"{route.methods_label} {route.path}  (no @require_auth / not allow-listed)"
 
 
+def _route_namespace(path: str) -> str:
+    """The plugin/area namespace a route path belongs to.
+
+    ``/api/v1/plugins/<name>/...`` → ``api/v1/plugins/<name>`` and
+    ``/api/v1/<area>/...`` → ``api/v1/<area>``. Used to tell "this route was
+    removed/renamed" (its namespace still has live siblings) apart from "the
+    plugin that owns it simply isn't loaded in this configuration".
+    """
+    parts = [segment for segment in path.split("/") if segment]
+    if len(parts) >= 4 and parts[2] == "plugins":
+        return "/".join(parts[:4])
+    if len(parts) >= 3:
+        return "/".join(parts[:3])
+    return "/".join(parts)
+
+
 def find_stale_allowlist_entries(app: Flask) -> List[str]:
     """Return allow-list entries that no longer match a live rule on ``app``.
 
     Keeps the allow-lists from rotting: a removed/renamed public route forces a
     reviewed cleanup instead of lingering as a phantom exemption.
+
+    The allow-lists are the central registry for EVERY public route across all
+    plugins, but a given app may boot only a subset (e.g. the core ``Tests`` CI
+    installs an active set without the regional payment plugins). An entry whose
+    owning namespace is entirely absent from the live url_map belongs to a
+    plugin that isn't loaded here — that is not rot, so it is skipped. An entry
+    whose namespace IS live but whose specific route is gone is genuinely stale
+    and still reported, so removing/renaming a public route on a loaded plugin
+    is caught.
     """
     live_paths = {route.path for route in audit_routes(app)}
+    live_namespaces = {_route_namespace(path) for path in live_paths}
+
+    def _is_stale(path: str) -> bool:
+        return path not in live_paths and _route_namespace(path) in live_namespaces
+
     stale = [
         f"PUBLIC_ALLOWLIST: {path}"
         for path in sorted(PUBLIC_ALLOWLIST)
-        if path not in live_paths
+        if _is_stale(path)
     ]
     stale += [
         f"PUBLIC_MUTATION_ALLOWLIST: {path}"
         for path in sorted(PUBLIC_MUTATION_ALLOWLIST)
-        if path not in live_paths
+        if _is_stale(path)
     ]
     return stale
