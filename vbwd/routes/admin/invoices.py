@@ -8,6 +8,7 @@ from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.repositories.invoice_repository import InvoiceRepository
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.services.invoice_service import InvoiceService
+from vbwd.services.core_settings_store import get_default_currency
 from vbwd.events.payment_events import PaymentCapturedEvent, PaymentRefundedEvent
 from vbwd.utils.datetime_utils import utcnow
 from vbwd.extensions import db
@@ -235,7 +236,7 @@ def mark_paid(invoice_id):
         invoice_id=UUID(str(result.invoice.id)),
         payment_reference=payment_reference,
         amount=str(result.invoice.amount),
-        currency=result.invoice.currency or "USD",
+        currency=result.invoice.currency or get_default_currency(),
     )
     dispatcher = current_app.container.event_dispatcher()
     dispatcher.emit(event)

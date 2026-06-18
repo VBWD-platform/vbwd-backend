@@ -2,16 +2,26 @@
 from flask import Blueprint, request, jsonify, current_app
 from uuid import UUID
 from vbwd.events.payment_events import PaymentCapturedEvent
+from vbwd.middleware.auth import require_auth, require_permission
+from vbwd.services.core_settings_store import get_default_currency
 
 webhooks_bp = Blueprint("webhooks", __name__, url_prefix="/api/v1/webhooks")
 
 
 @webhooks_bp.route("/payment", methods=["POST"])
+@require_auth
+@require_permission("invoices.manage")
 def payment_webhook():
     """
-    Handle payment webhook from payment providers.
+    Manually mark an invoice as paid (admin-only).
 
-    Also used by admin to manually mark invoices as paid.
+    Despite the legacy "webhook" name this core endpoint is NOT a public
+    provider webhook — real payment providers post to their own
+    signature-validated plugin webhooks (stripe/paypal/yookassa/...). This
+    route is only the admin "manually mark invoice as paid" tool, so it is
+    gated behind authentication + the ``invoices.manage`` permission (S90
+    DoD #7 / G5: it previously took no auth and no signature, letting anyone
+    forge a paid event).
 
     Request body:
         {
@@ -35,7 +45,7 @@ def payment_webhook():
     invoice_id = data.get("invoice_id")
     payment_reference = data.get("payment_reference")
     amount = data.get("amount")
-    currency = data.get("currency", "USD")
+    currency = data.get("currency") or get_default_currency()
 
     # Validate required fields
     if not invoice_id:

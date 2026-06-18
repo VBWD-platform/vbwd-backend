@@ -65,9 +65,13 @@ class TestRateLimitingConfiguration:
         with open(auth_path) as handle:
             source = handle.read()
         # locate the login route + assert a @limiter.limit decorator is on it.
+        # The argument may now be a callable (``lambda: get_auth_rate_limit(...)``)
+        # whose inner call carries its own parens, so match non-greedily up to
+        # the decorated def rather than a single paren-free group.
         login_block = re.search(
-            r"(@limiter\.limit\([^\)]+\)\s*\n)+\s*def login\(\)",
+            r"@limiter\.limit\(.+?\)\s*\ndef login\(\)",
             source,
+            re.DOTALL,
         )
         assert (
             login_block is not None
@@ -81,8 +85,9 @@ class TestRateLimitingConfiguration:
         with open(auth_path) as handle:
             source = handle.read()
         register_block = re.search(
-            r"(@limiter\.limit\([^\)]+\)\s*\n)+\s*def register\(\)",
+            r"@limiter\.limit\(.+?\)\s*\ndef register\(\)",
             source,
+            re.DOTALL,
         )
         assert (
             register_block is not None
@@ -102,15 +107,18 @@ class TestS27NoRegression:
         'Moderate' posture). The events webhook keeps its tighter 100/minute.
         These are the security-sensitive numbers that must not silently drift
         back up.
+
+        The per-route caps are now externalised into the core rate-limits store
+        (``${VBWD_VAR_DIR}/core/rate_limits.json`` with compiled defaults), so
+        the contract lives in the store's values rather than in source-literal
+        decorators. We still guard that each function carries a
+        ``@limiter.limit(...)`` (now a callable into the store) and that the old
+        unbounded value cannot creep back in.
         """
-        here = os.path.dirname(os.path.abspath(__file__))
-        backend = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+        from vbwd.services.core_rate_limits_store import get_auth_rate_limit
 
-        auth_path = os.path.join(backend, "vbwd", "routes", "auth.py")
-        with open(auth_path) as handle:
-            auth_source = handle.read()
-
-        # Each security-sensitive auth route + its approved per-minute cap.
+        # Each security-sensitive auth route + its approved per-minute cap. The
+        # store values are the single source of truth for the caps.
         expected = {
             "register": "15 per minute",
             "login": "30 per minute",
@@ -119,18 +127,30 @@ class TestS27NoRegression:
             "reset_password": "10 per minute",
         }
         for func_name, limit in expected.items():
+            assert get_auth_rate_limit(func_name) == limit, (
+                f"/{func_name} must keep its beta cap {limit!r}, "
+                f"found {get_auth_rate_limit(func_name)!r}."
+            )
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        backend = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+
+        auth_path = os.path.join(backend, "vbwd", "routes", "auth.py")
+        with open(auth_path) as handle:
+            auth_source = handle.read()
+
+        # Each function must still carry a @limiter.limit(...) decorator
+        # (presence guard) — now in the callable form reading the store, whose
+        # inner call carries its own parens (matched non-greedily up to the def).
+        for func_name in expected:
             block = re.search(
-                r"@limiter\.limit\(\"(?P<limit>[^\"]+)\"\)\s*\n"
-                r"def " + func_name + r"\(\)",
+                r"@limiter\.limit\(.+?\)\s*\ndef " + func_name + r"\(\)",
                 auth_source,
+                re.DOTALL,
             )
             assert (
                 block is not None
             ), f"POST/GET /{func_name} must stay decorated with @limiter.limit(...)."
-            assert block.group("limit") == limit, (
-                f"/{func_name} must keep its beta cap {limit!r}, "
-                f"found {block.group('limit')!r}."
-            )
 
         # No route may regress to the old unbounded 5000/minute value.
         assert (

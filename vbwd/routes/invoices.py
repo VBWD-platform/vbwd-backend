@@ -5,6 +5,7 @@ from decimal import Decimal
 from flask import Blueprint, Response, current_app, g, jsonify
 
 from vbwd.middleware.auth import require_auth
+from vbwd.services.core_settings_store import get_default_currency
 
 invoices_bp = Blueprint("invoices", __name__, url_prefix="/api/v1/user/invoices")
 
@@ -91,7 +92,7 @@ def _build_customer_party(user) -> dict:
 
 def _build_invoice_pdf_context(invoice, user) -> dict:
     """Shape the invoice into the flat dict the template expects."""
-    currency = invoice.currency or "EUR"
+    currency = invoice.currency or get_default_currency()
     line_items = []
     for item in getattr(invoice, "line_items", []) or []:
         unit_price = getattr(item, "unit_price", None) or getattr(item, "amount", None)

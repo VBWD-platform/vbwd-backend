@@ -11,6 +11,7 @@ from vbwd.events.security_events import (
     PasswordResetRequestEvent,
     PasswordResetExecuteEvent,
 )
+from vbwd.services.core_rate_limits_store import get_auth_rate_limit
 
 # Create blueprint
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
@@ -22,7 +23,7 @@ auth_response_schema = AuthResponseSchema()
 
 
 @auth_bp.route("/register", methods=["POST"])
-@limiter.limit("15 per minute")
+@limiter.limit(lambda: get_auth_rate_limit("register"))
 def register():
     """Register a new user.
 
@@ -64,7 +65,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
-@limiter.limit("30 per minute")
+@limiter.limit(lambda: get_auth_rate_limit("login"))
 def login():
     """Login a user.
 
@@ -119,7 +120,7 @@ def logout():
 
 
 @auth_bp.route("/check-email", methods=["GET"])
-@limiter.limit("60 per minute")
+@limiter.limit(lambda: get_auth_rate_limit("check_email"))
 def check_email():
     """Check if an email address is already registered.
 
@@ -144,7 +145,7 @@ def check_email():
 
 
 @auth_bp.route("/forgot-password", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(lambda: get_auth_rate_limit("forgot_password"))
 def forgot_password():
     """
     Request password reset.
@@ -188,7 +189,7 @@ def forgot_password():
 
 
 @auth_bp.route("/reset-password", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(lambda: get_auth_rate_limit("reset_password"))
 def reset_password():
     """
     Execute password reset with token.

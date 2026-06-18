@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g, current_app
 from marshmallow import ValidationError
 from uuid import UUID
 from vbwd.middleware.auth import require_auth
+from vbwd.services.core_settings_store import get_default_currency
 from vbwd.schemas.user_schemas import (
     UserSchema,
     UserDetailsSchema,
@@ -303,7 +304,7 @@ def pay_invoice(invoice_id):
         invoice_id=UUID(invoice_id) if isinstance(invoice_id, str) else invoice_id,
         payment_reference=f"user-payment-{invoice_id[:8]}",
         amount=str(invoice.amount),
-        currency=invoice.currency or "USD",
+        currency=invoice.currency or get_default_currency(),
     )
 
     dispatcher = container.event_dispatcher()

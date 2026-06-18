@@ -217,6 +217,18 @@ def get_core_settings() -> Dict[str, Any]:
     return {**DEFAULT_CORE_SETTINGS, **file_values}
 
 
+def get_default_currency() -> str:
+    """Return the configured operating (billing) currency code.
+
+    The single accessor every runtime path uses to resolve the billing
+    currency, so callers depend on this abstraction rather than the raw
+    settings dict key (Dependency Inversion). Falls back to the schema
+    default (``DEFAULT_CORE_SETTINGS["default_currency"]``) — the one
+    allowed currency literal lives there, never at the call site.
+    """
+    return get_core_settings()["default_currency"]
+
+
 def update_core_settings(partial: Dict[str, Any]) -> Dict[str, Any]:
     """Merge ``partial`` (known keys only) into the stored settings and persist.
 

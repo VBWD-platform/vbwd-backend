@@ -239,7 +239,10 @@ PUBLIC_MUTATION_ALLOWLIST: Dict[str, str] = {
     "/api/v1/auth/forgot-password": "Password-reset request must be reachable pre-auth.",
     "/api/v1/auth/reset-password": "Password reset consumes a one-time token (the capability).",
     # --- Payment provider webhooks (signature-validated in handler, G5) ---
-    "/api/v1/webhooks/payment": "Core payment webhook; authenticity is provider-signature based (G5 follow-up).",
+    # The core /api/v1/webhooks/payment "manually mark invoice paid" tool is now
+    # @require_auth + @require_permission("invoices.manage") (S90 DoD #7 / G5), so
+    # the oracle classifies it as authorisation-gated — it is intentionally NOT
+    # allow-listed here. Only the static reachability probe stays public.
     "/api/v1/webhooks/payment/test": "Reachability probe; returns a static ok, no state change.",
     "/api/v1/plugins/paypal/webhook": "PayPal provider webhook; verified by PayPal signature in handler.",
     "/api/v1/plugins/stripe/webhook": "Stripe provider webhook; verified by Stripe signature in handler.",
