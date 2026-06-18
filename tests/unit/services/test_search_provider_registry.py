@@ -26,15 +26,27 @@ class _FakeProvider:
 
 def _hit(entity_type, key, title):
     return SearchHit(
-        entity_type=entity_type, entity_label=entity_type.title(),
-        key=key, title=title, snippet="s", url=f"/{entity_type}/{key}",
+        entity_type=entity_type,
+        entity_label=entity_type.title(),
+        key=key,
+        title=title,
+        snippet="s",
+        url=f"/{entity_type}/{key}",
     )
 
 
 def test_register_and_search_aggregates_across_providers():
     registry = SearchProviderRegistry()
-    registry.register(_FakeProvider("shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")]))
-    registry.register(_FakeProvider("booking_resource", "Booking", [_hit("booking_resource", "room", "Yoga Room")]))
+    registry.register(
+        _FakeProvider("shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")])
+    )
+    registry.register(
+        _FakeProvider(
+            "booking_resource",
+            "Booking",
+            [_hit("booking_resource", "room", "Yoga Room")],
+        )
+    )
 
     hits = registry.search("yoga")
 
@@ -44,8 +56,16 @@ def test_register_and_search_aggregates_across_providers():
 
 def test_entity_types_filter_restricts_providers():
     registry = SearchProviderRegistry()
-    registry.register(_FakeProvider("shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")]))
-    registry.register(_FakeProvider("booking_resource", "Booking", [_hit("booking_resource", "room", "Yoga Room")]))
+    registry.register(
+        _FakeProvider("shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")])
+    )
+    registry.register(
+        _FakeProvider(
+            "booking_resource",
+            "Booking",
+            [_hit("booking_resource", "room", "Yoga Room")],
+        )
+    )
 
     hits = registry.search("yoga", entity_types=["shop_product"])
 
@@ -54,7 +74,9 @@ def test_entity_types_filter_restricts_providers():
 
 def test_blank_query_returns_no_hits():
     registry = SearchProviderRegistry()
-    registry.register(_FakeProvider("shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")]))
+    registry.register(
+        _FakeProvider("shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")])
+    )
     assert registry.search("") == []
     assert registry.search("   ") == []
 
@@ -62,7 +84,13 @@ def test_blank_query_returns_no_hits():
 def test_failing_provider_is_skipped_not_fatal():
     registry = SearchProviderRegistry()
     registry.register(_FakeProvider("shop_product", "Shop", raises=True))
-    registry.register(_FakeProvider("booking_resource", "Booking", [_hit("booking_resource", "room", "Yoga Room")]))
+    registry.register(
+        _FakeProvider(
+            "booking_resource",
+            "Booking",
+            [_hit("booking_resource", "room", "Yoga Room")],
+        )
+    )
 
     hits = registry.search("yoga")
 
@@ -78,7 +106,9 @@ def test_gdpr_entities_cannot_be_registered(blocked):
 
 
 def test_get_detail_resolves_by_key():
-    provider = _FakeProvider("shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")])
+    provider = _FakeProvider(
+        "shop_product", "Shop", [_hit("shop_product", "mat", "Yoga Mat")]
+    )
     registry = SearchProviderRegistry()
     registry.register(provider)
     detail = registry.get("shop_product").get_detail("mat")

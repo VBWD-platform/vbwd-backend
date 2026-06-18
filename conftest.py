@@ -57,7 +57,23 @@ def _dispose_sqlalchemy_engines():
     transaction" keeps table locks, which later deadlocks another test's
     ``db.drop_all()`` (``DROP TABLE`` blocks on the lock forever). Then dispose
     the engines so their pooled connections return to the server.
+
+    Also reset the global Flask-Limiter window BEFORE each test. The limiter is a
+    process-wide singleton backed by a shared (Redis) store that ``init_app``
+    does not swap for the test config's ``memory://``, so per-route windows like
+    ``/auth/login`` ("30 per minute") otherwise accumulate across every test in
+    the run (and across runs, since the store is never flushed) until later
+    logins 429. A clean window per test makes the suite deterministic; the
+    dedicated rate-limit specs are self-contained within one test, so they are
+    unaffected.
     """
+    try:
+        from vbwd.extensions import limiter
+
+        limiter.reset()
+    except Exception:
+        # Best-effort: a limiter that cannot reset must never fail a test.
+        pass
     yield
     try:
         from vbwd.extensions import db

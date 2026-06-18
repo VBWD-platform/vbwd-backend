@@ -46,7 +46,11 @@ def isolated_settings(tmp_path, monkeypatch, app):
     with app.app_context():
         for code, (name, symbol, rate) in catalog.items():
             existing = db.session.query(Currency).filter_by(code=code).first()
-            if not existing:
+            if existing:
+                # Reset to the canonical rate: the catalog is shared across the
+                # suite, so a prior test (or rebase) may have left it drifted.
+                existing.exchange_rate = rate
+            else:
                 db.session.add(
                     Currency(
                         id=uuid4(),

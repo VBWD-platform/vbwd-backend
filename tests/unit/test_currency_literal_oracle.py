@@ -42,9 +42,7 @@ _CURRENCY_CODES = r"USD|EUR|GBP|RUB|THB|MXN|KRW|JPY|CHF"
 _OFFENDER_PATTERNS = [
     re.compile(rf"""\bor\s+["']({_CURRENCY_CODES})["']"""),
     re.compile(rf"""(?<![:\w])currency\s*=\s*["']({_CURRENCY_CODES})["']"""),
-    re.compile(
-        rf"""\.get\(\s*["']currency["']\s*,\s*["']({_CURRENCY_CODES})["']"""
-    ),
+    re.compile(rf"""\.get\(\s*["']currency["']\s*,\s*["']({_CURRENCY_CODES})["']"""),
 ]
 
 _CORE_ROOT = Path(__file__).resolve().parents[2] / "vbwd"
@@ -72,7 +70,11 @@ def _offences() -> List[Tuple[str, int, str]]:
             for pattern in _OFFENDER_PATTERNS:
                 if pattern.search(line):
                     offences.append(
-                        (str(path.relative_to(_CORE_ROOT.parent)), line_number, line.strip())
+                        (
+                            str(path.relative_to(_CORE_ROOT.parent)),
+                            line_number,
+                            line.strip(),
+                        )
                     )
                     break
     return offences

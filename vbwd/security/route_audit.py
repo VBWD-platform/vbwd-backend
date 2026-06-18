@@ -208,6 +208,7 @@ PUBLIC_ALLOWLIST: Dict[str, str] = {
     "/api/v1/messaging/stream": "SSE stream; auth'd by a verified stream_token query param (EventSource: no headers).",
     # --- Public CMS reads (the public website) ----------------------------
     "/api/v1/cms/categories": "Public CMS category listing for the website.",
+    "/api/v1/cms/embed-manifest": "Public mobile validation probe before pointing a WebView at the CMS archive (S91).",
     "/api/v1/cms/layouts/<layout_id>": "Public CMS layout for page rendering.",
     "/api/v1/cms/layouts/by-slug/<slug>": "Public CMS layout by slug for page rendering.",
     "/api/v1/cms/pages": "Public published-CMS-pages listing for the website.",
