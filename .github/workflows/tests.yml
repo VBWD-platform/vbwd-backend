@@ -230,6 +230,13 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
           REDIS_URL: redis://localhost:6379/0
           DATABASE_URL: postgresql://vbwd:vbwd@localhost:5432/vbwd_test
+          # The app defaults VBWD_VAR_DIR to the container path /app/var, which
+          # the bare ubuntu-latest runner cannot create/write (PermissionError:
+          # '/app'). Point it at a writable workspace dir so the config-currency
+          # projection + reset-demo seeding (which persist under VBWD_VAR_DIR)
+          # work here the same as in the Docker gate.
+          VBWD_VAR_DIR: ${{ github.workspace }}/var
         run: |
+          mkdir -p "${{ github.workspace }}/var"
           pytest tests/integration/ -v --tb=short \
             --ignore=tests/integration/test_infrastructure.py
