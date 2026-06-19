@@ -218,6 +218,21 @@ jobs:
               || { echo "::error::Failed to clone plugin ${dir_name} (repo vbwd-plugin-${suffix})"; exit 1; }
           done
 
+      - name: Create plugins.json
+        # Enable every cloned plugin at runtime so their on_enable hooks fire —
+        # registering catalog seeders, the CMS backfill, etc. Without this the
+        # integration app boots with no plugins enabled and DemoSeeder.run()
+        # seeds 0 rows (test_reset_demo_end_to_end). Mirrors the unit job.
+        run: |
+          python3 -c "
+          import json, os
+          plugins = {}
+          for d in os.listdir('plugins'):
+              if os.path.isfile(os.path.join('plugins', d, '__init__.py')):
+                  plugins[d] = {'enabled': True, 'version': '1.0.0', 'source': 'local'}
+          json.dump({'plugins': plugins}, open('plugins/plugins.json', 'w'))
+          "
+
       - name: Run database migrations
         env:
           PYTHONPATH: ${{ github.workspace }}
