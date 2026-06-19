@@ -35,6 +35,8 @@ from vbwd.models.entity_tag import EntityTag
 from vbwd.models.custom_field_def import CustomFieldDef
 from vbwd.models.custom_field_value import CustomFieldValue
 from vbwd.models.llm_connection import LlmConnection
+from vbwd.models.webhook_subscription import WebhookSubscription
+from vbwd.models.webhook_delivery import WebhookDelivery
 from vbwd.models.enums import (
     UserStatus,
     UserRole,
@@ -77,6 +79,8 @@ __all__ = [
     "CustomFieldDef",
     "CustomFieldValue",
     "LlmConnection",
+    "WebhookSubscription",
+    "WebhookDelivery",
     "AccessLevel",
     "UserAccessLevel",
     "UserGroup",

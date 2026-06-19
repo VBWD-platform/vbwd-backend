@@ -11,6 +11,7 @@ from vbwd.routes.admin.tax import admin_tax_bp
 from vbwd.routes.admin.currency import admin_currencies_bp
 from vbwd.routes.admin.llm_connections import admin_llm_connections_bp
 from vbwd.routes.admin.user_groups import admin_user_groups_bp
+from vbwd.routes.admin.webhooks import admin_webhooks_bp
 
 __all__ = [
     "admin_users_bp",
@@ -25,4 +26,5 @@ __all__ = [
     "admin_currencies_bp",
     "admin_llm_connections_bp",
     "admin_user_groups_bp",
+    "admin_webhooks_bp",
 ]

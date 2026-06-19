@@ -208,6 +208,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         admin_currencies_bp,
         admin_llm_connections_bp,
         admin_user_groups_bp,
+        admin_webhooks_bp,
     )
     from vbwd.routes.admin.access import access_bp as admin_access_bp
     from vbwd.routes.admin.tags_custom_fields import (
@@ -239,6 +240,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(admin_currencies_bp)
     csrf.exempt(admin_llm_connections_bp)
     csrf.exempt(admin_user_groups_bp)
+    csrf.exempt(admin_webhooks_bp)
     csrf.exempt(admin_access_bp)
     csrf.exempt(admin_tags_custom_fields_bp)
     csrf.exempt(data_exchange_bp)
@@ -318,6 +320,18 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     with app.app_context():
         _install_unified_logging(app, container)
 
+    # Wire the agnostic outbound-webhook relay: seed the subscribable
+    # event-type catalog, then subscribe a single wildcard callback to the bus
+    # so EVERY published event enqueues pending deliveries for the matching
+    # subscriptions. The relay swallows + logs its own failures so a webhook
+    # never breaks event emission. No plugin is named here.
+    from vbwd.events.bus import event_bus as _outbound_event_bus
+    from vbwd.webhooks.event_types import seed_core_webhook_event_types
+    from vbwd.webhooks.relay import register_outbound_webhook_relay
+
+    seed_core_webhook_event_types()
+    register_outbound_webhook_relay(app, _outbound_event_bus)
+
     # Initialize plugin system
     from vbwd.plugins.manager import PluginManager
     from vbwd.plugins.json_config_store import JsonFilePluginConfigStore
@@ -388,6 +402,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_currencies_bp)
     app.register_blueprint(admin_llm_connections_bp)
     app.register_blueprint(admin_user_groups_bp)
+    app.register_blueprint(admin_webhooks_bp)
     app.register_blueprint(admin_access_bp)
     app.register_blueprint(admin_tags_custom_fields_bp)
     app.register_blueprint(api_keys_bp)
@@ -564,5 +579,23 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.cli.add_command(seed_command)
     app.cli.add_command(data_exchange_group)
     app.cli.add_command(prod_readiness_command)
+
+    from vbwd.cli.webhooks import webhooks_cli
+
+    app.cli.add_command(webhooks_cli)
+
+    # Start the outbound-webhook delivery scheduler — but NEVER under pytest.
+    # Each test builds its own app; an unguarded scheduler would spin up a
+    # background thread per test and fire real HTTP. Guarded exactly like the
+    # booking/subscription schedulers.
+    if not app.config.get("TESTING"):
+        try:
+            from vbwd.webhooks.relay import start_webhook_delivery_scheduler
+
+            start_webhook_delivery_scheduler(app)
+        except Exception as scheduler_error:  # noqa: BLE001 — boot must survive
+            logger.warning(
+                "[webhook] Failed to start delivery scheduler: %s", scheduler_error
+            )
 
     return app
