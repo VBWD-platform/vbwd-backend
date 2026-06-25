@@ -122,6 +122,60 @@ class PayoutProvider(ABC):
         pass
 
 
+@dataclass
+class ChargeResult:
+    """Result of an off-session recurring charge attempt (S103.0).
+
+    ``success=True`` means the provider charged the saved method AND captured
+    the invoice (it emits ``payment.captured`` itself, exactly like its webhook
+    path), so the existing activation flow runs — the caller does nothing more.
+    ``success=False`` (with ``error``) means a declined / insufficient charge:
+    nothing was captured and the caller decides how to react (the subscription
+    plugin cancels the trial). Liskov: implementers signal failure with this
+    flag, never by leaking a provider-specific exception.
+    """
+
+    success: bool
+    provider_reference: str = ""
+    transaction_id: str = ""
+    error: str = ""
+
+
+class RecurringChargeProvider(ABC):
+    """
+    Opt-in off-session recurring-charge capability for payment plugins (S103.0).
+
+    Core only defines this contract and never calls it — the subscription
+    plugin discovers implementers via ``PluginManager.get_enabled_plugins()``
+    + ``isinstance`` (mirroring the ``PayoutProvider`` pattern and withdraw's
+    injected resolver). Narrow port (ISP): exactly the one method below. A
+    provider opts in by additionally inheriting this ABC, e.g.
+    ``class TokenPaymentPlugin(PaymentProviderPlugin, RecurringChargeProvider)``.
+    """
+
+    @abstractmethod
+    def charge_saved_method(self, *, user_id: UUID, invoice: Any) -> ChargeResult:
+        """
+        Charge the user's saved method off-session for one invoice.
+
+        Used at trial-end / renewal to re-charge the method the user selected
+        at checkout, without a fresh interactive session. On success the
+        provider captures the invoice (emits ``payment.captured``) so the
+        existing line-item activation runs; on a declined / insufficient
+        charge it captures nothing.
+
+        Args:
+            user_id: The invoice owner whose saved method is charged
+            invoice: The (already-persisted, PENDING) invoice to charge,
+                carrying the amount / currency / line items
+
+        Returns:
+            ChargeResult — ``success=True`` after capture, or
+            ``success=False`` with ``error`` on a declined charge.
+        """
+        pass
+
+
 class PaymentProviderPlugin(BasePlugin):
     """
     Abstract base class for payment provider plugins.
