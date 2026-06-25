@@ -27,7 +27,7 @@ MOVED_MODEL_MODULES = [
 
 # Peer plugins that must reach subscription data via ports/registries, never by
 # importing the (now plugin-owned) model classes from the old core path.
-PEER_PLUGIN_DIRS = ["stripe", "paypal", "yookassa", "taro", "analytics", "ghrm"]
+PEER_PLUGIN_DIRS = ["stripe", "paypal", "yookassa", "tarot", "analytics", "ghrm"]
 
 
 # ── Modules core must NOT contain (deleted in S1/S4) ─────────────────────────

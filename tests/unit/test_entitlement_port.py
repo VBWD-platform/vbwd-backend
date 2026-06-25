@@ -74,7 +74,7 @@ def test_default_provider_feature_value_and_plan_name():
     from vbwd.services.entitlement import _DefaultEntitlementProvider
 
     provider = _DefaultEntitlementProvider()
-    assert provider.get_feature_value("u", "daily_taro_limit", 3) == 3
+    assert provider.get_feature_value("u", "daily_tarot_limit", 3) == 3
     assert provider.current_plan_name("u") is None
 
 

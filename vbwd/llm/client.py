@@ -4,7 +4,7 @@ The client is bound to a single resolved connection (model + adapter + the
 per-connection defaults). It exposes the two call shapes every consumer needs:
 
 * :meth:`generate` — structured JSON (cms-ai / the s98 bot);
-* :meth:`chat` — plain text (chat / taro).
+* :meth:`chat` — plain text (chat / tarot).
 
 On a successful call it invokes the injected ``on_success`` callback so the
 service layer can stamp the connection's ``last_active_at`` without the client

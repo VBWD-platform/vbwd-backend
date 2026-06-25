@@ -209,6 +209,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         admin_llm_connections_bp,
         admin_user_groups_bp,
         admin_webhooks_bp,
+        admin_logs_bp,
     )
     from vbwd.routes.admin.access import access_bp as admin_access_bp
     from vbwd.routes.admin.tags_custom_fields import (
@@ -241,6 +242,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(admin_llm_connections_bp)
     csrf.exempt(admin_user_groups_bp)
     csrf.exempt(admin_webhooks_bp)
+    csrf.exempt(admin_logs_bp)
     csrf.exempt(admin_access_bp)
     csrf.exempt(admin_tags_custom_fields_bp)
     csrf.exempt(data_exchange_bp)
@@ -403,6 +405,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_llm_connections_bp)
     app.register_blueprint(admin_user_groups_bp)
     app.register_blueprint(admin_webhooks_bp)
+    app.register_blueprint(admin_logs_bp)
     app.register_blueprint(admin_access_bp)
     app.register_blueprint(admin_tags_custom_fields_bp)
     app.register_blueprint(api_keys_bp)

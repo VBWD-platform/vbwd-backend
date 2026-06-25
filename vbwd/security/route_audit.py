@@ -203,7 +203,7 @@ PUBLIC_ALLOWLIST: Dict[str, str] = {
     "/api/v1/ghrm/packages/by-plan/<plan_id>": "Public GHRM package lookup by plan id.",
     "/api/v1/ghrm/widgets": "Public GHRM storefront widgets.",
     "/api/v1/loopai-adapter/posts": "Public published-post listing for the LoopAI WP adapter.",
-    "/api/v1/taro/assets/arcana/<path:filename>": "Public static tarot-card image assets.",
+    "/api/v1/tarot/assets/arcana/<path:filename>": "Public static tarot-card image assets.",
     "/api/v1/bot-conversation-style/active": "Public active chat-bot conversation style for the widget.",
     "/api/v1/messaging/stream": "SSE stream; auth'd by a verified stream_token query param (EventSource: no headers).",
     # --- Public CMS reads (the public website) ----------------------------

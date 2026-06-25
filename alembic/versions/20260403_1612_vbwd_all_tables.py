@@ -277,7 +277,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_shop_warehouse_slug'), 'shop_warehouse', ['slug'], unique=True)
-    op.create_table('taro_session',
+    op.create_table('tarot_session',
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('status', sa.String(length=50), nullable=False),
     sa.Column('started_at', sa.DateTime(), nullable=False),
@@ -293,10 +293,10 @@ def upgrade() -> None:
     sa.Column('version', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_taro_session_expires_at'), 'taro_session', ['expires_at'], unique=False)
-    op.create_index(op.f('ix_taro_session_spread_id'), 'taro_session', ['spread_id'], unique=False)
-    op.create_index(op.f('ix_taro_session_status'), 'taro_session', ['status'], unique=False)
-    op.create_index(op.f('ix_taro_session_user_id'), 'taro_session', ['user_id'], unique=False)
+    op.create_index(op.f('ix_tarot_session_expires_at'), 'tarot_session', ['expires_at'], unique=False)
+    op.create_index(op.f('ix_tarot_session_spread_id'), 'tarot_session', ['spread_id'], unique=False)
+    op.create_index(op.f('ix_tarot_session_status'), 'tarot_session', ['status'], unique=False)
+    op.create_index(op.f('ix_tarot_session_user_id'), 'tarot_session', ['user_id'], unique=False)
     op.create_table('vbwd_addon',
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('slug', sa.String(length=255), nullable=False),
@@ -693,7 +693,7 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_shop_product_variant_product_id'), 'shop_product_variant', ['product_id'], unique=False)
     op.create_index(op.f('ix_shop_product_variant_sku'), 'shop_product_variant', ['sku'], unique=True)
-    op.create_table('taro_card_draw',
+    op.create_table('tarot_card_draw',
     sa.Column('session_id', sa.UUID(), nullable=False),
     sa.Column('arcana_id', sa.UUID(), nullable=False),
     sa.Column('position', sa.String(length=50), nullable=False),
@@ -706,9 +706,9 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['arcana_id'], ['arcana.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_taro_card_draw_arcana_id'), 'taro_card_draw', ['arcana_id'], unique=False)
-    op.create_index(op.f('ix_taro_card_draw_position'), 'taro_card_draw', ['position'], unique=False)
-    op.create_index(op.f('ix_taro_card_draw_session_id'), 'taro_card_draw', ['session_id'], unique=False)
+    op.create_index(op.f('ix_tarot_card_draw_arcana_id'), 'tarot_card_draw', ['arcana_id'], unique=False)
+    op.create_index(op.f('ix_tarot_card_draw_position'), 'tarot_card_draw', ['position'], unique=False)
+    op.create_index(op.f('ix_tarot_card_draw_session_id'), 'tarot_card_draw', ['session_id'], unique=False)
     op.create_table('vbwd_feature_usage',
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('feature_name', sa.String(length=100), nullable=False),
@@ -1441,10 +1441,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_vbwd_feature_usage_period_start'), table_name='vbwd_feature_usage')
     op.drop_index(op.f('ix_vbwd_feature_usage_feature_name'), table_name='vbwd_feature_usage')
     op.drop_table('vbwd_feature_usage')
-    op.drop_index(op.f('ix_taro_card_draw_session_id'), table_name='taro_card_draw')
-    op.drop_index(op.f('ix_taro_card_draw_position'), table_name='taro_card_draw')
-    op.drop_index(op.f('ix_taro_card_draw_arcana_id'), table_name='taro_card_draw')
-    op.drop_table('taro_card_draw')
+    op.drop_index(op.f('ix_tarot_card_draw_session_id'), table_name='tarot_card_draw')
+    op.drop_index(op.f('ix_tarot_card_draw_position'), table_name='tarot_card_draw')
+    op.drop_index(op.f('ix_tarot_card_draw_arcana_id'), table_name='tarot_card_draw')
+    op.drop_table('tarot_card_draw')
     op.drop_index(op.f('ix_shop_product_variant_sku'), table_name='shop_product_variant')
     op.drop_index(op.f('ix_shop_product_variant_product_id'), table_name='shop_product_variant')
     op.drop_table('shop_product_variant')
@@ -1507,11 +1507,11 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_vbwd_addon_slug'), table_name='vbwd_addon')
     op.drop_index(op.f('ix_vbwd_addon_is_active'), table_name='vbwd_addon')
     op.drop_table('vbwd_addon')
-    op.drop_index(op.f('ix_taro_session_user_id'), table_name='taro_session')
-    op.drop_index(op.f('ix_taro_session_status'), table_name='taro_session')
-    op.drop_index(op.f('ix_taro_session_spread_id'), table_name='taro_session')
-    op.drop_index(op.f('ix_taro_session_expires_at'), table_name='taro_session')
-    op.drop_table('taro_session')
+    op.drop_index(op.f('ix_tarot_session_user_id'), table_name='tarot_session')
+    op.drop_index(op.f('ix_tarot_session_status'), table_name='tarot_session')
+    op.drop_index(op.f('ix_tarot_session_spread_id'), table_name='tarot_session')
+    op.drop_index(op.f('ix_tarot_session_expires_at'), table_name='tarot_session')
+    op.drop_table('tarot_session')
     op.drop_index(op.f('ix_shop_warehouse_slug'), table_name='shop_warehouse')
     op.drop_table('shop_warehouse')
     op.drop_index(op.f('ix_shop_product_category_slug'), table_name='shop_product_category')

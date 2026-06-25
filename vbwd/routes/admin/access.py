@@ -63,6 +63,11 @@ CORE_PERMISSIONS = [
         "label": "Manage LLM connections",
         "group": "LLM Connections",
     },
+    {
+        "key": "logs.read",
+        "label": "Read system logs",
+        "group": "Observability",
+    },
 ]
 
 # User-facing permission for self-service API-key management. Seeded into the

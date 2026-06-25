@@ -30,7 +30,7 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    make demo-data       Install demo plans, users, invoices"
-	@echo "    make taro-populate   Populate 78 Tarot arcana cards"
+	@echo "    make tarot-populate   Populate 78 Tarot arcana cards"
 	@echo ""
 	@echo "  Users"
 	@echo "    make create-admin    email=x@x.com password=Secret123!"
@@ -90,8 +90,8 @@ secrets:
 demo-data:
 	$(DC) exec $(BACKEND) python /app/bin/install_demo_data.py
 
-taro-populate:
-	$(DC) exec $(BACKEND) python /app/plugins/taro/src/bin/populate_arcanas.py
+tarot-populate:
+	$(DC) exec $(BACKEND) python /app/plugins/tarot/src/bin/populate_arcanas.py
 
 # ── Users ─────────────────────────────────────────────────────────────────────
 
@@ -110,4 +110,4 @@ shell-python:
 	$(DC) exec $(BACKEND) python
 
 .PHONY: help up down restart ps logs logs-backend migrate shell-db \
-        demo-data taro-populate create-admin create-user shell shell-python
+        demo-data tarot-populate create-admin create-user shell shell-python

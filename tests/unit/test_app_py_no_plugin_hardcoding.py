@@ -30,7 +30,7 @@ KNOWN_PLUGINS = [
     "toss_payments",
     "promptpay",
     "subscription",
-    "taro",
+    "tarot",
     "meinchat",
     "chat",
     "shop",

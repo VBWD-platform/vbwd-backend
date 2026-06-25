@@ -36,7 +36,7 @@ jobs:
           - shop
           - stripe
           - subscription
-          - taro
+          - tarot
           - token_payment
 
     services:
@@ -79,7 +79,7 @@ jobs:
           )
           declare -A DEPS=(
             [chat]="bot_base bot_telegram"
-            [taro]="bot_base bot_telegram subscription"
+            [tarot]="bot_base bot_telegram subscription"
             [ghrm]="subscription"
             [stripe]="subscription"
             [paypal]="subscription"
@@ -104,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [booking, cms, email, ghrm, taro]
+        plugin: [booking, cms, email, ghrm, tarot]
 
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +120,7 @@ jobs:
             [bot_base]=bot-base
             [bot_telegram]=bot-telegram
           )
-          BACKEND_PLUGINS="analytics booking bot_base bot_telegram chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
+          BACKEND_PLUGINS="analytics booking bot_base bot_telegram chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription tarot token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 -q \

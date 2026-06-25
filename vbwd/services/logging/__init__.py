@@ -12,6 +12,15 @@ inherit confinement, the append policy, permissions, and the single var-root,
 and both apply a :func:`redact` pass so secrets never reach disk (Security #6).
 """
 from .config import LoggingConfig, parse_log_level
+from .reader import (
+    LogQueryResult,
+    LogReaderConfig,
+    LogReaderService,
+    LogTailCursor,
+    decode_cursor,
+    encode_cursor,
+    parse_min_level,
+)
 from .redaction import redact
 from .router import VbwdLogRouter
 from .subscriber import EventLogSubscriber
@@ -22,4 +31,11 @@ __all__ = [
     "VbwdLogRouter",
     "EventLogSubscriber",
     "redact",
+    "LogReaderService",
+    "LogReaderConfig",
+    "LogQueryResult",
+    "LogTailCursor",
+    "decode_cursor",
+    "encode_cursor",
+    "parse_min_level",
 ]

@@ -52,7 +52,7 @@ Python/Flask REST API for the VBWD SaaS platform — subscription billing, user 
 - Dynamic Flask blueprint registration at enable time
 - DB-persisted enable/disable state, restored on startup
 - Plugins can register plan categories, payment SDK adapters, webhooks
-- Built-in plugins: Stripe, PayPal, YooKassa, analytics, Taro AI, chat
+- Built-in plugins: Stripe, PayPal, YooKassa, analytics, Tarot AI, chat
 
 ### Event-Driven Architecture
 - Domain events: `CheckoutRequestedEvent`, `PaymentCapturedEvent`, `PaymentFailedEvent`, `PaymentRefundedEvent`
@@ -315,7 +315,7 @@ docker compose exec api flask plugins info my-plugin
 | mailchimp | [vbwd-plugin-mailchimp](https://github.com/VBWD-platform/vbwd-plugin-mailchimp) | Mandrill/Mailchimp email sender backend |
 | paypal | [vbwd-plugin-paypal](https://github.com/VBWD-platform/vbwd-plugin-paypal) | PayPal payment SDK adapter and webhooks |
 | stripe | [vbwd-plugin-stripe](https://github.com/VBWD-platform/vbwd-plugin-stripe) | Stripe payment SDK adapter and webhooks |
-| taro | [vbwd-plugin-taro](https://github.com/VBWD-platform/vbwd-plugin-taro) | Tarot card reading with AI interpretations |
+| tarot | [vbwd-plugin-tarot](https://github.com/VBWD-platform/vbwd-plugin-tarot) | Tarot card reading with AI interpretations |
 | yookassa | [vbwd-plugin-yookassa](https://github.com/VBWD-platform/vbwd-plugin-yookassa) | YooKassa payment SDK adapter and auto-renewal |
 
 ---

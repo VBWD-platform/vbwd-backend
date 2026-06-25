@@ -98,7 +98,7 @@ jobs:
           declare -A REPO_OVERRIDES=(
             [token_payment]=token-payment
           )
-          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
+          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription tarot token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 \
@@ -209,7 +209,7 @@ jobs:
           declare -A REPO_OVERRIDES=(
             [token_payment]=token-payment
           )
-          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription taro token_payment"
+          BACKEND_PLUGINS="analytics booking chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription tarot token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 \

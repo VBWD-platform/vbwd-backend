@@ -39,7 +39,7 @@ ${VBWD_VAR_DIR}/logs/
 │   ├── warnings.log  WARNING
 │   ├── info.log      INFO
 │   └── events.log    every EventBus event (global audit trail)
-└── <plugin>/                   # cms, ghrm, email, booking, taro, …
+└── <plugin>/                   # cms, ghrm, email, booking, tarot, …
     ├── error.log     ERROR / CRITICAL from plugins.<plugin>.*
     └── events.log    events attributable to that plugin
 ```
@@ -195,16 +195,71 @@ best-effort too — the app starts even if logging can't initialise.
 - Namespace events (`plugins.<id>.…`) or set `_origin` if you want per-plugin `events.log`.
 
 **Don't**
-- ❌ `print(...)` for errors/diagnostics — it bypasses the structured logs (and redaction). Several legacy sites (e.g. `plugins/taro/...` `print(f"LLM error: {e}")`) should be `logger.exception(...)`.
+- ❌ `print(...)` for errors/diagnostics — it bypasses the structured logs (and redaction). Several legacy sites (e.g. `plugins/tarot/...` `print(f"LLM error: {e}")`) should be `logger.exception(...)`.
 - ❌ Add your own `FileHandler` / `RotatingFileHandler` / `logging.basicConfig(...)` / hardcoded log paths. That bypasses scope routing, redaction, rotation, and confinement. (The legacy `plugins/cms-ai` logger does this — slated to move onto the router in 58.6.)
 - ❌ `getLogger("literal-name")` — breaks scope derivation; use `__name__`.
 - ❌ Open files under `var/logs/` directly — go through the FilesystemManager `logs` namespace if you ever need raw access.
 
 ---
 
-## Reading the logs
+## Centralized read — the admin API (Sprint 106, S106)
 
-JSONL is `grep`/`jq`-friendly:
+In production the box is reachable only over **SFTP** (no shell), so you cannot
+`tail`/`grep` a log there. The `LogReaderService`
+(`vbwd/services/logging/reader.py`) is the read side of the layer: it parses,
+merges, time-orders, and filters the same on-disk JSON-lines back into a single
+newest-first view, exposed over an **admin API** (and an fe-admin **Logs** view).
+
+It is **scope-agnostic** — it discovers whatever scope directories exist under
+`logs/` and never names a plugin — and **capped** so a query can never scan an
+unbounded amount of disk; whatever it drops is surfaced (`truncated`,
+`bytes_scanned`), never silent.
+
+All endpoints require `@require_auth` + `@require_permission("logs.read")`:
+
+| endpoint | returns |
+|---|---|
+| `GET /api/v1/admin/logs/scopes` | `{scopes, streams}` — feeds the filter UI |
+| `GET /api/v1/admin/logs` | `{records, next_cursor, truncated, bytes_scanned, segments_scanned, malformed_skipped}` |
+| `GET /api/v1/admin/logs/download?scope=&stream=` | one stream as chronological `application/x-ndjson` |
+| `GET /api/v1/admin/logs/stream?scope=&stream=` | **SSE** live tail (`text/event-stream`) |
+
+Query params (all optional): `scope` (repeatable / comma-separated), `stream`,
+`level` (min floor), `minutes` (window) or `since`/`until` (epoch seconds;
+`since=0` = all history), `contains` (case-insensitive substring), `limit`,
+`cursor` (pass back `next_cursor` to page). Records are newest-first; the
+events stream (level-less audit) is never dropped by a `level` floor.
+
+Scope/stream are validated against the live directory listing, so an unknown or
+`../` value is a **400**, never a path escape.
+
+### SSE buffering — read this before debugging "the tail only updates on refresh"
+
+The `/stream` response sets `X-Accel-Buffering: no` + `Cache-Control: no-cache`,
+but a reverse proxy in front (e.g. the Hestia front nginx) can still buffer the
+event-stream. **`proxy_buffering off` must be set at every hop**, or the tail
+flushes only on disconnect. Diagnose with `curl -N <url>` — zero bytes until you
+^C means a hop is buffering.
+
+### Read caps — `var/core/logging.json` (ops override, optional)
+
+Code defaults are the fallback ([`LogReaderConfig`]); a host-mounted
+`${VBWD_VAR_DIR}/core/logging.json` overrides them without a rebuild:
+
+```json
+{
+  "max_lines_per_request": 1000,
+  "max_bytes_scanned": 26214400,
+  "default_window_minutes": 60,
+  "tail_backfill_lines": 50
+}
+```
+
+---
+
+## Reading the logs (raw, on-disk)
+
+If you do have shell/SFTP access, JSONL is `grep`/`jq`-friendly:
 
 ```bash
 # all cms errors, newest formatting
@@ -227,6 +282,8 @@ jq -c 'select(.scope!="core")' /app/var/logs/core/warnings.log
 | `vbwd/services/logging/subscriber.py` | `EventLogSubscriber` — mirrors EventBus publishes to `events.log` |
 | `vbwd/services/logging/redaction.py` | `redact()` — recursive secret masking |
 | `vbwd/services/logging/config.py` | `LoggingConfig` — allowlist, level band, rotation limits |
+| `vbwd/services/logging/reader.py` | `LogReaderService` — the centralized read side (parse/merge/filter/tail) |
+| `vbwd/routes/admin/logs.py` | `admin_logs_bp` — the `logs.read`-gated admin API |
 | `vbwd/app.py::_install_unified_logging` | TESTING-guarded boot wiring |
 
 All writes go through the FilesystemManager `logs` namespace
