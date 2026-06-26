@@ -33,6 +33,7 @@ def _install_unified_logging(app: Flask, container) -> None:
             EventLogSubscriber,
             LoggingConfig,
             VbwdLogRouter,
+            log_ship_dispatcher,
             parse_log_level,
         )
 
@@ -56,8 +57,13 @@ def _install_unified_logging(app: Flask, container) -> None:
             max_bytes=max_bytes, backups=backups, min_level=min_level
         )
 
+        # Phase 2 — feed every emitted record to the ship-out dispatcher. The
+        # hook is inert (zero cost) until a shipper plugin registers; the
+        # dispatcher buffers and a TESTING-guarded scheduler (below) drains it.
         router = VbwdLogRouter(
-            filesystem_manager=filesystem_manager, config=logging_config
+            filesystem_manager=filesystem_manager,
+            config=logging_config,
+            ship_hook=log_ship_dispatcher.enqueue,
         )
         root_logger = logging.getLogger()
         # Idempotent: never attach a second router on app re-creation.
@@ -599,6 +605,18 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         except Exception as scheduler_error:  # noqa: BLE001 — boot must survive
             logger.warning(
                 "[webhook] Failed to start delivery scheduler: %s", scheduler_error
+            )
+
+        # Phase 2 — start the log ship-out drain job (same TESTING guard). Inert
+        # until a shipper plugin registers; reads its cadence from
+        # var/core/logging.json (shipping block).
+        try:
+            from vbwd.services.logging import start_log_ship_scheduler
+
+            start_log_ship_scheduler(app)
+        except Exception as scheduler_error:  # noqa: BLE001 — boot must survive
+            logger.warning(
+                "[log-shipping] Failed to start ship scheduler: %s", scheduler_error
             )
 
     return app

@@ -257,6 +257,82 @@ Code defaults are the fallback ([`LogReaderConfig`]); a host-mounted
 
 ---
 
+## Ship-out to an external aggregator (Sprint 106, Phase 2)
+
+The same records can be **shipped** to an external log aggregator (Loki, Sentry,
+…) through an agnostic seam. Core names no vendor and **ships nothing by
+default** — with no shipper registered the whole mechanism is inert.
+
+**The seam** (`vbwd/services/logging/shipping/`):
+
+* `LogShipper` (port) — `name` + `ship(records) -> ShipResult`. A shipper gets a
+  batch of the same redacted record dicts and forwards them; it returns a result
+  rather than raising.
+* `log_shipper_registry` — module singleton plugins register a shipper into on
+  `on_enable` (unregister on `on_disable`), keyed by name.
+* `log_ship_dispatcher` — the router feeds every emitted record to it via a
+  `ship_hook` (a cheap, lock-guarded append into a bounded ring buffer; drops the
+  oldest + counts when full, so a burst never blocks the app or grows memory).
+  Inert until a shipper registers.
+* A TESTING-guarded background scheduler (mirroring the webhook delivery
+  scheduler) drains a batch each tick and fans it to every **ready** shipper,
+  with per-shipper **exponential backoff + auto-disable** so one failing backend
+  is isolated. When all shippers are backing off the batch is held (buffered) up
+  to capacity. **Shipping is best-effort — the on-disk logs are the durable
+  source of truth.**
+
+**Config** lives in the `shipping` block of `var/core/logging.json` (defaults in
+code):
+
+```json
+{
+  "shipping": {
+    "enabled": true,
+    "flush_interval_seconds": 10,
+    "max_batch": 500,
+    "buffer_capacity": 10000,
+    "min_level": "info",
+    "backoff_base_seconds": 30,
+    "backoff_cap_seconds": 21600,
+    "auto_disable_threshold": 5
+  }
+}
+```
+
+**Writing a shipper plugin** — register on enable, unregister on disable:
+
+```python
+from vbwd.services.logging.shipping import (
+    LogShipper, ShipResult, log_shipper_registry, log_ship_dispatcher,
+)
+
+class MyShipper(LogShipper):
+    @property
+    def name(self): return "myaggregator"
+    def ship(self, records):
+        try:
+            ...  # POST the batch
+            return ShipResult.success()
+        except Exception as e:
+            return ShipResult.failure(str(e))   # backoff, never raise
+
+# in the plugin:
+def on_enable(self):
+    log_shipper_registry.register(MyShipper())
+    log_ship_dispatcher.reset_shipper("myaggregator")
+def on_disable(self):
+    log_shipper_registry.unregister("myaggregator")
+```
+
+**The Loki shipper** (`plugins/log_shipper_loki/`) is the reference
+implementation: it groups records into Loki streams labelled by
+`app`/`scope`/`level`/`stream` (+ static `extra_labels`), each line the full
+JSON record, and POSTs to `<endpoint_url>/loki/api/v1/push` with optional
+basic-auth + `X-Scope-OrgID`. Off by default; set `endpoint_url` (+ credentials)
+in the plugin config.
+
+---
+
 ## Reading the logs (raw, on-disk)
 
 If you do have shell/SFTP access, JSONL is `grep`/`jq`-friendly:
@@ -284,6 +360,8 @@ jq -c 'select(.scope!="core")' /app/var/logs/core/warnings.log
 | `vbwd/services/logging/config.py` | `LoggingConfig` — allowlist, level band, rotation limits |
 | `vbwd/services/logging/reader.py` | `LogReaderService` — the centralized read side (parse/merge/filter/tail) |
 | `vbwd/routes/admin/logs.py` | `admin_logs_bp` — the `logs.read`-gated admin API |
+| `vbwd/services/logging/shipping/` | `LogShipper` port + registry + dispatcher/scheduler (ship-out seam) |
+| `plugins/log_shipper_loki/` | reference shipper plugin — pushes records to Grafana Loki |
 | `vbwd/app.py::_install_unified_logging` | TESTING-guarded boot wiring |
 
 All writes go through the FilesystemManager `logs` namespace

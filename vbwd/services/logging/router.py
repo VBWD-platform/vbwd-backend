@@ -14,7 +14,7 @@ import json
 import logging
 import sys
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from .config import (
     CORE_SCOPE,
@@ -78,10 +78,16 @@ class VbwdLogRouter(logging.Handler):
         filesystem_manager: Any,
         config: Optional[LoggingConfig] = None,
         level: int = logging.INFO,
+        ship_hook: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> None:
         super().__init__(level=level)
         self._filesystem_manager = filesystem_manager
         self._config = config or LoggingConfig()
+        # Optional Phase-2 ship-out hook: receives the redacted payload dict for
+        # every written record. Decoupled (injected, not imported) so the router
+        # stays testable and names no shipping machinery. Guarded at the call
+        # site — a ship-hook failure never affects the disk write.
+        self._ship_hook = ship_hook
 
     def _target(self, scope: str, stream: str) -> Tuple[str, str]:
         """Return the (json_scope, relative_path) for a (scope, stream).
@@ -94,7 +100,9 @@ class VbwdLogRouter(logging.Handler):
             return scope, f"{scope}/{stream}.log"
         return scope, f"{CORE_SCOPE}/{stream}.log"
 
-    def _build_line(self, record: logging.LogRecord, scope: str, stream: str) -> str:
+    def _build_payload(
+        self, record: logging.LogRecord, scope: str, stream: str
+    ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "ts": time.time(),
             "level": record.levelname,
@@ -106,11 +114,19 @@ class VbwdLogRouter(logging.Handler):
         extra = _extract_extra(record)
         if extra:
             payload.update(redact(extra))
-        return json.dumps(payload, ensure_ascii=False, default=str)
+        return payload
+
+    def _build_line(self, record: logging.LogRecord, scope: str, stream: str) -> str:
+        return json.dumps(
+            self._build_payload(record, scope, stream),
+            ensure_ascii=False,
+            default=str,
+        )
 
     def emit(self, record: logging.LogRecord) -> None:
         # Logging must NEVER crash the app: the whole emit is guarded; on any
         # failure we fall back to stderr and never raise out of emit().
+        payload: Optional[Dict[str, Any]] = None
         try:
             stream = derive_stream(record.levelno)
             if stream is None:
@@ -122,7 +138,8 @@ class VbwdLogRouter(logging.Handler):
                 return
             scope = derive_scope(record.name)
             json_scope, relative_path = self._target(scope, stream)
-            line = self._build_line(record, json_scope, stream)
+            payload = self._build_payload(record, json_scope, stream)
+            line = json.dumps(payload, ensure_ascii=False, default=str)
             self._filesystem_manager.append_with_rotation(
                 LOGS_NAMESPACE,
                 relative_path,
@@ -132,6 +149,14 @@ class VbwdLogRouter(logging.Handler):
             )
         except Exception:  # noqa: BLE001 — logging must never propagate
             self._fallback(record)
+        # Phase 2 — fan the redacted payload to the ship-out hook, INDEPENDENTLY
+        # of the disk write and fully guarded: a shipping failure must never
+        # break logging. Only ships records that passed the floor + were built.
+        if payload is not None and self._ship_hook is not None:
+            try:
+                self._ship_hook(payload)
+            except Exception:  # noqa: BLE001 — shipping must never propagate
+                pass
 
     @staticmethod
     def _fallback(record: logging.LogRecord) -> None:

@@ -65,6 +65,18 @@ def parse_min_level(value: Optional[str]) -> Optional[int]:
     return _LEVEL_NAME_TO_VALUE.get(str(value).strip().lower())
 
 
+def level_to_value(level_name: Optional[str]) -> Optional[int]:
+    """Map a record's ``level`` name (e.g. ``"ERROR"``) to its numeric value.
+
+    ``None`` for a missing / unknown level (e.g. the level-less events audit),
+    so callers can treat such records as "no level floor applies". Single home
+    for the name→value mapping, reused by the reader and the shipping floor.
+    """
+    if level_name is None:
+        return None
+    return _LEVEL_VALUE.get(str(level_name).upper())
+
+
 def encode_cursor(before_ts: float) -> str:
     """Opaque "records strictly older than this ts" pagination pointer."""
     raw = json.dumps({"before_ts": before_ts}).encode("utf-8")

@@ -23,6 +23,18 @@ from .reader import (
 )
 from .redaction import redact
 from .router import VbwdLogRouter
+from .shipping import (
+    LogShipDispatcher,
+    LogShipper,
+    LogShipperRegistry,
+    ShipResult,
+    ShippingConfig,
+    load_shipping_config,
+    log_ship_dispatcher,
+    log_shipper_registry,
+    run_log_ship_job,
+    start_log_ship_scheduler,
+)
 from .subscriber import EventLogSubscriber
 
 __all__ = [
@@ -38,4 +50,15 @@ __all__ = [
     "decode_cursor",
     "encode_cursor",
     "parse_min_level",
+    # Phase 2 — ship-out seam
+    "LogShipper",
+    "ShipResult",
+    "LogShipperRegistry",
+    "log_shipper_registry",
+    "LogShipDispatcher",
+    "ShippingConfig",
+    "load_shipping_config",
+    "log_ship_dispatcher",
+    "run_log_ship_job",
+    "start_log_ship_scheduler",
 ]
