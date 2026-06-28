@@ -19,6 +19,9 @@ celery[redis]==5.3.4
 # Scheduler (Sprint 4)
 APScheduler==3.10.4
 
+# Plugin version constraints (S108) — PEP 440 version + specifier parsing
+packaging==26.2
+
 # Authentication & Security (Sprint 2)
 PyJWT==2.8.0
 Flask-JWT-Extended==4.5.3

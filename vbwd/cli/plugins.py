@@ -3,11 +3,32 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 
+from vbwd.plugins.errors import PluginDependencyError
+
 
 @click.group("plugins")
 def plugins_cli():
     """Plugin management commands."""
     pass
+
+
+def _unmet_dependency_note(manager, plugin) -> str:
+    """Return a ' — needs <dep><spec> (have <ver>)' note for unmet deps, else ''."""
+    unmet = [
+        descriptor
+        for descriptor in manager.dependency_resolver.describe(
+            plugin, manager.get_plugin
+        )
+        if not descriptor["satisfied"]
+    ]
+    if not unmet:
+        return ""
+    notes = ", ".join(
+        f"needs {descriptor['name']}{descriptor['specifier']} "
+        f"(have {descriptor['installed_version'] or 'missing'})"
+        for descriptor in unmet
+    )
+    return f" — {notes}"
 
 
 @plugins_cli.command("list")
@@ -26,7 +47,9 @@ def list_plugins():
 
     for plugin in plugins:
         meta = plugin.metadata
-        click.echo(f"{meta.name} ({meta.version}) — {plugin.status.value.upper()}")
+        line = f"{meta.name} ({meta.version}) — {plugin.status.value.upper()}"
+        line += _unmet_dependency_note(manager, plugin)
+        click.echo(line)
 
 
 @plugins_cli.command("enable")
@@ -54,6 +77,10 @@ def enable_plugin(name):
             plugin._status = PluginStatus.INITIALIZED
         manager.enable_plugin(name)
         click.echo(f"Plugin '{name}' enabled.")
+    except PluginDependencyError as dependency_error:
+        # Distinct from a generic failure: print the version-specific reason
+        # and exit non-zero (ClickException writes "Error: ..." to stderr).
+        raise click.ClickException(str(dependency_error))
     except ValueError as e:
         click.echo(f"Error: {e}")
 

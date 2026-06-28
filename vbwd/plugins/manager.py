@@ -6,6 +6,8 @@ import pkgutil
 from typing import Dict, List, Optional
 from vbwd.plugins.base import BasePlugin, PluginStatus
 from vbwd.plugins.config_store import PluginConfigStore
+from vbwd.plugins.dependency_resolver import DependencyResolver
+from vbwd.plugins.errors import PluginDependencyError
 from vbwd.events.dispatcher import EventDispatcher, Event
 
 logger = logging.getLogger(__name__)
@@ -23,11 +25,18 @@ class PluginManager:
         event_dispatcher: Optional[EventDispatcher] = None,
         config_repo: Optional[PluginConfigStore] = None,
         category_service=None,
+        dependency_resolver: Optional[DependencyResolver] = None,
     ):
         self._plugins: Dict[str, BasePlugin] = {}
         self._event_dispatcher = event_dispatcher or EventDispatcher()
         self._config_repo = config_repo
         self._category_service = category_service
+        self._dependency_resolver = dependency_resolver or DependencyResolver()
+
+    @property
+    def dependency_resolver(self) -> DependencyResolver:
+        """Expose the dependency resolver (reused by routes/CLI for DRY)."""
+        return self._dependency_resolver
 
     @property
     def event_dispatcher(self) -> EventDispatcher:
@@ -110,27 +119,15 @@ class PluginManager:
         if not plugin:
             raise ValueError(f"Plugin '{name}' not found")
 
-        # Check dependencies
-        for dep in plugin.metadata.dependencies or []:
-            dep_plugin = self.get_plugin(dep)
-            if not dep_plugin or dep_plugin.status != PluginStatus.ENABLED:
-                raise ValueError(f"Dependency '{dep}' not enabled")
+        # Check dependencies (presence + ENABLED + version range).
+        # Raises PluginDependencyError (a ValueError subtype, so existing
+        # ``except ValueError`` callers are unaffected).
+        self._dependency_resolver.check(plugin, self.get_plugin)
 
         plugin.enable()
 
-        # Wire event handlers after on_enable() has run
-        try:
-            from vbwd.events.bus import event_bus
-
-            plugin.register_event_handlers(event_bus)
-
-            from vbwd.events.line_item_registry import line_item_registry
-
-            plugin.register_line_item_handlers(line_item_registry)
-        except Exception as e:
-            logger.warning(
-                f"Failed to register event handlers for plugin '{name}': {e}"
-            )
+        # Wire event + line-item handlers after on_enable() has run
+        self._wire_runtime_handlers(plugin)
 
         # Register plugin categories (idempotent)
         if self._category_service:
@@ -155,16 +152,61 @@ class PluginManager:
                         f"from plugin '{name}': {e}"
                     )
 
-        # Persist state
+        # Persist state (stamp the real metadata version, not a hardcoded pin)
         if self._config_repo:
             try:
-                self._config_repo.save(name, "enabled", plugin._config)
+                self._config_repo.save(
+                    name, "enabled", plugin._config, version=plugin.metadata.version
+                )
             except Exception as e:
                 logger.warning(f"Failed to persist enable state for '{name}': {e}")
 
         # Emit event
         event = Event(name="plugin.enabled", data={"plugin_name": name})
         self._event_dispatcher.dispatch(event)
+
+    def _wire_runtime_handlers(self, plugin: BasePlugin) -> None:
+        """Subscribe a freshly enabled plugin to the event bus + line items.
+
+        Shared by ``enable_plugin`` and ``load_persisted_state`` (DRY). A
+        plugin that is skipped at the dependency gate never reaches here, so
+        no handlers are wired for a half-enabled plugin.
+        """
+        name = plugin.metadata.name
+        try:
+            from vbwd.events.bus import event_bus
+
+            plugin.register_event_handlers(event_bus)
+
+            from vbwd.events.line_item_registry import line_item_registry
+
+            plugin.register_line_item_handlers(line_item_registry)
+        except Exception as handler_error:
+            logger.warning(
+                f"Failed to register event handlers for plugin '{name}': "
+                f"{handler_error}"
+            )
+
+    def _warn_on_version_drift(self, plugin: BasePlugin, entry) -> None:
+        """Log a WARNING when the persisted manifest pin != loaded code version.
+
+        Code metadata always wins; the manifest pin is an observability signal
+        only. No warning when the pin matches or is absent.
+        """
+        if entry is None:
+            return
+        pinned_version = getattr(entry, "version", None)
+        if not pinned_version:
+            return
+        loaded_version = plugin.metadata.version
+        if pinned_version != loaded_version:
+            logger.warning(
+                "Plugin '%s' manifest pins version %s but loaded code is %s; "
+                "code metadata wins",
+                plugin.metadata.name,
+                pinned_version,
+                loaded_version,
+            )
 
     # S25 — removed ``get_plugin_blueprints``: zero production callers.
     # ``vbwd/app.py`` iterates ``get_all_plugins()`` directly and calls
@@ -199,10 +241,12 @@ class PluginManager:
 
         plugin.disable()
 
-        # Persist state
+        # Persist state (stamp the real metadata version, not a hardcoded pin)
         if self._config_repo:
             try:
-                self._config_repo.save(name, "disabled", plugin._config)
+                self._config_repo.save(
+                    name, "disabled", plugin._config, version=plugin.metadata.version
+                )
             except Exception as e:
                 logger.warning(f"Failed to persist disable state for '{name}': {e}")
 
@@ -280,7 +324,14 @@ class PluginManager:
         return count
 
     def load_persisted_state(self) -> None:
-        """Load plugin enabled/disabled state from the database."""
+        """Load plugin enabled/disabled state from the persisted store.
+
+        Persisted-enabled plugins are topologically ordered (so a dependency
+        enables before its dependent regardless of stored order) and run the
+        same dependency gate as ``enable_plugin``. A plugin whose dependency is
+        missing/disabled or whose version is too old is logged as a WARNING and
+        left DISABLED — never half-wired.
+        """
         if not self._config_repo:
             return
 
@@ -290,40 +341,51 @@ class PluginManager:
             logger.warning(f"Failed to load persisted plugin state: {e}")
             return
 
+        entries_by_name: Dict[str, object] = {}
+        pending_plugins: List[BasePlugin] = []
         for config in enabled_configs:
             plugin = self.get_plugin(config.plugin_name)
             if not plugin:
                 logger.warning(
-                    f"Persisted plugin '{config.plugin_name}' not found in registry, skipping"
+                    f"Persisted plugin '{config.plugin_name}' not found in "
+                    f"registry, skipping"
+                )
+                continue
+            entries_by_name[config.plugin_name] = config
+            if plugin.status == PluginStatus.INITIALIZED:
+                pending_plugins.append(plugin)
+
+        for plugin_name in self._dependency_resolver.enable_order(pending_plugins):
+            plugin = self.get_plugin(plugin_name)
+            if not plugin:
+                continue
+            entry = entries_by_name.get(plugin_name)
+
+            try:
+                stored_config = getattr(entry, "config", None)
+                if stored_config:
+                    plugin.initialize(stored_config)
+            except Exception as init_error:
+                logger.warning(
+                    f"Failed to initialize plugin '{plugin_name}': {init_error}"
                 )
                 continue
 
-            if plugin.status == PluginStatus.INITIALIZED:
-                try:
-                    if config.config:
-                        plugin.initialize(config.config)
-                    plugin.enable()
+            self._warn_on_version_drift(plugin, entry)
 
-                    # Wire event handlers (same as enable_plugin)
-                    try:
-                        from vbwd.events.bus import event_bus
+            try:
+                self._dependency_resolver.check(plugin, self.get_plugin)
+            except PluginDependencyError as dependency_error:
+                logger.warning(
+                    "Skipping persisted plugin '%s': %s",
+                    plugin_name,
+                    dependency_error,
+                )
+                continue
 
-                        plugin.register_event_handlers(event_bus)
-
-                        from vbwd.events.line_item_registry import line_item_registry
-
-                        plugin.register_line_item_handlers(line_item_registry)
-                    except Exception as handler_err:
-                        logger.warning(
-                            "Failed to register event handlers for '%s': %s",
-                            config.plugin_name,
-                            handler_err,
-                        )
-
-                    logger.info(
-                        f"Restored enabled state for plugin '{config.plugin_name}'"
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to restore plugin '{config.plugin_name}': {e}"
-                    )
+            try:
+                plugin.enable()
+                self._wire_runtime_handlers(plugin)
+                logger.info(f"Restored enabled state for plugin '{plugin_name}'")
+            except Exception as e:
+                logger.warning(f"Failed to restore plugin '{plugin_name}': {e}")

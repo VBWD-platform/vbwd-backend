@@ -204,3 +204,45 @@ class TestJsonFilePluginConfigStore:
         store.save("demo", "enabled")
 
         assert os.path.exists(os.path.join(nested_dir, "plugins.json"))
+
+    def test_save_writes_passed_version(self, store, plugins_dir):
+        """save with a version stamps the passed value (not the 1.0.0 default)."""
+        self._write_plugins(
+            plugins_dir, {"demo": {"enabled": False, "version": "1.0.0"}}
+        )
+        self._write_config(plugins_dir, {})
+
+        store.save("demo", "enabled", version="26.7")
+
+        plugins = self._read_plugins(plugins_dir)
+        assert plugins["demo"]["version"] == "26.7"
+
+    def test_save_new_entry_stamps_version(self, store, plugins_dir):
+        """save creating a new entry stamps the passed version."""
+        self._write_plugins(plugins_dir, {})
+        self._write_config(plugins_dir, {})
+
+        store.save("new-plugin", "enabled", version="26.6")
+
+        plugins = self._read_plugins(plugins_dir)
+        assert plugins["new-plugin"]["version"] == "26.6"
+
+    def test_save_without_version_preserves_existing_pin(self, store, plugins_dir):
+        """A status-only save (version omitted) preserves the existing pin."""
+        self._write_plugins(
+            plugins_dir, {"demo": {"enabled": False, "version": "26.6"}}
+        )
+        self._write_config(plugins_dir, {})
+
+        store.save("demo", "enabled")
+
+        plugins = self._read_plugins(plugins_dir)
+        assert plugins["demo"]["version"] == "26.6"
+
+    def test_entries_expose_version(self, store, plugins_dir):
+        """get_by_name / get_enabled surface the persisted version pin."""
+        self._write_plugins(plugins_dir, {"demo": {"enabled": True, "version": "26.6"}})
+        self._write_config(plugins_dir, {})
+
+        assert store.get_by_name("demo").version == "26.6"
+        assert store.get_enabled()[0].version == "26.6"

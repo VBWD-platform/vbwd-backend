@@ -11,6 +11,9 @@ class PluginConfigEntry:
     plugin_name: str
     status: str  # "enabled" | "disabled"
     config: Dict = field(default_factory=dict)
+    # The version pinned in the persisted manifest (observability only — code
+    # metadata always wins). None when the store does not track a version.
+    version: Optional[str] = None
 
 
 class PluginConfigStore(ABC):
@@ -23,9 +26,17 @@ class PluginConfigStore(ABC):
 
     @abstractmethod
     def save(
-        self, plugin_name: str, status: str, config: Optional[dict] = None
+        self,
+        plugin_name: str,
+        status: str,
+        config: Optional[dict] = None,
+        version: Optional[str] = None,
     ) -> None:
-        """Save plugin status and optional config."""
+        """Save plugin status and optional config.
+
+        ``version`` (when provided) stamps the persisted manifest pin; when
+        omitted the existing pin is preserved.
+        """
         ...
 
     @abstractmethod

@@ -60,9 +60,19 @@ class PluginConfigRepository(PluginConfigStore):
         ]
 
     def save(
-        self, plugin_name: str, status: str, config: Optional[dict] = None
+        self,
+        plugin_name: str,
+        status: str,
+        config: Optional[dict] = None,
+        version: Optional[str] = None,
     ) -> None:
-        """Create or update plugin config entry."""
+        """Create or update plugin config entry.
+
+        ``version`` is accepted to honour the :class:`PluginConfigStore`
+        contract; the (deprecated) DB-backed model carries no version column,
+        so the stamp is not persisted here.
+        """
+        del version  # not persisted by the DB-backed store
         existing = (
             self._session.query(PluginConfig)
             .filter(PluginConfig.plugin_name == plugin_name)

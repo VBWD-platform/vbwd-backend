@@ -39,7 +39,7 @@ class MockConfigStore(PluginConfigStore):
             if s == "enabled"
         ]
 
-    def save(self, plugin_name, status, config=None):
+    def save(self, plugin_name, status, config=None, version=None):
         self._plugins[plugin_name] = status
         if config is not None:
             self._configs[plugin_name] = config
@@ -82,7 +82,9 @@ class TestPluginManagerPersistence:
 
         manager.enable_plugin("test")
 
-        config_repo.save.assert_called_once_with("test", "enabled", plugin._config)
+        config_repo.save.assert_called_once_with(
+            "test", "enabled", plugin._config, version="1.0.0"
+        )
 
     def test_disable_persists_to_repo(self, config_repo):
         """disable_plugin calls config_repo.save with 'disabled'."""
@@ -95,7 +97,9 @@ class TestPluginManagerPersistence:
 
         manager.disable_plugin("test")
 
-        config_repo.save.assert_called_once_with("test", "disabled", plugin._config)
+        config_repo.save.assert_called_once_with(
+            "test", "disabled", plugin._config, version="1.0.0"
+        )
 
     def test_load_persisted_state_enables_plugins(self, config_repo):
         """load_persisted_state enables plugins that are 'enabled' in store."""

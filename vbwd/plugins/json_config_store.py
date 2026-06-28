@@ -72,23 +72,35 @@ class JsonFilePluginConfigStore(PluginConfigStore):
                         plugin_name=name,
                         status="enabled",
                         config=configs.get(name, {}),
+                        version=info.get("version"),
                     )
                 )
         return result
 
     def save(
-        self, plugin_name: str, status: str, config: Optional[dict] = None
+        self,
+        plugin_name: str,
+        status: str,
+        config: Optional[dict] = None,
+        version: Optional[str] = None,
     ) -> None:
-        """Save plugin status and optional config."""
+        """Save plugin status, optional config, and an optional version stamp.
+
+        When ``version`` is provided it is written as the manifest pin; when
+        omitted, an existing pin is preserved (status-only updates do not touch
+        the version).
+        """
         plugins = self._read_plugins()
 
         if plugin_name not in plugins:
             plugins[plugin_name] = {
                 "enabled": False,
-                "version": "1.0.0",
+                "version": version or "1.0.0",
                 "installedAt": "",
                 "source": "local",
             }
+        elif version is not None:
+            plugins[plugin_name]["version"] = version
 
         plugins[plugin_name]["enabled"] = status == "enabled"
         self._write_plugins(plugins)
@@ -109,6 +121,7 @@ class JsonFilePluginConfigStore(PluginConfigStore):
             plugin_name=plugin_name,
             status="enabled" if info.get("enabled") else "disabled",
             config=configs.get(plugin_name, {}),
+            version=info.get("version"),
         )
 
     def get_all(self) -> List[PluginConfigEntry]:
@@ -120,6 +133,7 @@ class JsonFilePluginConfigStore(PluginConfigStore):
                 plugin_name=name,
                 status="enabled" if info.get("enabled") else "disabled",
                 config=configs.get(name, {}),
+                version=info.get("version"),
             )
             for name, info in plugins.items()
         ]

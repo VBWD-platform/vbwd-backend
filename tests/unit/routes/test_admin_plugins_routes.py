@@ -11,12 +11,17 @@ class MockPlugin(BasePlugin):
     """Mock plugin for route tests."""
 
     def __init__(
-        self, name="test-plugin", version="1.0.0", status=PluginStatus.INITIALIZED
+        self,
+        name="test-plugin",
+        version="1.0.0",
+        status=PluginStatus.INITIALIZED,
+        dependencies=None,
     ):
         super().__init__()
         self._name = name
         self._version = version
         self._status = status
+        self._dependencies = dependencies or []
 
     @property
     def metadata(self) -> PluginMetadata:
@@ -25,6 +30,7 @@ class MockPlugin(BasePlugin):
             version=self._version,
             author="Test",
             description=f"Test plugin {self._name}",
+            dependencies=self._dependencies,
         )
 
 
@@ -227,6 +233,143 @@ class TestEnablePlugin:
         )
 
         assert response.status_code == 404
+
+
+class TestDependencyEnrichment:
+    """Dependencies are returned as {name, specifier, installed_version, satisfied}."""
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_detail_returns_dependency_objects(
+        self, mock_repo_class, mock_auth_class, app, client
+    ):
+        """GET /admin/plugins/<name> returns enriched dependency descriptors."""
+        _mock_admin_auth(mock_repo_class, mock_auth_class)
+
+        email = MockPlugin("email", version="26.6", status=PluginStatus.ENABLED)
+        needy = MockPlugin(
+            "needy",
+            version="26.6",
+            status=PluginStatus.INITIALIZED,
+            dependencies=["email>=26.7"],
+        )
+        app.plugin_manager._plugins = {"email": email, "needy": needy}
+
+        app.config_store = _make_config_store("needy", "disabled")
+
+        response = client.get(
+            "/api/v1/admin/plugins/needy",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 200
+        dependencies = response.get_json()["dependencies"]
+        assert dependencies == [
+            {
+                "name": "email",
+                "specifier": ">=26.7",
+                "installed_version": "26.6",
+                "satisfied": False,
+            }
+        ]
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_list_returns_dependency_objects(
+        self, mock_repo_class, mock_auth_class, app, client
+    ):
+        """GET /admin/plugins returns enriched dependency descriptors per plugin."""
+        _mock_admin_auth(mock_repo_class, mock_auth_class)
+
+        email = MockPlugin("email", version="26.7", status=PluginStatus.ENABLED)
+        needy = MockPlugin(
+            "needy",
+            version="26.6",
+            status=PluginStatus.INITIALIZED,
+            dependencies=["email>=26.7"],
+        )
+        app.plugin_manager._plugins = {"email": email, "needy": needy}
+        app.config_store = _make_config_store("needy", "disabled")
+
+        response = client.get(
+            "/api/v1/admin/plugins",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 200
+        plugins = {p["name"]: p for p in response.get_json()["plugins"]}
+        assert plugins["email"]["dependencies"] == []
+        assert plugins["needy"]["dependencies"] == [
+            {
+                "name": "email",
+                "specifier": ">=26.7",
+                "installed_version": "26.7",
+                "satisfied": True,
+            }
+        ]
+
+
+class TestEnableDependencyGate:
+    """POST /enable runs the version-aware gate and returns 422 when unmet."""
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_enable_blocked_by_too_old_dependency_returns_422(
+        self, mock_repo_class, mock_auth_class, app, client
+    ):
+        """Enabling a plugin with a too-old dependency returns 422 + reason."""
+        _mock_admin_auth(mock_repo_class, mock_auth_class)
+
+        email = MockPlugin("email", version="26.6", status=PluginStatus.ENABLED)
+        needy = MockPlugin(
+            "needy",
+            version="26.6",
+            status=PluginStatus.INITIALIZED,
+            dependencies=["email>=26.7"],
+        )
+        app.plugin_manager._plugins = {"email": email, "needy": needy}
+
+        mock_store = _make_config_store("needy", "disabled")
+        app.config_store = mock_store
+
+        response = client.post(
+            "/api/v1/admin/plugins/needy/enable",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 422
+        assert "email>=26.7" in response.get_json()["error"]
+        # The gate runs BEFORE persisting — nothing was saved.
+        mock_store.save.assert_not_called()
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_enable_succeeds_when_dependency_satisfied(
+        self, mock_repo_class, mock_auth_class, app, client
+    ):
+        """Enabling succeeds (200) when the dependency version satisfies."""
+        _mock_admin_auth(mock_repo_class, mock_auth_class)
+
+        email = MockPlugin("email", version="26.7", status=PluginStatus.ENABLED)
+        needy = MockPlugin(
+            "needy",
+            version="26.6",
+            status=PluginStatus.INITIALIZED,
+            dependencies=["email>=26.7"],
+        )
+        app.plugin_manager._plugins = {"email": email, "needy": needy}
+
+        mock_store = _make_config_store("needy", "disabled")
+        app.config_store = mock_store
+
+        response = client.post(
+            "/api/v1/admin/plugins/needy/enable",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 200
+        assert response.get_json()["status"] == "enabled"
+        mock_store.save.assert_called_once()
 
 
 class TestDisablePlugin:

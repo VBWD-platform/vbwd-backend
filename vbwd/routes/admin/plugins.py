@@ -3,8 +3,20 @@ import logging
 from flask import Blueprint, jsonify, request, current_app
 from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.plugins.base import PluginStatus
+from vbwd.plugins.errors import PluginDependencyError
 
 logger = logging.getLogger(__name__)
+
+
+def _dependency_descriptors(plugin_manager, plugin):
+    """Build the enriched dependency list for a plugin via the resolver (DRY).
+
+    Each item: ``{name, specifier, installed_version, satisfied}``.
+    """
+    return plugin_manager.dependency_resolver.describe(
+        plugin, plugin_manager.get_plugin
+    )
+
 
 admin_plugins_bp = Blueprint(
     "admin_plugins", __name__, url_prefix="/api/v1/admin/plugins"
@@ -97,7 +109,7 @@ def list_plugins():
                 "author": meta.author,
                 "description": meta.description,
                 "status": status,
-                "dependencies": meta.dependencies or [],
+                "dependencies": _dependency_descriptors(plugin_manager, plugin),
                 "hasConfig": has_config,
             }
         )
@@ -144,7 +156,7 @@ def get_plugin_detail(plugin_name):
                 "author": meta.author,
                 "description": meta.description,
                 "status": status,
-                "dependencies": meta.dependencies or [],
+                "dependencies": _dependency_descriptors(plugin_manager, plugin),
                 "configSchema": config_schema,
                 "adminConfig": admin_config,
                 "savedConfig": saved_config,
@@ -191,6 +203,14 @@ def enable_plugin(plugin_name):
     plugin = plugin_manager.get_plugin(plugin_name)
     if not plugin:
         return jsonify({"error": f"Plugin '{plugin_name}' not found"}), 404
+
+    # Run the version-aware dependency gate BEFORE persisting/enabling. Reuses
+    # the same resolver as the manager/CLI (DRY). A too-old or missing/disabled
+    # dependency is a validation failure (422), not a 500.
+    try:
+        plugin_manager.dependency_resolver.check(plugin, plugin_manager.get_plugin)
+    except PluginDependencyError as dependency_error:
+        return jsonify({"error": str(dependency_error)}), 422
 
     # Persist to config_store (source of truth, shared across workers)
     config_store = getattr(current_app, "config_store", None)
