@@ -157,10 +157,10 @@ class TestLoadPersistedStateGate:
         assert any("booking" in record.message for record in caplog.records)
 
 
-class TestVersionDriftWarning:
-    """The manager warns when the manifest pin != loaded code version."""
+class TestVersionPinReconciliation:
+    """The manager self-heals a stale manifest pin to the loaded code version."""
 
-    def test_drift_logs_warning(self, caplog):
+    def test_drift_reconciles_pin_without_warning(self, caplog):
         store = InMemoryStore()
         # Manifest pins 26.5 but the loaded code is 26.6.
         store._rows = {"email": ("enabled", {}, "26.5")}
@@ -170,14 +170,16 @@ class TestVersionDriftWarning:
         manager.register_plugin(email)
         manager.initialize_plugin("email")
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.INFO):
             manager.load_persisted_state()
 
-        assert any(
-            "manifest pins version 26.5" in record.message for record in caplog.records
-        )
+        # The stale pin is re-stamped to the loaded version so the next boot is
+        # silent — no recurring WARNING.
+        assert store.get_by_name("email").version == "26.6"
+        assert not any(record.levelno >= logging.WARNING for record in caplog.records)
+        assert any("reconciled" in record.message for record in caplog.records)
 
-    def test_no_drift_no_warning(self, caplog):
+    def test_no_drift_no_log_no_write(self, caplog):
         store = InMemoryStore()
         store._rows = {"email": ("enabled", {}, "26.6")}
 
@@ -186,7 +188,8 @@ class TestVersionDriftWarning:
         manager.register_plugin(email)
         manager.initialize_plugin("email")
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.INFO):
             manager.load_persisted_state()
 
-        assert not any("manifest pins" in record.message for record in caplog.records)
+        assert store.get_by_name("email").version == "26.6"
+        assert not any("reconciled" in record.message for record in caplog.records)

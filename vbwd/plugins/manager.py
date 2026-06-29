@@ -187,11 +187,20 @@ class PluginManager:
                 f"{handler_error}"
             )
 
-    def _warn_on_version_drift(self, plugin: BasePlugin, entry) -> None:
-        """Log a WARNING when the persisted manifest pin != loaded code version.
+    def _reconcile_version_pin(self, plugin: BasePlugin, entry) -> None:
+        """Self-heal the persisted manifest pin to the loaded code version.
 
         Code metadata always wins; the manifest pin is an observability signal
-        only. No warning when the pin matches or is absent.
+        only. ``enable_plugin`` already stamps the real metadata version, but a
+        plugin enabled at boot via ``load_persisted_state`` keeps whatever pin
+        was seeded into ``plugins.json`` — typically a stale placeholder
+        (``1.0.0``) that never matches the shared code version. Left alone that
+        drift re-emits a WARNING for every plugin on every boot forever.
+
+        Instead, when the pin differs we re-stamp it to the loaded version (the
+        same write ``enable_plugin`` performs) so it converges to silence. A
+        single INFO records the reconciliation; genuine code-version changes
+        under a fixed pin still surface once, then quiet down.
         """
         if entry is None:
             return
@@ -199,14 +208,25 @@ class PluginManager:
         if not pinned_version:
             return
         loaded_version = plugin.metadata.version
-        if pinned_version != loaded_version:
-            logger.warning(
-                "Plugin '%s' manifest pins version %s but loaded code is %s; "
-                "code metadata wins",
-                plugin.metadata.name,
-                pinned_version,
-                loaded_version,
-            )
+        if pinned_version == loaded_version:
+            return
+
+        name = plugin.metadata.name
+        logger.info(
+            "Plugin '%s' manifest pin %s reconciled to loaded code version %s",
+            name,
+            pinned_version,
+            loaded_version,
+        )
+        if self._config_repo:
+            try:
+                self._config_repo.save(name, "enabled", version=loaded_version)
+            except Exception as persist_error:
+                logger.warning(
+                    "Failed to reconcile version pin for '%s': %s",
+                    name,
+                    persist_error,
+                )
 
     # S25 — removed ``get_plugin_blueprints``: zero production callers.
     # ``vbwd/app.py`` iterates ``get_all_plugins()`` directly and calls
@@ -371,7 +391,7 @@ class PluginManager:
                 )
                 continue
 
-            self._warn_on_version_drift(plugin, entry)
+            self._reconcile_version_pin(plugin, entry)
 
             try:
                 self._dependency_resolver.check(plugin, self.get_plugin)
