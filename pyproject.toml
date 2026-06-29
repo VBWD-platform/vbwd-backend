@@ -1,6 +1,6 @@
 [project]
 name = "vbwd-backend"
-version = "26.6.0"
+version = "26.6.1"
 description = "VBWD SaaS Platform — Backend Core"
 requires-python = ">=3.11"
 license = {text = "BSL-1.1"}
