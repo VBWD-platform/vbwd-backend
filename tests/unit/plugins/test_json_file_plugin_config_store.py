@@ -246,3 +246,48 @@ class TestJsonFilePluginConfigStore:
 
         assert store.get_by_name("demo").version == "26.6"
         assert store.get_enabled()[0].version == "26.6"
+
+    def test_concurrent_reads_never_see_truncated_file(self, store, plugins_dir):
+        """A reader must never observe an empty/partial plugins.json mid-write.
+
+        Reproduces the boot-time race: ``_reconcile_version_pin`` re-stamps every
+        enabled plugin on boot, so two app instances sharing a bind-mounted
+        ``plugins.json`` write it repeatedly while the other reads it. A
+        non-atomic write (open(w) truncate → dump) lets the reader catch the
+        truncated window, ``json.load`` raises, ``_read_plugins`` returns ``{}``
+        and every plugin silently de-registers. Atomic writes close that window.
+        """
+        import threading
+
+        seed = {f"p{i}": {"enabled": True, "version": "1.0.0"} for i in range(20)}
+        self._write_plugins(plugins_dir, seed)
+        self._write_config(plugins_dir, {})
+
+        stop = threading.Event()
+        bad_reads = []
+
+        def writer():
+            n = 0
+            while not stop.is_set():
+                # Mirror reconcile-on-boot: re-stamp each plugin's version.
+                store.save(f"p{n % 20}", "enabled", version="26.6.1")
+                n += 1
+
+        def reader():
+            for _ in range(500):
+                if len(store.get_enabled()) != 20:
+                    bad_reads.append(len(store.get_enabled()))
+
+        writers = [threading.Thread(target=writer) for _ in range(2)]
+        for w in writers:
+            w.start()
+        reader()
+        stop.set()
+        for w in writers:
+            w.join()
+
+        assert not bad_reads, (
+            f"reader saw {len(bad_reads)} truncated/partial reads "
+            f"(enabled counts seen: {set(bad_reads)}); plugins.json "
+            f"write is not atomic"
+        )

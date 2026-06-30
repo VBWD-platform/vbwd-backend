@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import time
 from typing import List, Optional
 
 from vbwd.plugins.config_store import PluginConfigStore, PluginConfigEntry
@@ -25,40 +26,76 @@ class JsonFilePluginConfigStore(PluginConfigStore):
 
     def _read_plugins(self) -> dict:
         """Read plugins.json, returning the 'plugins' dict."""
-        try:
-            with open(self._plugins_path, "r") as f:
-                data = json.load(f)
-            return data.get("plugins", {})
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        return self._read_json(self._plugins_path).get("plugins", {})
+
+    def _read_json(self, path: str) -> dict:
+        """Read a JSON file, tolerating a transient mid-write truncation.
+
+        A ``JSONDecodeError`` here almost always means another process (or a
+        sibling app instance sharing a bind-mounted file) is mid-write.
+        Returning ``{}`` on that window is catastrophic — ``get_enabled()``
+        would report zero plugins and the whole boot silently de-registers
+        every plugin. So we retry briefly before giving up; a genuinely absent
+        file still returns ``{}`` immediately.
+        """
+        last_error: Optional[json.JSONDecodeError] = None
+        for attempt in range(5):
+            try:
+                with open(path, "r") as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                return {}
+            except json.JSONDecodeError as decode_error:
+                last_error = decode_error
+                time.sleep(0.01 * (attempt + 1))
+        logger.warning(
+            "Could not parse %s after retries (%s); treating as empty",
+            path,
+            last_error,
+        )
+        return {}
 
     def _write_plugins(self, plugins: dict) -> None:
-        """Write plugins.json in place.
+        """Write plugins.json atomically so readers never see a truncated file.
 
-        We deliberately write directly rather than via tempfile + os.replace
-        because plugins.json is typically a single-file bind mount in prod
-        docker setups, and rename/replace fails on bind-mounted inodes with
-        "Device or resource busy". Admin plugin toggles are infrequent, so
-        losing the cross-process atomicity of os.replace is acceptable.
+        ``PluginManager._reconcile_version_pin`` re-stamps every enabled plugin
+        on boot, so plugins.json is rewritten repeatedly while sibling app
+        instances read the same bind-mounted file. A direct ``open(w)``
+        truncates the file before re-filling it, and a reader catching that
+        window gets a ``JSONDecodeError`` → zero enabled plugins. We write a
+        sibling temp file and ``os.replace`` it (atomic on the same
+        filesystem), falling back to an in-place write only when the path is a
+        single-file bind mount that ``os.replace`` cannot swap.
         """
-        os.makedirs(self._plugins_dir, exist_ok=True)
-        data = {"plugins": plugins}
-        with open(self._plugins_path, "w") as f:
-            json.dump(data, f, indent=2)
+        self._write_json(self._plugins_path, {"plugins": plugins})
 
     def _read_config(self) -> dict:
-        """Read config.json."""
-        try:
-            with open(self._config_path, "r") as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        """Read config.json (same truncation tolerance as plugins)."""
+        return self._read_json(self._config_path)
 
     def _write_config(self, config: dict) -> None:
-        """Write config.json in place (same bind-mount constraints as _write_plugins)."""
+        """Write config.json atomically (same constraints as plugins)."""
+        self._write_json(self._config_path, config)
+
+    def _write_json(self, path: str, data: dict) -> None:
         os.makedirs(self._plugins_dir, exist_ok=True)
-        with open(self._config_path, "w") as f:
-            json.dump(config, f, indent=2)
+        payload = json.dumps(data, indent=2)
+        tmp_path = f"{path}.{os.getpid()}.tmp"
+        try:
+            with open(tmp_path, "w") as f:
+                f.write(payload)
+            os.replace(tmp_path, path)
+        except OSError:
+            # Single-file bind mount: os.replace can't swap the inode
+            # ("Device or resource busy"). Fall back to the in-place write the
+            # original code used — still correct for the single-writer case.
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+            with open(path, "w") as f:
+                f.write(payload)
 
     def get_enabled(self) -> List[PluginConfigEntry]:
         """Get all enabled plugin config entries."""
