@@ -11,6 +11,7 @@ real paths to resolve; the in-memory impl shares the relative-path validation.
 from __future__ import annotations
 
 import os
+import re
 from typing import Dict, Optional
 
 from .ports import NamespacePolicy, WriteMode
@@ -23,6 +24,50 @@ SECRETS_FILE_MODE = 0o600
 
 VAR_ROOT_KEY = "var"
 UPLOADS_ROOT_KEY = "uploads"
+
+# A namespace becomes one directory segment directly under a managed root. To
+# resolve any namespace as a plugin-owned filespace (``var/<namespace>/``)
+# WITHOUT core ever enumerating plugin ids, the string alone must be provably
+# safe: a single segment of the plugin-id charset (ASCII letters/digits plus
+# ``-``/``_``), starting with an alphanumeric. This rejects ``""``, ``.``,
+# ``..``, path separators, a leading dot, and NUL — anything that could traverse
+# or collide across roots.
+_SAFE_NAMESPACE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def validate_namespace_segment(namespace: str) -> str:
+    """Reject a namespace that is not a single safe path segment; return it.
+
+    This is the confinement guard for the *namespace* itself (the analogue of
+    :func:`validate_relative_path` for the ``relative_path``). It lets the
+    manager root a plugin filespace at ``var/<namespace>/`` from the string
+    alone, so core needs no list of plugin ids.
+    """
+    if not isinstance(namespace, str) or not _SAFE_NAMESPACE_PATTERN.match(namespace):
+        raise ValueError(
+            f"Unsafe filesystem namespace: '{namespace}'. A namespace must be a "
+            "single path segment of [A-Za-z0-9_-] starting with an alphanumeric "
+            "(no separators, dots, or leading '-'/'_')."
+        )
+    return namespace
+
+
+def build_default_plugin_policy() -> NamespacePolicy:
+    """Return the single policy every plugin-owned namespace resolves to.
+
+    Rooted at ``var/<namespace>/``, unencrypted, never served over HTTP, and
+    crash-safe on write (the same ``ATOMIC_REPLACE`` mode ``core`` uses for
+    general data). The root is derived purely from the namespace string, so a
+    third-party plugin owning ``<plugin_id>`` gets ``var/<plugin_id>/*`` with no
+    core edit and no plugin id ever named in core.
+    """
+    return NamespacePolicy(
+        write_mode=WriteMode.ATOMIC_REPLACE,
+        dir_mode=DEFAULT_DIR_MODE,
+        file_mode=DEFAULT_FILE_MODE,
+        encrypt=False,
+        base_root=VAR_ROOT_KEY,
+    )
 
 
 def build_default_namespaces(

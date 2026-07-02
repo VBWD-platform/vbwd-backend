@@ -22,15 +22,42 @@ in ``vbwd/security/route_audit.py``, not a silent accident.
 import pytest
 from flask import Blueprint, jsonify
 
+from vbwd.plugins.base import PublicRouteDeclaration
 from vbwd.security.route_audit import (
     PUBLIC_ALLOWLIST,
     PUBLIC_MUTATION_ALLOWLIST,
     RouteAudit,
     audit_routes,
+    collect_public_routes,
     describe_offender,
     find_stale_allowlist_entries,
     find_unprotected_routes,
 )
+
+
+class _FakePlugin:
+    """A minimal plugin that declares a fixed set of public routes.
+
+    Used to exercise the collection mechanism without booting a real plugin —
+    it honours exactly the ``declare_public_routes`` contract the audit relies
+    on (Liskov: a test fake obeys the same contract as a production plugin).
+    """
+
+    def __init__(self, declaration: PublicRouteDeclaration):
+        self._declaration = declaration
+
+    def declare_public_routes(self) -> PublicRouteDeclaration:
+        return self._declaration
+
+
+class _FakePluginManager:
+    """A stand-in ``PluginManager`` exposing only ``get_enabled_plugins``."""
+
+    def __init__(self, plugins):
+        self._plugins = plugins
+
+    def get_enabled_plugins(self):
+        return list(self._plugins)
 
 
 def _build_app():
@@ -161,29 +188,103 @@ def test_route_namespace_groups_by_plugin_area():
 
 
 def test_stale_check_tolerates_unloaded_plugins_but_still_catches_rot():
-    """A subset-of-plugins boot (e.g. the core ``Tests`` CI installs an active
-    set without the regional payment plugins) must NOT flag the allow-list
-    entries of plugins it didn't load — that is configuration, not rot. But a
-    route removed from a namespace that IS loaded is still genuinely stale.
+    """A plugin-declared public route that no longer matches a live rule in a
+    LOADED namespace is genuinely stale and flagged; an entry whose namespace is
+    entirely absent belongs to an unloaded plugin and is skipped (configuration,
+    not rot). The declared routes come from the enabled plugins via the seam, so
+    this holds for both core and plugin allow-list entries.
     """
     from flask import Flask
 
-    # A bare app whose only live route sits in the ``api/v1/cms`` namespace:
-    # cms is "loaded" (the namespace has a live sibling) but embed-manifest is
-    # absent, while every regional-payment namespace is entirely absent.
     app = Flask(__name__)
-    live_bp = Blueprint("cms_namespace_probe", __name__)
+    live_bp = Blueprint("widget_namespace_probe", __name__)
 
-    @live_bp.route("/api/v1/cms/pages", methods=["GET"])
-    def _cms_pages():  # pragma: no cover - introspected only
+    @live_bp.route("/api/v1/widget/present", methods=["GET"])
+    def _widget_present():  # pragma: no cover - introspected only
         return jsonify({"ok": True})
 
     app.register_blueprint(live_bp)
 
+    # A fake plugin declares one present + one absent route in the LOADED
+    # ``api/v1/widget`` namespace, plus one route in an entirely-absent namespace.
+    fake_plugin = _FakePlugin(
+        PublicRouteDeclaration(
+            read={
+                "/api/v1/widget/present": "Present sibling keeps the namespace live.",
+                "/api/v1/widget/absent": "Removed public route in a loaded namespace.",
+                "/api/v1/unloaded/thing": "Belongs to a plugin not loaded in this boot.",
+            }
+        )
+    )
+    app.plugin_manager = _FakePluginManager([fake_plugin])  # type: ignore[attr-defined]
+
     stale = find_stale_allowlist_entries(app)
 
-    # A loaded namespace missing a specific allow-listed route → flagged (rot).
-    assert "PUBLIC_ALLOWLIST: /api/v1/cms/embed-manifest" in stale
-    # An entirely-unloaded plugin's entry → skipped, not reported as rot.
-    assert not any("conekta" in entry for entry in stale)
-    assert not any("loopai-adapter" in entry for entry in stale)
+    # A loaded namespace missing a specific declared route → flagged (rot).
+    assert "PUBLIC_ALLOWLIST: /api/v1/widget/absent" in stale
+    # An entirely-unloaded namespace's entry → skipped, not reported as rot.
+    assert not any("unloaded" in entry for entry in stale)
+
+
+def test_collect_public_routes_unions_core_and_plugin_declarations():
+    """The collection mechanism unions core's own lists with plugin declarations.
+
+    Core owns only its genuinely-core public routes; each plugin contributes its
+    own via ``declare_public_routes()``. An uncloned/disabled plugin simply does
+    not appear in ``get_enabled_plugins()`` and so contributes nothing.
+    """
+    from flask import Flask
+
+    app = Flask(__name__)
+    fake_plugin = _FakePlugin(
+        PublicRouteDeclaration(
+            read={"/api/v1/demo/catalog": "Public demo catalog."},
+            mutation={"/api/v1/demo/hook": "Signature-gated demo webhook."},
+        )
+    )
+    app.plugin_manager = _FakePluginManager([fake_plugin])  # type: ignore[attr-defined]
+
+    read_allowlist, mutation_allowlist = collect_public_routes(app)
+
+    # Core entries are still present (the union starts from core's own lists).
+    assert "/api/v1/config" in read_allowlist
+    assert "/api/v1/auth/login" in mutation_allowlist
+    # The plugin's declared routes are merged in.
+    assert read_allowlist["/api/v1/demo/catalog"] == "Public demo catalog."
+    assert mutation_allowlist["/api/v1/demo/hook"] == "Signature-gated demo webhook."
+
+
+def test_core_allowlists_contain_no_plugin_route(booted_app):
+    """Guard: core's own allow-lists name ZERO plugin routes (agnosticism).
+
+    After the inversion, every plugin-specific public route is declared by its
+    owning plugin via ``declare_public_routes()``; core keeps only genuinely-core
+    public routes. This asserts each entry still hard-coded in
+    ``PUBLIC_ALLOWLIST`` / ``PUBLIC_MUTATION_ALLOWLIST`` is served by a CORE
+    blueprint — never by a plugin's blueprint.
+    """
+    plugin_blueprint_names = set()
+    for plugin in booted_app.plugin_manager.get_enabled_plugins():
+        for getter in ("get_blueprint", "get_admin_blueprint"):
+            blueprint = getattr(plugin, getter)()
+            if blueprint is not None:
+                plugin_blueprint_names.add(blueprint.name)
+
+    endpoint_by_path = {
+        str(rule): rule.endpoint for rule in booted_app.url_map.iter_rules()
+    }
+
+    offenders = []
+    for path in list(PUBLIC_ALLOWLIST) + list(PUBLIC_MUTATION_ALLOWLIST):
+        endpoint = endpoint_by_path.get(path)
+        if endpoint is None:
+            continue  # a core route not registered in this boot's set
+        blueprint_name = endpoint.rsplit(".", 1)[0] if "." in endpoint else None
+        if blueprint_name in plugin_blueprint_names:
+            offenders.append(f"{path} → plugin blueprint {blueprint_name!r}")
+
+    assert not offenders, (
+        "Core allow-lists must name NO plugin route (core stays agnostic). Move "
+        "each of these into the owning plugin's declare_public_routes():\n  - "
+        + "\n  - ".join(offenders)
+    )

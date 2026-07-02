@@ -9,11 +9,12 @@ permissions, optional encryption, and JSON/append helpers.
 """
 from .local import LocalFilesystemManager, build_uploads_pinned_manager
 from .memory import InMemoryFilesystemManager
-from .ports import IFilesystemManager, NamespacePolicy, WriteMode
+from .ports import IFilesystemManager, NamespacePolicy, PluginFilespace, WriteMode
 
 __all__ = [
     "IFilesystemManager",
     "NamespacePolicy",
+    "PluginFilespace",
     "WriteMode",
     "LocalFilesystemManager",
     "InMemoryFilesystemManager",

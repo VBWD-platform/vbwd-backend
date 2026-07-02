@@ -127,3 +127,76 @@ class IFilesystemManager(Protocol):
     def resolve(self, namespace: str, relative_path: str) -> str:
         """Return the confined absolute path WITHOUT requiring it to exist."""
         ...
+
+    def for_plugin(self, plugin_id: str) -> "PluginFilespace":
+        """Return a handle bound to this plugin's own ``var/<plugin_id>/`` space.
+
+        The seam a plugin uses to address the filesystem singleton and get its
+        own filespace: every operation on the returned handle is scoped under
+        ``var/<plugin_id>/…``. Raises ``ValueError`` if ``plugin_id`` is not a
+        safe single segment or collides with a reserved core namespace.
+        """
+        ...
+
+
+class PluginFilespace:
+    """A plugin's own filespace, bound to its ``plugin_id`` namespace.
+
+    Returned by :meth:`IFilesystemManager.for_plugin`. Every call forwards to
+    the underlying manager with the plugin's namespace already bound, so the
+    plugin addresses only ``relative_path`` and can never reach another plugin's
+    or a core subtree. It is a thin, DRY delegator — it owns no I/O logic (the
+    confinement, write policy, and encryption all live in the manager).
+    """
+
+    def __init__(self, manager: "IFilesystemManager", plugin_id: str) -> None:
+        self._manager = manager
+        self._plugin_id = plugin_id
+
+    @property
+    def plugin_id(self) -> str:
+        return self._plugin_id
+
+    @property
+    def namespace(self) -> str:
+        return self._plugin_id
+
+    def read_text(self, relative_path: str) -> str:
+        return self._manager.read_text(self._plugin_id, relative_path)
+
+    def read_bytes(self, relative_path: str) -> bytes:
+        return self._manager.read_bytes(self._plugin_id, relative_path)
+
+    def read_json(self, relative_path: str, default: Any = None) -> Any:
+        return self._manager.read_json(self._plugin_id, relative_path, default)
+
+    def write_text(self, relative_path: str, text: str) -> str:
+        return self._manager.write_text(self._plugin_id, relative_path, text)
+
+    def write_bytes(self, relative_path: str, data: bytes) -> str:
+        return self._manager.write_bytes(self._plugin_id, relative_path, data)
+
+    def write_json(self, relative_path: str, obj: Any) -> str:
+        return self._manager.write_json(self._plugin_id, relative_path, obj)
+
+    def append_text(self, relative_path: str, text: str) -> None:
+        self._manager.append_text(self._plugin_id, relative_path, text)
+
+    def append_with_rotation(
+        self, relative_path: str, text: str, max_bytes: int, backups: int
+    ) -> None:
+        self._manager.append_with_rotation(
+            self._plugin_id, relative_path, text, max_bytes, backups
+        )
+
+    def delete(self, relative_path: str) -> None:
+        self._manager.delete(self._plugin_id, relative_path)
+
+    def exists(self, relative_path: str) -> bool:
+        return self._manager.exists(self._plugin_id, relative_path)
+
+    def listdir(self, relative_path: str = "") -> list[str]:
+        return self._manager.listdir(self._plugin_id, relative_path)
+
+    def resolve(self, relative_path: str) -> str:
+        return self._manager.resolve(self._plugin_id, relative_path)

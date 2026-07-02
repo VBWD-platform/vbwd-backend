@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 if TYPE_CHECKING:
     from flask import Blueprint
@@ -32,6 +32,27 @@ class PluginMetadata:
     def __post_init__(self):
         if self.dependencies is None:
             self.dependencies = []
+
+
+@dataclass
+class PublicRouteDeclaration:
+    """A plugin's declaration of its intentionally-public routes.
+
+    ``read`` and ``mutation`` each map an exact Werkzeug rule template
+    (``str(rule)``, e.g. ``"/api/v1/<area>/items/<slug>"``) to a one-line
+    justification. "Public" means a route intentionally reachable WITHOUT
+    ``@require_auth`` — a storefront GET, or an HMAC / signature-gated inbound
+    webhook that verifies its own capability inside the handler.
+
+    The route-exposure audit (the oracle test + ``flask prod-readiness``) unions
+    every enabled plugin's declaration with core's own allow-lists before
+    checking, so core (``vbwd/``) names ZERO plugin route strings — the
+    core-is-agnostic rule. Mirrors the line-item-handler and filesystem
+    ``for_plugin`` seams: the mechanism is core; the domain data is the plugin's.
+    """
+
+    read: Dict[str, str] = field(default_factory=dict)
+    mutation: Dict[str, str] = field(default_factory=dict)
 
 
 class BasePlugin(ABC):
@@ -149,6 +170,18 @@ class BasePlugin(ABC):
             registry: The ``LineItemHandlerRegistry`` singleton.
         """
         pass
+
+    def declare_public_routes(self) -> "PublicRouteDeclaration":
+        """Declare this plugin's intentionally-public routes.
+
+        Called by the route-exposure audit (the oracle test + ``flask
+        prod-readiness``) to build the union of public routes across all enabled
+        plugins. Override in a plugin that serves storefront reads or a
+        signature-gated inbound webhook; return a :class:`PublicRouteDeclaration`
+        mapping each exact route path to a one-line justification. Default: the
+        plugin exposes no public route (every route it serves carries auth).
+        """
+        return PublicRouteDeclaration()
 
     def register_shipping_providers(self, registry: Any) -> None:
         """Register shipping providers.

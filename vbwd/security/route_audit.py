@@ -154,17 +154,22 @@ def audit_routes(app: Flask) -> List[RouteAudit]:
 # authenticated — these are management surfaces, never self-service.
 PRIVILEGED_PREFIXES = ("/api/v1/admin/",)
 
-# PUBLIC_ALLOWLIST — routes that are public BY DESIGN (read or mutation alike).
-# A route here does not need the requires_auth marker. Each entry carries a
-# one-line justification; adding one is a reviewed decision.
+# PUBLIC_ALLOWLIST — GENUINELY-CORE routes that are public BY DESIGN (read or
+# mutation alike). A route here does not need the requires_auth marker. Each
+# entry carries a one-line justification; adding one is a reviewed decision.
 # Keyed by the exact Werkzeug rule template (str(rule)).
+#
+# CORE STAYS AGNOSTIC: this list names ONLY routes served by core blueprints
+# (auth, config, settings, token-bundles, liveness). Every plugin-specific
+# public route is declared by its OWNING plugin via
+# ``BasePlugin.declare_public_routes()`` and unioned in at audit time by
+# :func:`collect_public_routes` — so core names zero plugin route strings.
 PUBLIC_ALLOWLIST: Dict[str, str] = {
     # --- App liveness / infra (no data) -----------------------------------
     "/": "Root liveness ping; returns a static banner, no data.",
     "/api/v1/health": "Liveness probe for load balancers; no data.",
     "/api/v1/ready": "Readiness probe for orchestrators; no data.",
     "/static/<path:filename>": "Flask static asset serving; public files only.",
-    "/uploads/<path:filename>": "Public CMS upload serving; published media only.",
     # --- Public site config (needed before login) -------------------------
     "/api/v1/config": "Public app config (currency, languages) for the SPA shell.",
     "/api/v1/config/": "Public app config (trailing-slash variant of the above).",
@@ -176,63 +181,19 @@ PUBLIC_ALLOWLIST: Dict[str, str] = {
     "/api/v1/settings/payment-methods": "Public enabled-payment-methods list for checkout.",
     "/api/v1/settings/payment-methods/<code>": "Public single-payment-method lookup for checkout.",
     "/api/v1/settings/terms": "Public terms-and-conditions text for registration/checkout.",
-    # --- Public catalog reads (product browsing, pre-login) ---------------
+    # --- Public core catalog reads (token bundles are a core surface) ------
     "/api/v1/token-bundles/": "Public token-bundle catalog for the storefront.",
     "/api/v1/token-bundles/<bundle_id>": "Public single token-bundle detail for the storefront.",
-    "/api/v1/tarif-plans": "Public subscription-plan catalog for pricing pages.",
-    "/api/v1/tarif-plans/<slug_or_id>": "Public single subscription-plan detail.",
-    "/api/v1/addons/": "Public subscription add-on catalog for pricing pages.",
-    "/api/v1/addons/<addon_id>": "Public single add-on detail.",
-    "/api/v1/subscription/public/checkout-draft/<token>": "Checkout-draft resolve; the token is the capability.",
-    "/api/v1/shop/categories": "Public shop category listing for the storefront.",
-    "/api/v1/shop/categories/<slug>": "Public single shop category for the storefront.",
-    "/api/v1/shop/products": "Public shop product listing for the storefront.",
-    "/api/v1/shop/products/<slug>": "Public single shop product for the storefront.",
-    "/api/v1/pharma/catalogue": "Public pharma-shop catalogue listing for the storefront.",
-    "/api/v1/pharma/products/<slug>": "Public single pharma-shop product for the storefront.",
-    "/api/v1/pharma/region": "Public pharma-shop region/availability info for the storefront.",
-    "/api/v1/booking/categories": "Public booking category listing for the storefront.",
-    "/api/v1/booking/config": "Public booking widget config for the storefront.",
-    "/api/v1/booking/resources": "Public bookable-resource listing for the storefront.",
-    "/api/v1/booking/resources/<slug>": "Public single bookable resource for the storefront.",
-    "/api/v1/booking/resources/<slug>/availability": "Public availability lookup for booking UI.",
-    "/api/v1/booking/schemas": "Public booking form schemas for the storefront.",
-    "/api/v1/ghrm/categories": "Public GHRM marketplace category listing.",
-    "/api/v1/ghrm/config": "Public GHRM marketplace config for the storefront.",
-    "/api/v1/ghrm/packages": "Public GHRM software-package listing.",
-    "/api/v1/ghrm/packages/<slug>": "Public single GHRM package detail.",
-    "/api/v1/ghrm/packages/<slug>/related": "Public related-packages list for a GHRM package.",
-    "/api/v1/ghrm/packages/<slug>/versions": "Public version history for a GHRM package.",
-    "/api/v1/ghrm/packages/by-plan/<plan_id>": "Public GHRM package lookup by plan id.",
-    "/api/v1/ghrm/widgets": "Public GHRM storefront widgets.",
-    "/api/v1/loopai-adapter/posts": "Public published-post listing for the LoopAI WP adapter.",
-    "/api/v1/tarot/assets/arcana/<path:filename>": "Public static tarot-card image assets.",
-    "/api/v1/bot-conversation-style/active": "Public active chat-bot conversation style for the widget.",
-    "/api/v1/messaging/stream": "SSE stream; auth'd by a verified stream_token query param (EventSource: no headers).",
-    # --- Public CMS reads (the public website) ----------------------------
-    "/api/v1/cms/categories": "Public CMS category listing for the website.",
-    "/api/v1/cms/embed-manifest": "Public mobile validation probe before pointing a WebView at the CMS archive (S91).",
-    "/api/v1/cms/layouts/<layout_id>": "Public CMS layout for page rendering.",
-    "/api/v1/cms/layouts/by-slug/<slug>": "Public CMS layout by slug for page rendering.",
-    "/api/v1/cms/posts": "Public published-CMS-posts listing for the website/blog.",
-    "/api/v1/cms/posts/<path:slug>": "Public published CMS post by slug.",
-    "/api/v1/cms/routing-rules": "Public CMS routing rules for the SPA router.",
-    "/api/v1/cms/routing-rules/middleware": "Public CMS middleware routing rules for the SPA router.",
-    "/api/v1/cms/rss.xml": "Public RSS feed for the blog.",
-    "/api/v1/cms/search": "Public CMS post search for the website.",
-    "/api/v1/cms/styles/<style_id>/css": "Public CMS style CSS for page rendering.",
-    "/api/v1/cms/styles/default": "Public default CMS style descriptor.",
-    "/api/v1/cms/styles/default/css": "Public default CMS style CSS.",
-    "/api/v1/cms/terms": "Public CMS taxonomy terms for the website.",
-    "/robots.txt": "Public robots.txt for crawlers.",
-    "/sitemap.xml": "Public sitemap index for crawlers.",
-    "/sitemap-<int:chunk>.xml": "Public paginated sitemap chunk for crawlers.",
 }
 
-# PUBLIC_MUTATION_ALLOWLIST — mutating routes (POST/PUT/PATCH/DELETE) that are
-# public BY NECESSITY: pre-login auth flows, provider webhooks, and public
-# forms. These are exempt from the "must carry a required_permission marker"
-# rule. Deliberately tiny; each entry justified.
+# PUBLIC_MUTATION_ALLOWLIST — GENUINELY-CORE mutating routes
+# (POST/PUT/PATCH/DELETE) that are public BY NECESSITY: pre-login auth flows and
+# the core reachability probe. Exempt from the "must carry a required_permission
+# marker" rule. Deliberately tiny; each entry justified.
+#
+# CORE STAYS AGNOSTIC: plugin webhooks and public forms (provider notifications,
+# chat widgets, public form submissions, and the like) are declared by their
+# owning plugins via ``declare_public_routes()``, not listed here.
 PUBLIC_MUTATION_ALLOWLIST: Dict[str, str] = {
     # --- Auth flows (cannot require a logged-in user) ---------------------
     "/api/v1/auth/login": "Login must be reachable pre-auth; rate-limited (G5).",
@@ -240,23 +201,12 @@ PUBLIC_MUTATION_ALLOWLIST: Dict[str, str] = {
     "/api/v1/auth/logout": "Logout endpoint; pre-/post-auth tolerant.",
     "/api/v1/auth/forgot-password": "Password-reset request must be reachable pre-auth.",
     "/api/v1/auth/reset-password": "Password reset consumes a one-time token (the capability).",
-    # --- Payment provider webhooks (signature-validated in handler, G5) ---
+    # --- Core payment webhook probe (signature-validated flows are plugins) ---
     # The core /api/v1/webhooks/payment "manually mark invoice paid" tool is now
     # @require_auth + @require_permission("invoices.manage") (S90 DoD #7 / G5), so
     # the oracle classifies it as authorisation-gated — it is intentionally NOT
     # allow-listed here. Only the static reachability probe stays public.
     "/api/v1/webhooks/payment/test": "Reachability probe; returns a static ok, no state change.",
-    "/api/v1/plugins/paypal/webhook": "PayPal provider webhook; verified by PayPal signature in handler.",
-    "/api/v1/plugins/stripe/webhook": "Stripe provider webhook; verified by Stripe signature in handler.",
-    "/api/v1/plugins/yookassa/webhook": "YooKassa provider webhook; verified by provider signature in handler.",
-    "/api/v1/plugins/conekta/webhooks": "Conekta provider webhook; verified by provider signature in handler.",
-    "/api/v1/plugins/mercado-pago/webhooks/<country>": "Mercado Pago provider webhook; verified by provider signature.",
-    "/api/v1/plugins/promptpay/webhooks/<bank>": "PromptPay bank webhook; verified by provider signature in handler.",
-    "/api/v1/plugins/toss-payments/webhooks": "Toss Payments provider webhook; verified by provider signature.",
-    "/api/v1/plugins/truemoney/webhooks": "TrueMoney provider webhook; verified by provider signature in handler.",
-    "/api/v1/plugins/c2p2/backend-notifications": "C2P2 provider backend notification; signature-verified in handler.",
-    "/api/v1/plugins/bot-telegram/webhook/<bot>": "Telegram bot webhook; per-bot secret path is the capability.",
-    "/api/v1/ghrm/sync": "GHRM CI sync trigger; authenticated by an API key validated inside the handler.",
     # --- Admin mutations gated by a DYNAMIC (registry-driven) permission --
     # These carry @require_auth and enforce the entity type's per-registration
     # `manage_permission` in-handler via `_require_entity_manage`, which a
@@ -265,24 +215,53 @@ PUBLIC_MUTATION_ALLOWLIST: Dict[str, str] = {
     # just not via the static marker — so allow-listed with this justification.
     "/api/v1/admin/<entity_type>/<entity_id>/tags": "Admin tag write; manage_permission enforced in-handler.",
     "/api/v1/admin/<entity_type>/<entity_id>/custom-fields": "Admin custom-field write; manage_permission in-handler.",
-    # --- Public forms / public widget actions -----------------------------
-    "/api/v1/contact": "Public contact form submission (no account required).",
-    "/api/v1/coupons/validate": "Public coupon validation for checkout (read-like, no mutation persisted).",
-    "/api/v1/messaging/widget/start": "Public chat-widget conversation start (anonymous visitor support).",
 }
 
 
-def classify_unprotected_routes(audits: List[RouteAudit]) -> List[RouteAudit]:
+def collect_public_routes(app: Flask) -> tuple[Dict[str, str], Dict[str, str]]:
+    """Union core's own allow-lists with each ENABLED plugin's declarations.
+
+    Core owns only the audit MECHANISM plus its genuinely-core public routes;
+    every plugin-specific public route is declared by its owning plugin via
+    :meth:`~vbwd.plugins.base.BasePlugin.declare_public_routes`. Gathering from
+    the live ``PluginManager`` (rather than a static import) means an
+    uncloned/disabled plugin simply does not contribute — there is no static
+    plugin list to rot, and CI clone-set differences can never break the audit.
+
+    Returns ``(public_read_allowlist, public_mutation_allowlist)`` — the unioned
+    maps of ``{route_path: justification}`` the classifier checks against.
+    """
+    read: Dict[str, str] = dict(PUBLIC_ALLOWLIST)
+    mutation: Dict[str, str] = dict(PUBLIC_MUTATION_ALLOWLIST)
+    plugin_manager = getattr(app, "plugin_manager", None)
+    if plugin_manager is not None:
+        for plugin in plugin_manager.get_enabled_plugins():
+            declaration = plugin.declare_public_routes()
+            read.update(declaration.read)
+            mutation.update(declaration.mutation)
+    return read, mutation
+
+
+def classify_unprotected_routes(
+    audits: List[RouteAudit],
+    public_allowlist: Dict[str, str],
+    public_mutation_allowlist: Dict[str, str],
+) -> List[RouteAudit]:
     """Return the offender audits (empty == every route is provably protected).
+
+    ``public_allowlist`` / ``public_mutation_allowlist`` are the UNIONED maps
+    (core's own allow-lists plus every enabled plugin's declared public routes)
+    produced by :func:`collect_public_routes` — so core need not name any plugin
+    route string here.
 
     Contract per route:
 
     * **Read-only route** is OK iff it carries the ``requires_auth`` marker, is
-      debug-gated (404 in prod), OR is in :data:`PUBLIC_ALLOWLIST`.
+      debug-gated (404 in prod), OR is in ``public_allowlist``.
     * **Mutating route** (POST/PUT/PATCH/DELETE) is OK iff it is in
-      :data:`PUBLIC_MUTATION_ALLOWLIST` OR it carries ``requires_auth`` — and,
-      when it lives under a privileged prefix (``/admin/``), it must additionally
-      be authorisation-gated (an RBAC permission or admin marker). Authenticated
+      ``public_mutation_allowlist`` OR it carries ``requires_auth`` — and, when
+      it lives under a privileged prefix (``/admin/``), it must additionally be
+      authorisation-gated (an RBAC permission or admin marker). Authenticated
       self-service mutations are OK with ``requires_auth`` alone.
     * A mutating route with **no auth at all** and not allow-listed is the G1
       exposure this guard exists to catch.
@@ -290,7 +269,7 @@ def classify_unprotected_routes(audits: List[RouteAudit]) -> List[RouteAudit]:
     offenders: List[RouteAudit] = []
     for route in audits:
         if route.is_mutating:
-            if route.path in PUBLIC_MUTATION_ALLOWLIST:
+            if route.path in public_mutation_allowlist:
                 continue
             if not route.requires_auth:
                 offenders.append(route)
@@ -306,7 +285,7 @@ def classify_unprotected_routes(audits: List[RouteAudit]) -> List[RouteAudit]:
         # public allow-list entry.
         if route.requires_auth or route.requires_debug_enabled:
             continue
-        if route.path in PUBLIC_ALLOWLIST:
+        if route.path in public_allowlist:
             continue
         offenders.append(route)
     return offenders
@@ -317,9 +296,13 @@ def find_unprotected_routes(app: Flask) -> List[RouteAudit]:
     deliberately allow-listed (empty list == all protected).
 
     The single seam reused by the route-exposure oracle test and the
-    ``flask prod-readiness`` command (DRY).
+    ``flask prod-readiness`` command (DRY). The allow-list is the union of
+    core's own lists and every enabled plugin's :meth:`declare_public_routes`.
     """
-    return classify_unprotected_routes(audit_routes(app))
+    public_allowlist, public_mutation_allowlist = collect_public_routes(app)
+    return classify_unprotected_routes(
+        audit_routes(app), public_allowlist, public_mutation_allowlist
+    )
 
 
 def describe_offender(route: RouteAudit) -> str:
@@ -360,15 +343,15 @@ def find_stale_allowlist_entries(app: Flask) -> List[str]:
     Keeps the allow-lists from rotting: a removed/renamed public route forces a
     reviewed cleanup instead of lingering as a phantom exemption.
 
-    The allow-lists are the central registry for EVERY public route across all
-    plugins, but a given app may boot only a subset (e.g. the core ``Tests`` CI
-    installs an active set without the regional payment plugins). An entry whose
-    owning namespace is entirely absent from the live url_map belongs to a
-    plugin that isn't loaded here — that is not rot, so it is skipped. An entry
-    whose namespace IS live but whose specific route is gone is genuinely stale
-    and still reported, so removing/renaming a public route on a loaded plugin
-    is caught.
+    The audited allow-list is the UNION of core's own lists and every enabled
+    plugin's :meth:`declare_public_routes` (via :func:`collect_public_routes`),
+    so a removed/renamed public route on a LOADED plugin is still caught. A
+    given app may boot only a subset of plugins; an entry whose owning namespace
+    is entirely absent from the live url_map belongs to a plugin that isn't
+    loaded here — that is not rot, so it is skipped. An entry whose namespace IS
+    live but whose specific route is gone is genuinely stale and still reported.
     """
+    public_allowlist, public_mutation_allowlist = collect_public_routes(app)
     live_paths = {route.path for route in audit_routes(app)}
     live_namespaces = {_route_namespace(path) for path in live_paths}
 
@@ -377,12 +360,12 @@ def find_stale_allowlist_entries(app: Flask) -> List[str]:
 
     stale = [
         f"PUBLIC_ALLOWLIST: {path}"
-        for path in sorted(PUBLIC_ALLOWLIST)
+        for path in sorted(public_allowlist)
         if _is_stale(path)
     ]
     stale += [
         f"PUBLIC_MUTATION_ALLOWLIST: {path}"
-        for path in sorted(PUBLIC_MUTATION_ALLOWLIST)
+        for path in sorted(public_mutation_allowlist)
         if _is_stale(path)
     ]
     return stale

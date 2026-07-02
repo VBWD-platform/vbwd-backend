@@ -23,10 +23,12 @@ from vbwd.utils.crypto import get_default_cipher
 from ._common import (
     VAR_ROOT_KEY,
     build_default_namespaces,
+    build_default_plugin_policy,
+    validate_namespace_segment,
     validate_relative_path,
 )
 from ._locking import exclusive_lock, shared_lock
-from .ports import NamespacePolicy, WriteMode
+from .ports import NamespacePolicy, PluginFilespace, WriteMode
 
 DEFAULT_VAR_ROOT = "/app/var"
 DEFAULT_UPLOADS_ROOT = "/app/uploads"
@@ -90,16 +92,32 @@ class LocalFilesystemManager:
             namespace: os.path.realpath(root)
             for namespace, root in (namespace_roots or {}).items()
         }
+        # The single policy any non-reserved (plugin-owned) namespace resolves
+        # to. Built once; core never enumerates plugin ids.
+        self._plugin_policy = build_default_plugin_policy()
 
     # ------------------------------------------------------------------
     # Resolution + confinement (D3)
     # ------------------------------------------------------------------
 
     def _policy(self, namespace: str) -> NamespacePolicy:
-        try:
-            return self._namespaces[namespace]
-        except KeyError:
-            raise ValueError(f"Unknown filesystem namespace: '{namespace}'")
+        reserved = self._namespaces.get(namespace)
+        if reserved is not None:
+            return reserved
+        # Any other namespace is a generic plugin-owned filespace rooted at
+        # var/<namespace>/. The namespace string alone must be safe; the root is
+        # derived from it, so core holds no list of plugin ids.
+        validate_namespace_segment(namespace)
+        return self._plugin_policy
+
+    def for_plugin(self, plugin_id: str) -> PluginFilespace:
+        validate_namespace_segment(plugin_id)
+        if plugin_id in self._namespaces:
+            raise ValueError(
+                f"Plugin id '{plugin_id}' collides with a reserved core "
+                "namespace and cannot be claimed as a plugin filespace"
+            )
+        return PluginFilespace(self, plugin_id)
 
     def _namespace_root(self, policy: NamespacePolicy, namespace: str) -> str:
         override = self._namespace_roots.get(namespace)

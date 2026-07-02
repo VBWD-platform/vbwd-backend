@@ -77,9 +77,14 @@ def test_confinement_rejects_illegal_relative_paths(either_manager, bad_rel):
         either_manager.write_text("core", bad_rel, "x")
 
 
-def test_confinement_rejects_unknown_namespace(either_manager):
+@pytest.mark.parametrize(
+    "unsafe_namespace",
+    ["", "..", ".", "a/b", "a\\b", "with\x00nul", ".hidden", "-leading", "_leading"],
+)
+def test_rejects_structurally_unsafe_namespace(either_manager, unsafe_namespace):
+    """A namespace becomes a directory segment, so an unsafe one must raise."""
     with pytest.raises(ValueError):
-        either_manager.write_text("does-not-exist", "a.txt", "x")
+        either_manager.write_text(unsafe_namespace, "a.txt", "x")
 
 
 def test_confinement_allows_legal_nested_path(either_manager):
@@ -329,6 +334,110 @@ def test_default_namespaces_present(local_manager):
     for namespace in ("core", "plugins", "seo", "secrets", "logs", "tmp", "uploads"):
         # resolve must succeed (path confinement happy path) for every default ns
         local_manager.resolve(namespace, "probe.txt")
+
+
+# ----------------------------------------------------------------------------
+# Generic plugin-owned namespaces (agnostic: core never enumerates plugin ids)
+# ----------------------------------------------------------------------------
+
+
+def test_plugin_namespace_writes_under_var_namespace_not_core(local_manager, tmp_path):
+    """A non-reserved namespace lands at var/<namespace>/, never in var/core/."""
+    local_manager.write_text("dataset", "datasets/env/aq/2026-07-01.csv", "x,y")
+
+    on_disk = (
+        tmp_path / "var" / "dataset" / "datasets" / "env" / "aq" / "2026-07-01.csv"
+    )
+    assert on_disk.read_text() == "x,y"
+    # It must NOT squat inside the reserved core namespace.
+    assert not (tmp_path / "var" / "core" / "dataset").exists()
+    assert local_manager.read_text("dataset", "datasets/env/aq/2026-07-01.csv") == "x,y"
+
+
+def test_plugin_namespace_round_trips(either_manager):
+    either_manager.write_text("dataset", "a/b.txt", "hello")
+    assert either_manager.read_text("dataset", "a/b.txt") == "hello"
+    assert either_manager.exists("dataset", "a/b.txt") is True
+    assert either_manager.listdir("dataset", "a") == ["b.txt"]
+    either_manager.delete("dataset", "a/b.txt")
+    assert either_manager.exists("dataset", "a/b.txt") is False
+
+
+def test_plugin_namespace_confinement_holds(either_manager):
+    with pytest.raises(ValueError):
+        either_manager.write_text("dataset", "../escape.txt", "x")
+    with pytest.raises(ValueError):
+        either_manager.write_text("dataset", "/absolute.txt", "x")
+
+
+def test_plugin_namespace_is_not_encrypted_on_disk(local_manager, tmp_path):
+    plaintext = "plain-plugin-data"
+    local_manager.write_text("dataset", "note.txt", plaintext)
+    raw = (tmp_path / "var" / "dataset" / "note.txt").read_bytes()
+    assert raw == plaintext.encode("utf-8")
+
+
+def test_for_plugin_binds_namespace_and_round_trips(either_manager):
+    filespace = either_manager.for_plugin("dataset")
+    assert filespace.plugin_id == "dataset"
+
+    filespace.write_text("a/b.txt", "hi")
+    assert filespace.read_text("a/b.txt") == "hi"
+    assert filespace.exists("a/b.txt") is True
+    assert filespace.listdir("a") == ["b.txt"]
+
+    filespace.write_json("cfg.json", {"on": True})
+    assert filespace.read_json("cfg.json") == {"on": True}
+
+    filespace.delete("a/b.txt")
+    assert filespace.exists("a/b.txt") is False
+
+
+def test_for_plugin_writes_under_var_plugin_id(local_manager, tmp_path):
+    filespace = local_manager.for_plugin("dataset")
+    filespace.write_text("datasets/x.csv", "data")
+    assert (tmp_path / "var" / "dataset" / "datasets" / "x.csv").read_text() == "data"
+    # resolve is scoped under var/<plugin_id>/ too.
+    resolved = filespace.resolve("datasets/x.csv")
+    assert resolved == os.path.realpath(
+        str(tmp_path / "var" / "dataset" / "datasets" / "x.csv")
+    )
+
+
+def test_for_plugin_confinement_holds(either_manager):
+    filespace = either_manager.for_plugin("dataset")
+    with pytest.raises(ValueError):
+        filespace.write_text("../escape.txt", "x")
+
+
+@pytest.mark.parametrize(
+    "reserved",
+    ["core", "plugins", "seo", "secrets", "logs", "tmp", "uploads"],
+)
+def test_for_plugin_rejects_reserved_namespace(either_manager, reserved):
+    """A plugin can never claim (or override) a reserved core namespace."""
+    with pytest.raises(ValueError):
+        either_manager.for_plugin(reserved)
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    ["", "..", ".", "a/b", "a\\b", "with\x00nul", ".hidden", "-leading"],
+)
+def test_for_plugin_rejects_unsafe_plugin_id(either_manager, unsafe):
+    with pytest.raises(ValueError):
+        either_manager.for_plugin(unsafe)
+
+
+def test_reserved_secrets_still_encrypts_while_plugin_does_not(local_manager, tmp_path):
+    """Reserved namespaces keep their special policy; plugin default does not."""
+    local_manager.write_text("secrets", "token.txt", "top-secret")
+    local_manager.write_text("dataset", "token.txt", "top-secret")
+
+    secret_raw = (tmp_path / "var" / "secrets" / "token.txt").read_bytes()
+    plugin_raw = (tmp_path / "var" / "dataset" / "token.txt").read_bytes()
+    assert b"top-secret" not in secret_raw  # encrypted at rest
+    assert plugin_raw == b"top-secret"  # plugin data is plaintext
 
 
 def test_namespace_policy_is_a_value_object():

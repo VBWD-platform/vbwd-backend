@@ -119,19 +119,12 @@ ALLOWLIST: set[tuple[str, str]] = {
     # this namespace via the DI container. Pure filesystem vocabulary.
     ("vbwd/services/filesystem/_common.py", "seo"),
     # --- (g) Route-exposure allowlist (S90 G1) ---------------------------
-    # ``route_audit.py`` carries the PUBLIC_ALLOWLIST: a SECURITY inventory of
-    # the URL *paths* that are public-by-design (so the route-exposure oracle +
-    # ``flask prod-readiness`` can prove no CRUD route ships unprotected). The
-    # banned-word hits are the literal public route PATHS of plugins
-    # (``/api/v1/tarif-plans``, ``/api/v1/subscription/public/...``,
-    # ``/api/v1/ghrm/packages/by-plan/<plan_id>``, ``/sitemap.xml``) and their
-    # justification strings — a path allowlist, NOT core reading a plugin
-    # domain field. Same structural pattern as the SSE whitelist in bucket (c):
-    # could later become a plugin-declared public-route registry; deferred.
-    ("vbwd/security/route_audit.py", "tarif"),
-    ("vbwd/security/route_audit.py", "subscription"),
-    ("vbwd/security/route_audit.py", "plan_id"),
-    ("vbwd/security/route_audit.py", "sitemap"),
+    # RESOLVED: ``route_audit.py`` no longer names any plugin route string. The
+    # public-route allowlist was inverted into a plugin-declared seam
+    # (``BasePlugin.declare_public_routes()``); core keeps only genuinely-core
+    # public paths (auth/config/settings/token-bundles), so the former tarif /
+    # subscription / plan_id / sitemap exemptions are gone. The guard test
+    # ``test_core_allowlists_contain_no_plugin_route`` proves core stays clean.
 }
 
 _TERM_RE = {

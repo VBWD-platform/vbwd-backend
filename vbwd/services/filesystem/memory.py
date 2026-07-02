@@ -17,8 +17,13 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional
 
-from ._common import build_default_namespaces, validate_relative_path
-from .ports import NamespacePolicy
+from ._common import (
+    build_default_namespaces,
+    build_default_plugin_policy,
+    validate_namespace_segment,
+    validate_relative_path,
+)
+from .ports import NamespacePolicy, PluginFilespace
 
 
 class InMemoryFilesystemManager:
@@ -30,6 +35,9 @@ class InMemoryFilesystemManager:
         uploads_base_url: str = "/uploads",
     ) -> None:
         self._namespaces = namespaces or build_default_namespaces(uploads_base_url)
+        # The single policy any non-reserved (plugin-owned) namespace resolves
+        # to; core never enumerates plugin ids.
+        self._plugin_policy = build_default_plugin_policy()
         # keyed by (namespace, normalised relative path) -> bytes
         self._store: Dict[tuple[str, str], bytes] = {}
 
@@ -38,10 +46,22 @@ class InMemoryFilesystemManager:
     # ------------------------------------------------------------------
 
     def _policy(self, namespace: str) -> NamespacePolicy:
-        try:
-            return self._namespaces[namespace]
-        except KeyError:
-            raise ValueError(f"Unknown filesystem namespace: '{namespace}'")
+        reserved = self._namespaces.get(namespace)
+        if reserved is not None:
+            return reserved
+        # Any other namespace is a generic plugin-owned filespace; the string
+        # alone must be safe (core never enumerates plugin ids).
+        validate_namespace_segment(namespace)
+        return self._plugin_policy
+
+    def for_plugin(self, plugin_id: str) -> PluginFilespace:
+        validate_namespace_segment(plugin_id)
+        if plugin_id in self._namespaces:
+            raise ValueError(
+                f"Plugin id '{plugin_id}' collides with a reserved core "
+                "namespace and cannot be claimed as a plugin filespace"
+            )
+        return PluginFilespace(self, plugin_id)
 
     def _key(self, namespace: str, relative_path: str) -> tuple[str, str]:
         self._policy(namespace)
