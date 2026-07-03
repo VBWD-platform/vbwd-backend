@@ -32,9 +32,7 @@ class UserRepository(BaseRepository[User]):
         table and relies purely on the DB cascade plugins declare in their own
         migrations.
         """
-        result = self._session.execute(
-            sa_delete(User).where(User.id == id)
-        )
+        result = self._session.execute(sa_delete(User).where(User.id == id))
         self._session.commit()
         return result.rowcount > 0
 
