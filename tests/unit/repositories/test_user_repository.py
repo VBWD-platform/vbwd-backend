@@ -88,3 +88,34 @@ def test_find_all_paginated_returns_total_count(session, repository):
     # reorder those calls; the contract is "returns (list, count)".
     _, total = repository.find_all_paginated(limit=10, offset=20)
     assert total == 42
+
+
+# --- delete: must rely on DB-level FK cascade, not ORM object cascade ---
+#
+# Regression for the prod "0 deleted / Internal server error" bug: the base
+# repository's session.delete(entity) makes SQLAlchemy emit per-table DELETEs
+# in an order that strands plugin FKs (e.g. subscription_addon_subscription
+# .invoice_id still referencing a vbwd_user_invoice row the ORM already tried
+# to delete -> ForeignKeyViolation). UserRepository overrides delete() to emit
+# a single bulk "DELETE FROM vbwd_user WHERE id = :id" so Postgres resolves the
+# whole cascade graph in one statement. These tests pin that contract.
+
+
+def test_delete_uses_bulk_execute_not_orm_object_delete(session, repository):
+    session.execute.return_value.rowcount = 1
+    repository.delete("11111111-1111-1111-1111-111111111111")
+    # Bulk DELETE via Core execute() — never the ORM session.delete(entity)
+    # path that orders per-table deletes and strands plugin FKs.
+    session.execute.assert_called_once()
+    session.delete.assert_not_called()
+    session.commit.assert_called_once()
+
+
+def test_delete_returns_true_when_a_row_was_removed(session, repository):
+    session.execute.return_value.rowcount = 1
+    assert repository.delete("11111111-1111-1111-1111-111111111111") is True
+
+
+def test_delete_returns_false_when_no_row_matched(session, repository):
+    session.execute.return_value.rowcount = 0
+    assert repository.delete("22222222-2222-2222-2222-222222222222") is False

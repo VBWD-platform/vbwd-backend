@@ -1,5 +1,7 @@
 """User repository implementation."""
 from typing import Optional, List, Tuple, Union
+from uuid import UUID
+from sqlalchemy import delete as sa_delete
 from vbwd.repositories.base import BaseRepository
 from vbwd.models import User
 from vbwd.models.enums import UserRole, UserStatus
@@ -10,6 +12,31 @@ class UserRepository(BaseRepository[User]):
 
     def __init__(self, session):
         super().__init__(session=session, model=User)
+
+    def delete(self, id: Union[UUID, str]) -> bool:
+        """Delete a user by id, relying on database FK cascade.
+
+        Overrides the base ORM ``session.delete(entity)`` path on purpose.
+        The user graph fans out into plugin-owned tables (subscriptions,
+        addons, invoices, ...) whose FK cascade is only known to the
+        database, not to the ORM relationship map. ORM-level deletion emits
+        per-table DELETEs in an order that can strand a plugin FK — e.g.
+        ``subscription_addon_subscription.invoice_id`` still referencing a
+        ``vbwd_user_invoice`` row the ORM has already tried to delete, raising
+        a ForeignKeyViolation.
+
+        A single ``DELETE FROM vbwd_user WHERE id = :id`` lets Postgres resolve
+        the whole cascade graph in one statement (NO ACTION checks run at
+        statement end, after cascaded children are gone), which succeeds where
+        the ORM ordering fails. This keeps core agnostic: it names no plugin
+        table and relies purely on the DB cascade plugins declare in their own
+        migrations.
+        """
+        result = self._session.execute(
+            sa_delete(User).where(User.id == id)
+        )
+        self._session.commit()
+        return result.rowcount > 0
 
     def find_by_email(self, email: str) -> Optional[User]:
         """Find user by email address."""
