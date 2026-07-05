@@ -142,17 +142,26 @@ resolves from the core wheel), and `env.py`'s discovery finds shop's migrations.
 
 ## Who consumes these packages
 
+**pip-install is for platform development only.** The SDK recipes and the
+demo-instances prod deploy stay **clone-based** — pip is not on the deploy path.
+
 | Consumer | Core | Plugins |
 |---|---|---|
-| **`vbwd-demo-instances`** image build (`deploy.yml` → `vbwd_backend:latest`) | baked into the Docker image | **pip-installed** at image build from a generated `plugins-requirements.txt` (BuildKit `git_token` secret for private repos); the Dockerfile step is opt-in (runs only when that file is present) |
-| **`vbwd-platform`** (metapackage) | pip git-install via `be/requirements.txt` (`vbwd-backend @ git+…@main`) | **pip-installed** from `be/plugins-requirements.txt` (generated from `plugins.json`) via `make install-plugins-pip` |
-| **`vbwd-sdk-private`** dev recipes | cloned to `../vbwd-backend` by `dev-install-ce.sh` | still cloned by the declarative `PLUGIN_REGISTRY` (recipes are checkout-based by design) |
-| **Ad-hoc / CI / downstream** | `pip install git+…` | `pip install git+…` for any single plugin |
+| **`vbwd-platform`** (metapackage — *the* pip consumer) | pip git-install via `be/requirements.txt` (`vbwd-backend @ git+…@main`) | **pip-installed** from `be/plugins-requirements.txt` (generated from `plugins.json`) via `make install-plugins-pip` |
+| **`vbwd-demo-instances`** prod deploy (`deploy.yml`) | baked into the image | **cloned** into `vbwd-backend/plugins/` + `COPY` (clone model) |
+| **`vbwd-sdk-private` / `vbwd-sdk-public`** dev recipes | cloned to `../vbwd-backend` by `dev-install-ce.sh` | cloned by the declarative `PLUGIN_REGISTRY` |
+| **Ad-hoc / CI / downstream** | `pip install git+…` | `pip install git+…` for any single (non-hyphenated) plugin |
 
-The Dockerfile plugin-install step is **guarded** (`if [ -s plugins-requirements.txt ]`),
-so any consumer that does *not* provide that file — the platform compose today,
-the backend's own test CI, the legacy root deploy — keeps working with plugins
-present under `./plugins` (clone model). The pip path is strictly additive.
+The Dockerfile plugin-install step is **guarded** (`if [ -s plugins-requirements.txt ]`)
+and has `set -e`, so: a consumer that does *not* provide that file (demo-instances,
+SDK, backend test CI) uses the clone model unchanged; a consumer that *does*
+(platform) fails the build loudly if any plugin can't install — never a silent
+plugin-less image. The pip path is strictly additive.
+
+**Hyphenated-dir plugins are clone-only.** `cms-ai`, `loopai-adapter` map to
+invalid Python package names (`plugins.cms-ai`) and cannot be wheeled — they carry
+no `pyproject.toml` and are never pip-installed. (This is why the demo-instances
+pip attempt failed on 2026-07-05: `cms-ai` was in its set.)
 
 ---
 
