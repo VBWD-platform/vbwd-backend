@@ -30,7 +30,12 @@ COPY . .
 # context; otherwise it is a no-op and the legacy clone+COPY model is used as-is.
 # A BuildKit secret (id=git_token) supplies a token for private plugin repos and
 # is never written to a persisted layer.
+# set -e is CRITICAL: without it a failed `pip install` is followed by `rm` (exit 0)
+# and the build goes GREEN with zero plugins installed — a silent plugin-less image
+# (2026-07-05 prod incident). With set -e any plugin that fails to install fails the
+# build loudly instead of shipping a broken image.
 RUN --mount=type=secret,id=git_token \
+    set -e; \
     if [ -s plugins-requirements.txt ]; then \
       echo "[build] installing plugin packages from plugins-requirements.txt"; \
       TOKEN="$(cat /run/secrets/git_token 2>/dev/null || true)"; \
