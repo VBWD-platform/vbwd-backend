@@ -150,7 +150,7 @@ demo-instances prod deploy stay **clone-based** — pip is not on the deploy pat
 | **`vbwd-platform`** (metapackage — *the* pip consumer) | pip git-install via `be/requirements.txt` (`vbwd-backend @ git+…@main`) | **pip-installed** from `be/plugins-requirements.txt` (generated from `plugins.json`) via `make install-plugins-pip` |
 | **`vbwd-demo-instances`** prod deploy (`deploy.yml`) | baked into the image | **cloned** into `vbwd-backend/plugins/` + `COPY` (clone model) |
 | **`vbwd-sdk-private` / `vbwd-sdk-public`** dev recipes | cloned to `../vbwd-backend` by `dev-install-ce.sh` | cloned by the declarative `PLUGIN_REGISTRY` |
-| **Ad-hoc / CI / downstream** | `pip install git+…` | `pip install git+…` for any single (non-hyphenated) plugin |
+| **Ad-hoc / CI / downstream** | `pip install git+…` | `pip install git+…` for any single plugin |
 
 The Dockerfile plugin-install step is **guarded** (`if [ -s plugins-requirements.txt ]`)
 and has `set -e`, so: a consumer that does *not* provide that file (demo-instances,
@@ -158,10 +158,16 @@ SDK, backend test CI) uses the clone model unchanged; a consumer that *does*
 (platform) fails the build loudly if any plugin can't install — never a silent
 plugin-less image. The pip path is strictly additive.
 
-**Hyphenated-dir plugins are clone-only.** `cms-ai`, `loopai-adapter` map to
-invalid Python package names (`plugins.cms-ai`) and cannot be wheeled — they carry
-no `pyproject.toml` and are never pip-installed. (This is why the demo-instances
-pip attempt failed on 2026-07-05: `cms-ai` was in its set.)
+**No hyphenated import packages** (2026-07-06). `cms-ai` and `loopai-adapter`
+previously used hyphenated dirs → `plugins.cms-ai` is an invalid Python package
+name → wheel build failed (the 2026-07-05 incident). They were **renamed** to
+underscore *import* identities — `plugins.cms_ai`, `plugins.loopai_adapter` (dir +
+inner dir + dotted imports) — while keeping their **public** identity (dist
+`vbwd-plugin-cms-ai`/`-loopai-adapter`, `metadata.name` `cms-ai`/`loopai-adapter`,
+URLs `/api/v1/plugins/cms-ai` & `/api/v1/loopai-adapter`). Only dotted
+`plugins.<name>` imports were rewritten — never the slash URLs. So **every backend
+plugin is now pip-wheelable**; proven on platform CI (`platform_tests` pip-installs
+all backend incl. these two and asserts their routes register).
 
 ---
 
