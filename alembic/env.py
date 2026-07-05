@@ -26,13 +26,38 @@ from vbwd.extensions import db
 # Import core models so their tables are visible to autogenerate
 import vbwd.models  # noqa: F401  — side-effect: registers all core model classes
 
-# Dynamically import every model module from every plugin's src/models/ directory.
+# Resolve every root that contributes to the ``plugins`` namespace package. This
+# is agnostic to HOW a plugin got there: a locally-cloned ``plugins/<name>/`` and a
+# ``pip install``ed ``vbwd-plugin-<name>`` (which lands in
+# ``site-packages/plugins/<name>/``) both appear because ``plugins`` is a
+# pkgutil-extended namespace package. Falls back to the local tree if the package
+# cannot be imported (e.g. running straight from a checkout before install).
+try:
+    import plugins as _plugins_pkg  # noqa: E402
+
+    _plugin_roots = [os.path.abspath(p) for p in list(_plugins_pkg.__path__)]
+except Exception:  # pragma: no cover — defensive fallback
+    _plugin_roots = [os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "plugins"))]
+
+
+def _iter_plugin_dirs():
+    """Yield (plugin_name, plugin_dir) across every namespace root, deduped by name."""
+    _seen = set()
+    for _root in _plugin_roots:
+        if not os.path.isdir(_root):
+            continue
+        for _plugin in sorted(os.listdir(_root)):
+            if _plugin in _seen or _plugin.startswith((".", "_")):
+                continue
+            _plugin_dir = os.path.join(_root, _plugin)
+            if os.path.isdir(_plugin_dir):
+                _seen.add(_plugin)
+                yield _plugin, _plugin_dir
+
+
+# Dynamically import every model module from every plugin's models/ directory.
 # No plugin names are hard-coded here; new plugins are picked up automatically.
-_plugins_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "plugins"))
-for _plugin in sorted(os.listdir(_plugins_dir)):
-    _plugin_dir = os.path.join(_plugins_dir, _plugin)
-    if not os.path.isdir(_plugin_dir) or _plugin.startswith((".", "_")):
-        continue
+for _plugin, _plugin_dir in _iter_plugin_dirs():
     # Scan both conventions: src/models/ (old) and plugin_id/models/ (new)
     for _subdir in ["src/models", f"{_plugin}/models"]:
         _models_dir = os.path.join(_plugin_dir, _subdir)
@@ -49,10 +74,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Dynamically discover plugin migration directories (agnostic — no hardcoded plugins)
+# Dynamically discover plugin migration directories (agnostic — no hardcoded
+# plugins), across every namespace root so pip-installed plugins are covered too.
 _version_locations = [os.path.join(os.path.dirname(__file__), "versions")]
-for _plugin in sorted(os.listdir(_plugins_dir)):
-    _migrations_dir = os.path.join(_plugins_dir, _plugin, "migrations", "versions")
+for _plugin, _plugin_dir in _iter_plugin_dirs():
+    _migrations_dir = os.path.join(_plugin_dir, "migrations", "versions")
     if os.path.isdir(_migrations_dir):
         _version_locations.append(_migrations_dir)
 config.set_main_option("version_locations", ":".join(_version_locations))

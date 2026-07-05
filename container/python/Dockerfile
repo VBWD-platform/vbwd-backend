@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    git \
     default-libmysqlclient-dev \
     pkg-config \
     libpango-1.0-0 \
@@ -21,6 +22,26 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application
 COPY . .
+
+# Plugin packages (opt-in, pip-based) — installed from git as pip wheels into
+# site-packages as the `plugins.<name>` namespace, merged with /app/plugins via
+# the pkgutil-extended plugins/__init__.py. The build only does this when the
+# deploy workflow has written a non-empty plugins-requirements.txt into the build
+# context; otherwise it is a no-op and the legacy clone+COPY model is used as-is.
+# A BuildKit secret (id=git_token) supplies a token for private plugin repos and
+# is never written to a persisted layer.
+RUN --mount=type=secret,id=git_token \
+    if [ -s plugins-requirements.txt ]; then \
+      echo "[build] installing plugin packages from plugins-requirements.txt"; \
+      TOKEN="$(cat /run/secrets/git_token 2>/dev/null || true)"; \
+      if [ -n "$TOKEN" ]; then \
+        git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"; \
+      fi; \
+      pip install --no-cache-dir -r plugins-requirements.txt; \
+      rm -f /root/.gitconfig; \
+    else \
+      echo "[build] no plugins-requirements.txt — using plugins present under ./plugins (clone model)"; \
+    fi
 
 EXPOSE 5000
 
