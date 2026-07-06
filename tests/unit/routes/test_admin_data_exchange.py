@@ -291,6 +291,204 @@ def test_import_upsert_returns_result(mock_repo, mock_auth, client):
 
 @patch("vbwd.middleware.auth.AuthService")
 @patch("vbwd.middleware.auth.UserRepository")
+def test_import_unexpected_error_returns_422_not_500(mock_repo, mock_auth, client):
+    """A bad/foreign import file is user input: an unexpected exception from the
+    exchanger (a DB IntegrityError, a TypeError from an odd row key, …) must come
+    back as a structured 422 the fe can surface — never an opaque unhandled 500.
+    The full traceback is logged (Fix 1 makes that diagnosable)."""
+
+    class _BoomImportExchanger(EntityExchanger):
+        entity_key = "widgets"
+        label = "Widgets"
+        cluster = "sales"
+        natural_key = "code"
+        supports_export = False
+        supports_import = True
+        supported_formats = frozenset({"json"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):  # pragma: no cover - unused
+            raise UnsupportedOperationError("widgets is import-only")
+
+        def import_(self, payload, *, mode, dry_run):
+            raise RuntimeError("boom")
+
+    data_exchange_registry.register(_BoomImportExchanger())
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
+    with patch("vbwd.routes.admin.data_exchange.current_app") as mock_current_app:
+        response = client.post(
+            "/api/v1/admin/data-exchange/widgets/import",
+            headers=_headers(),
+            json={"payload": {"widgets": [{"code": "x"}]}, "mode": "upsert"},
+        )
+    assert response.status_code == 422
+    body = response.get_json()
+    assert "widgets" in body["error"]
+    assert "boom" in body["error"]
+    mock_current_app.logger.exception.assert_called_once()
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_import_ndjson_unexpected_error_returns_422_not_500(
+    mock_repo, mock_auth, client
+):
+    """The NDJSON streaming import path hardens the same way: an unexpected
+    exchanger failure is a structured 422, not an unhandled 500."""
+
+    class _BoomNdjsonExchanger(EntityExchanger):
+        entity_key = "widgets"
+        label = "Widgets"
+        cluster = "sales"
+        natural_key = "code"
+        supports_export = False
+        supports_import = True
+        supported_formats = frozenset({"json", "ndjson"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):  # pragma: no cover - unused
+            raise UnsupportedOperationError("widgets is import-only")
+
+        def import_(self, payload, *, mode, dry_run):  # pragma: no cover - unused
+            raise UnsupportedOperationError("use the ndjson path")
+
+        def import_ndjson(self, lines, *, mode, dry_run, chunk_size):
+            raise RuntimeError("ndjson boom")
+
+    data_exchange_registry.register(_BoomNdjsonExchanger())
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
+    ndjson = (
+        json.dumps({"vbwd_export": "widgets", "version": 1, "format": "ndjson"})
+        + "\n"
+        + json.dumps({"code": "x"})
+        + "\n"
+    )
+    with patch("vbwd.routes.admin.data_exchange.current_app") as mock_current_app:
+        response = client.post(
+            "/api/v1/admin/data-exchange/widgets/import",
+            headers=_headers(),
+            data={
+                "file": (io.BytesIO(ndjson.encode("utf-8")), "widgets.ndjson"),
+                "mode": "upsert",
+                "format": "ndjson",
+            },
+            content_type="multipart/form-data",
+        )
+    assert response.status_code == 422
+    assert "widgets" in response.get_json()["error"]
+    mock_current_app.logger.exception.assert_called_once()
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_import_unsupported_operation_still_returns_400(mock_repo, mock_auth, client):
+    """Regression: the Liskov export-only exception stays a 400, not the new
+    422 unexpected-error path."""
+
+    class _ExportOnlyExchanger(EntityExchanger):
+        entity_key = "widgets"
+        label = "Widgets"
+        cluster = "sales"
+        natural_key = "code"
+        supports_export = True
+        supports_import = True
+        supported_formats = frozenset({"json"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):  # pragma: no cover - unused
+            return Envelope(entity_key="widgets", rows=[])
+
+        def import_(self, payload, *, mode, dry_run):
+            raise UnsupportedOperationError("widgets rejects import")
+
+    data_exchange_registry.register(_ExportOnlyExchanger())
+    _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
+    response = client.post(
+        "/api/v1/admin/data-exchange/widgets/import",
+        headers=_headers(),
+        json={"payload": {"widgets": [{"code": "x"}]}, "mode": "upsert"},
+    )
+    assert response.status_code == 400
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
+def test_bundle_import_unexpected_error_is_per_entity_not_500(
+    mock_repo, mock_auth, client
+):
+    """One bad entity in a multi-entity bundle must not 500 the whole import:
+    an unexpected exchanger failure becomes that entity's ``errors:[{row:-1}]``
+    result while the others still import."""
+
+    class _BoomBundleExchanger(EntityExchanger):
+        entity_key = "gadgets"
+        label = "Gadgets"
+        cluster = "sales"
+        natural_key = "code"
+        supports_export = False
+        supports_import = True
+        supported_formats = frozenset({"json"})
+        secret_fields = frozenset()
+        pii_fields = frozenset()
+
+        def export(self, selector, *, include_pii):  # pragma: no cover - unused
+            raise UnsupportedOperationError("gadgets is import-only")
+
+        def import_(self, payload, *, mode, dry_run):
+            raise RuntimeError("bundle boom")
+
+    data_exchange_registry.register(_BoomBundleExchanger())
+    _mock_auth(
+        mock_repo,
+        mock_auth,
+        make_user_with_permissions("widgets.import", "gadgets.import"),
+    )
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "instance": "main",
+                    "version": 1,
+                    "contents": [
+                        {"entity_key": "widgets", "file": "widgets.json", "version": 1},
+                        {"entity_key": "gadgets", "file": "gadgets.json", "version": 1},
+                    ],
+                }
+            ),
+        )
+        archive.writestr(
+            "widgets.json",
+            json.dumps(build_envelope("widgets", [{"code": "z"}], instance="main")),
+        )
+        archive.writestr(
+            "gadgets.json",
+            json.dumps(build_envelope("gadgets", [{"code": "g"}], instance="main")),
+        )
+    buffer.seek(0)
+
+    with patch("vbwd.routes.admin.data_exchange.current_app") as mock_current_app:
+        response = client.post(
+            "/api/v1/admin/data-exchange/import",
+            headers=_headers(),
+            data={"file": (buffer, "bundle.zip"), "mode": "upsert"},
+            content_type="multipart/form-data",
+        )
+    assert response.status_code == 200
+    results = {item["entity"]: item for item in response.get_json()["results"]}
+    assert results["widgets"]["created"] == 1
+    assert results["gadgets"]["errors"][0]["row"] == -1
+    assert "bundle boom" in results["gadgets"]["errors"][0]["reason"]
+    mock_current_app.logger.exception.assert_called()
+
+
+@patch("vbwd.middleware.auth.AuthService")
+@patch("vbwd.middleware.auth.UserRepository")
 def test_import_replace_all_forbidden_for_non_superadmin(mock_repo, mock_auth, client):
     _mock_auth(mock_repo, mock_auth, make_user_with_permissions("widgets.import"))
     response = client.post(

@@ -257,6 +257,59 @@ def test_record_extra_dict_is_merged(memory_manager):
 
 
 # ---------------------------------------------------------------------------
+# Exception traceback capture (Flask ``app.log_exception`` passes exc_info=True)
+# ---------------------------------------------------------------------------
+
+
+def test_exception_record_captures_traceback(memory_manager):
+    """An ERROR record carrying ``exc_info`` (how Flask logs unhandled 500s)
+    must persist the formatted stack — type + message — under ``traceback`` so
+    the *.log files and /admin/logs are actually diagnosable, not just a
+    one-liner ``Exception on ... [POST]``."""
+    router = VbwdLogRouter(filesystem_manager=memory_manager)
+    try:
+        raise ValueError("kaboom from the import path")
+    except ValueError:
+        import sys
+
+        record = _make_record(
+            "vbwd.routes.admin", logging.ERROR, "Exception on /import [POST]"
+        )
+        record.exc_info = sys.exc_info()
+
+    router.emit(record)
+
+    payload = json.loads(_read_lines(memory_manager, "core/error.log")[0])
+    assert "traceback" in payload
+    traceback_text = payload["traceback"]
+    assert "ValueError" in traceback_text
+    assert "kaboom from the import path" in traceback_text
+    assert "Traceback (most recent call last)" in traceback_text
+
+
+def test_exception_traceback_survives_cached_exc_text(memory_manager):
+    """A record whose ``exc_text`` was already formatted (by an earlier handler)
+    is reused verbatim — mirrors stdlib caching, no double formatting."""
+    router = VbwdLogRouter(filesystem_manager=memory_manager)
+    record = _make_record("vbwd.x", logging.ERROR, "boom")
+    record.exc_text = "ValueError: pre-formatted stack"
+
+    router.emit(record)
+
+    payload = json.loads(_read_lines(memory_manager, "core/error.log")[0])
+    assert payload["traceback"] == "ValueError: pre-formatted stack"
+
+
+def test_normal_record_has_no_traceback_field(memory_manager):
+    """No regression: a record WITHOUT ``exc_info`` never gains a traceback."""
+    router = VbwdLogRouter(filesystem_manager=memory_manager)
+    router.emit(_make_record("vbwd.x", logging.ERROR, "plain error line"))
+
+    payload = json.loads(_read_lines(memory_manager, "core/error.log")[0])
+    assert "traceback" not in payload
+
+
+# ---------------------------------------------------------------------------
 # Event audit stream
 # ---------------------------------------------------------------------------
 

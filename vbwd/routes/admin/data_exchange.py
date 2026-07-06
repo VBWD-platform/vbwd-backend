@@ -10,6 +10,7 @@ import json
 from flask import (
     Blueprint,
     Response,
+    current_app,
     g,
     jsonify,
     request,
@@ -52,6 +53,9 @@ CSV_FORMAT = "csv"
 JSON_FORMAT = "json"
 ZIP_FORMAT = "zip"
 ROW_CAP_STATUS = 413
+# A bad/foreign import file is user input: an unexpected failure is a 4xx the fe
+# can surface (Unprocessable Entity), never an opaque unhandled server 500.
+IMPORT_FAILED_STATUS = 422
 ZIP_MAGIC = b"PK\x03\x04"
 NDJSON_MIMETYPE = "application/x-ndjson"
 
@@ -257,6 +261,15 @@ def _do_import_entity(key: str, exchanger):
         return {"error": str(exc)}, 400
     except EnvelopeError as exc:
         return {"error": str(exc)}, 400
+    except Exception as exc:
+        # Any other failure (DB IntegrityError/DataError on flush, a TypeError
+        # from an unexpected row key, an AttributeError from a malformed nested
+        # payload) is bad user input, not a server fault. The exchanger already
+        # rolled back its own session (``_apply_rows`` re-raises after rollback);
+        # log the full traceback (diagnosable now the router captures it) and
+        # return a structured 4xx the fe can surface.
+        current_app.logger.exception("data-exchange import of '%s' failed", key)
+        return {"error": f"import of '{key}' failed: {exc}"}, IMPORT_FAILED_STATUS
     return result.to_dict(), 200
 
 
@@ -290,6 +303,11 @@ def _import_ndjson_upload(key: str, exchanger):
         return {"error": str(exc)}, 400
     except EnvelopeError as exc:
         return {"error": str(exc)}, 400
+    except Exception as exc:
+        # Same hardening as the JSON path: an unexpected streaming-import failure
+        # is user input, logged with full traceback and returned as a 4xx.
+        current_app.logger.exception("data-exchange ndjson import of '%s' failed", key)
+        return {"error": f"import of '{key}' failed: {exc}"}, IMPORT_FAILED_STATUS
     return result.to_dict(), 200
 
 
@@ -490,15 +508,28 @@ def import_bundle():
             result = exchanger.import_(envelope, mode=mode, dry_run=dry_run)
             results.append(result.to_dict())
         except (UnsupportedOperationError, EnvelopeError) as exc:
-            results.append(
-                {
-                    "entity": entity_key,
-                    "mode": mode,
-                    "dry_run": dry_run,
-                    "created": 0,
-                    "updated": 0,
-                    "skipped": 0,
-                    "errors": [{"row": -1, "reason": str(exc)}],
-                }
+            results.append(_bundle_entity_error(entity_key, mode, dry_run, str(exc)))
+        except Exception as exc:
+            # One bad entity must not 500 the whole bundle: log the full
+            # traceback and record it as this entity's per-entity error so the
+            # remaining entities still import.
+            current_app.logger.exception(
+                "data-exchange bundle import of '%s' failed", entity_key
             )
+            results.append(_bundle_entity_error(entity_key, mode, dry_run, str(exc)))
     return jsonify({"results": results}), 200
+
+
+def _bundle_entity_error(
+    entity_key: str, mode: str, dry_run: bool, reason: str
+) -> dict:
+    """Build a per-entity failure result matching the bundle result-dict shape."""
+    return {
+        "entity": entity_key,
+        "mode": mode,
+        "dry_run": dry_run,
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+        "errors": [{"row": -1, "reason": reason}],
+    }

@@ -53,6 +53,28 @@ def derive_stream(level: int) -> Optional[str]:
     return None
 
 
+def _format_traceback(record: logging.LogRecord) -> Optional[str]:
+    """Return the formatted exception (+ optional stack) for a record, or ``None``.
+
+    Flask's ``app.log_exception`` logs unhandled 500s with ``exc_info=True``, but
+    :meth:`logging.LogRecord.getMessage` only yields the one-line message — the
+    stack is lost unless the formatter reads ``exc_info``. This mirrors the
+    stdlib :class:`logging.Formatter`: it caches the formatted text on
+    ``record.exc_text`` (so repeated handlers don't reformat), prefers an
+    already-populated ``exc_text``, and appends ``stack_info`` when present.
+    """
+    parts = []
+    if record.exc_info:
+        if not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        parts.append(record.exc_text)
+    elif record.exc_text:
+        parts.append(record.exc_text)
+    if record.stack_info:
+        parts.append(logging.Formatter().formatStack(record.stack_info))
+    return "\n".join(parts) if parts else None
+
+
 def _extract_extra(record: logging.LogRecord) -> Dict[str, Any]:
     """Return the user-supplied ``extra`` context attached to a record.
 
@@ -111,6 +133,9 @@ class VbwdLogRouter(logging.Handler):
             "logger": record.name,
             "msg": record.getMessage(),
         }
+        traceback_text = _format_traceback(record)
+        if traceback_text:
+            payload["traceback"] = traceback_text
         extra = _extract_extra(record)
         if extra:
             payload.update(redact(extra))
