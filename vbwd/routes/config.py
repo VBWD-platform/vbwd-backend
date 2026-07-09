@@ -57,6 +57,10 @@ def get_public_config():
         jsonify(
             {
                 "default_currency": settings["default_currency"],
+                # White-label brand/site name (non-sensitive, safe for the
+                # public endpoint). Empty when unset; the fe applies its own
+                # display fallback.
+                "site_name": settings.get("site_name", "") or "",
                 "prices_display_mode": settings["prices_display_mode"],
                 "prices_mode_in_db": settings["prices_mode_in_db"],
                 # S99.0b: read-only S84 projection for the display switcher.

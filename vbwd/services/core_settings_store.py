@@ -72,6 +72,9 @@ def _catalog_codes() -> Optional[Set[str]]:
 # it appear (with its default) for every existing deployment on the next read.
 DEFAULT_CORE_SETTINGS: Dict[str, Any] = {
     "provider_name": "",
+    # White-label display brand name shown in the fe headers/logo (distinct
+    # from the legal ``provider_name`` used on invoices).
+    "site_name": "",
     "contact_email": "",
     "website_url": "",
     "other_links": "",

@@ -38,6 +38,24 @@ class TestPublicConfig:
         body = response.get_json()
         assert body["prices_display_mode"] == "netto"
 
+    def test_includes_default_site_name(self, client):
+        response = client.get("/api/v1/config")
+        assert response.status_code == 200
+        body = response.get_json()
+        # White-label brand name defaults to an empty string (fe applies its
+        # own "VBWD" display fallback).
+        assert body["site_name"] == ""
+
+    def test_reflects_saved_site_name(self, client):
+        from vbwd.services.core_settings_store import update_core_settings
+
+        update_core_settings({"site_name": "Acme"})
+
+        response = client.get("/api/v1/config")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["site_name"] == "Acme"
+
     def test_requires_no_authentication(self, client):
         # No Authorization header — a public read must still succeed.
         response = client.get("/api/v1/config")

@@ -116,6 +116,22 @@ def test_non_object_json_falls_back_to_defaults(isolated_var_dir):
     assert settings == DEFAULT_CORE_SETTINGS  # no raise
 
 
+def test_site_name_defaults_to_empty_string():
+    """White-label brand/site name defaults to an empty string."""
+    assert "site_name" in DEFAULT_CORE_SETTINGS
+    assert DEFAULT_CORE_SETTINGS["site_name"] == ""
+    assert get_core_settings()["site_name"] == ""
+
+
+def test_site_name_persists_across_read():
+    """A saved site_name round-trips across a fresh read."""
+    merged = update_core_settings({"site_name": "Acme"})
+    assert merged["site_name"] == "Acme"
+
+    reread = get_core_settings()
+    assert reread["site_name"] == "Acme"
+
+
 def test_prices_display_mode_defaults_to_brutto():
     """S72.4 D-global: the global netto/brutto toggle defaults to ``brutto``."""
     settings = get_core_settings()
