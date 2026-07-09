@@ -1,0 +1,66 @@
+[
+  {
+    "slug": "new",
+    "name": "New User",
+    "description": "Anonymous or newly registered — minimal access",
+    "linked_plan_slug": null,
+    "permissions": [
+      "user.profile.view",
+      "cms.content.view"
+    ]
+  },
+  {
+    "slug": "logged-in",
+    "name": "Logged In",
+    "description": "Authenticated free user",
+    "linked_plan_slug": "free",
+    "permissions": [
+      "user.profile.view",
+      "user.profile.manage",
+      "subscription.invoices.view",
+      "subscription.tokens.view",
+      "subscription.plans.view",
+      "cms.content.view"
+    ]
+  },
+  {
+    "slug": "subscribed-basic",
+    "name": "Subscribed Basic",
+    "description": "User with Basic plan subscription",
+    "linked_plan_slug": "basic",
+    "permissions": [
+      "user.profile.view",
+      "user.profile.manage",
+      "subscription.plans.view",
+      "subscription.manage",
+      "subscription.invoices.view",
+      "subscription.tokens.view",
+      "shop.catalog.view",
+      "shop.cart.manage",
+      "booking.calendar.view",
+      "cms.content.view"
+    ]
+  },
+  {
+    "slug": "subscribed-pro",
+    "name": "Subscribed Pro",
+    "description": "User with Pro plan subscription",
+    "linked_plan_slug": "pro",
+    "permissions": [
+      "user.profile.view",
+      "user.profile.manage",
+      "subscription.plans.view",
+      "subscription.manage",
+      "subscription.invoices.view",
+      "subscription.tokens.view",
+      "subscription.tokens.manage",
+      "shop.catalog.view",
+      "shop.cart.manage",
+      "shop.orders.view",
+      "booking.calendar.view",
+      "booking.bookings.manage",
+      "booking.bookings.view",
+      "cms.content.view"
+    ]
+  }
+]

@@ -26,6 +26,7 @@ def seed_rbac_command():
     result = seed_default_rbac(db.session, plugin_manager=plugin_manager)
 
     click.echo("RBAC seed complete:")
-    click.echo(f"  roles created:       {result.roles_created}")
-    click.echo(f"  roles updated:       {result.roles_updated}")
-    click.echo(f"  permissions created: {result.permissions_created}")
+    click.echo(f"  roles created:              {result.roles_created}")
+    click.echo(f"  roles updated:              {result.roles_updated}")
+    click.echo(f"  permissions created:        {result.permissions_created}")
+    click.echo(f"  user access levels created: {result.user_access_levels_created}")

@@ -1,13 +1,46 @@
-"""Shared permission-catalog collector.
+"""Shared permission-catalog collectors.
 
-Single source of truth for the admin permission catalog, consumed by both
-the ``/admin/access/permissions`` route and the RBAC seeder (DRY). The
-catalog = core permissions + each enabled plugin's ``admin_permissions``.
+Single source of truth for the permission catalogs, consumed by both the
+``/admin/access/*`` routes and the RBAC seeder (DRY). Two catalogs:
+
+* **admin** (``collect_permission_catalog``) = core ``CORE_PERMISSIONS`` + each
+  enabled plugin's ``admin_permissions`` + the derived data-exchange perms.
+* **user** (``collect_user_permission_catalog``) = core ``CORE_USER_PERMISSIONS``
+  + each enabled plugin's ``user_permissions`` (the fe-user / access-level
+  permissions, e.g. ``user.profile.view``).
 
 Core stays agnostic: plugin permissions are read through the injected (or
 ``current_app``) ``plugin_manager`` — never by importing a plugin module.
 """
 from typing import Any, Optional
+
+
+def _resolve_plugin_manager(plugin_manager: Optional[Any]) -> Optional[Any]:
+    """Return the injected manager, else the active app's, else ``None``.
+
+    Degrades to ``None`` (core-only) when called with no manager outside a
+    Flask app context, so a collector never raises for its caller.
+    """
+    if plugin_manager is not None:
+        return plugin_manager
+    try:
+        from flask import current_app
+
+        return getattr(current_app, "plugin_manager", None)
+    except RuntimeError:
+        # No application context — no resolvable manager (core-only).
+        return None
+
+
+def _collect_plugin_permissions(manager: Optional[Any], attribute: str) -> dict:
+    """Map each enabled plugin's non-empty ``attribute`` list by plugin name."""
+    collected: dict = {}
+    if manager is not None:
+        for plugin in manager.get_enabled_plugins():
+            permissions = getattr(plugin, attribute, None)
+            if permissions:
+                collected[plugin.metadata.name] = permissions
+    return collected
 
 
 def collect_permission_catalog(*, plugin_manager: Optional[Any] = None) -> dict:
@@ -29,21 +62,35 @@ def collect_permission_catalog(*, plugin_manager: Optional[Any] = None) -> dict:
 
     catalog = {"core": CORE_PERMISSIONS}
 
-    manager = plugin_manager
-    if manager is None:
-        from flask import current_app
-
-        manager = getattr(current_app, "plugin_manager", None)
-
-    if manager is not None:
-        for plugin in manager.get_enabled_plugins():
-            admin_permissions = getattr(plugin, "admin_permissions", None)
-            if admin_permissions:
-                catalog[plugin.metadata.name] = admin_permissions
+    manager = _resolve_plugin_manager(plugin_manager)
+    catalog.update(_collect_plugin_permissions(manager, "admin_permissions"))
 
     data_exchange_permissions = _collect_data_exchange_permissions()
     if data_exchange_permissions:
         catalog["data_exchange"] = data_exchange_permissions
+
+    return catalog
+
+
+def collect_user_permission_catalog(*, plugin_manager: Optional[Any] = None) -> dict:
+    """Collect the user-facing permission catalog from core + enabled plugins.
+
+    Mirror of :func:`collect_permission_catalog` for USER (System C / access-
+    level) permissions: core = ``CORE_USER_PERMISSIONS``, each enabled plugin
+    contributes its ``user_permissions`` (e.g. subscription declares
+    ``user.profile.view``). Consumed by the RBAC seeder (so the default access
+    levels' grants resolve) and the ``/admin/access/user-permissions`` route.
+
+    Returns:
+        Mapping of source name -> list of permission entries. The ``"core"``
+        key is always present.
+    """
+    from vbwd.routes.admin.access import CORE_USER_PERMISSIONS
+
+    catalog = {"core": CORE_USER_PERMISSIONS}
+
+    manager = _resolve_plugin_manager(plugin_manager)
+    catalog.update(_collect_plugin_permissions(manager, "user_permissions"))
 
     return catalog
 

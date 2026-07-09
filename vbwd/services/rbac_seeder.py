@@ -8,13 +8,21 @@ and only created ambiguity in the admin Access-Levels UI). Safe to
 re-run on every deploy (ungated). Reads the plugin permission catalog via
 the injected ``plugin_manager`` (DI) — core never imports a plugin module.
 """
+import json
+import logging
+import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 from uuid import uuid4
 
 from vbwd.models.role import Role, Permission
-from vbwd.services.permission_catalog import collect_permission_catalog
+from vbwd.models.user_access_level import AccessLevel
+from vbwd.services.permission_catalog import (
+    collect_permission_catalog,
+    collect_user_permission_catalog,
+)
 
+logger = logging.getLogger(__name__)
 
 WILDCARD_PERMISSION = "*"
 
@@ -31,6 +39,68 @@ DEFAULT_ROLES = (
 )
 
 
+# The default fe-user access levels (permission tiers). These are foundational
+# data seeded on EVERY install — not only when demo data runs — so a fresh
+# instance always has the tiers the fe-user app and the plugins expect. Their
+# permission keys reference plugin surfaces that do NOT exist on a core-only
+# install; seeding resolves them leniently (attach what exists, skip the rest)
+# and NEVER creates them. Level seeding is create-only: an existing slug is left
+# completely untouched.
+#
+# The level DEFINITIONS live in a shipped JSON data file, not as Python literals
+# — those permission keys are plugin domain vocabulary that core CODE must not
+# name (the S50 core-agnosticism oracle scans .py only, so the data belongs in a
+# data file, exactly like the email templates and settings JSON). An operator
+# can override the shipped defaults with a var/ JSON (see
+# ``resolve_user_access_levels``), mirroring ``core_rate_limits_store``.
+_DEFAULT_LEVELS_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "data",
+    "default_user_access_levels.json",
+)
+
+# The operator override lives at ``${VBWD_VAR_DIR}/core/user_access_levels.json``
+# (host-mounted, tunable without an image rebuild).
+_CORE_NAMESPACE = "core"
+_USER_ACCESS_LEVELS_FILE = "user_access_levels.json"
+
+
+def _load_default_user_access_levels() -> Tuple[Dict[str, Any], ...]:
+    """Load the shipped default access levels from the bundled JSON data file."""
+    with open(_DEFAULT_LEVELS_FILE, encoding="utf-8") as handle:
+        return tuple(json.load(handle))
+
+
+DEFAULT_USER_ACCESS_LEVELS: Tuple[
+    Dict[str, Any], ...
+] = _load_default_user_access_levels()
+
+
+def resolve_user_access_levels() -> Tuple[Dict[str, Any], ...]:
+    """Return the access levels to seed: operator override if present, else defaults.
+
+    A deployment may drop a JSON array at
+    ``${VBWD_VAR_DIR}/core/user_access_levels.json`` to replace the shipped
+    defaults (tuning without an image rebuild). A missing / corrupt / non-list
+    file degrades to the shipped defaults (logged) and never raises.
+    """
+    from vbwd.services.filesystem import LocalFilesystemManager
+
+    loaded = LocalFilesystemManager().read_json(
+        _CORE_NAMESPACE, _USER_ACCESS_LEVELS_FILE, default=None
+    )
+    if isinstance(loaded, list) and loaded:
+        return tuple(loaded)
+    if loaded is not None:
+        logger.warning(
+            "Core user-access-levels override %s/%s is not a non-empty JSON list; "
+            "using shipped defaults.",
+            _CORE_NAMESPACE,
+            _USER_ACCESS_LEVELS_FILE,
+        )
+    return DEFAULT_USER_ACCESS_LEVELS
+
+
 @dataclass(frozen=True)
 class RbacSeedResult:
     """Counts of rows created during a seeder run (idempotent re-runs = 0)."""
@@ -38,6 +108,7 @@ class RbacSeedResult:
     roles_created: int = 0
     roles_updated: int = 0
     permissions_created: int = 0
+    user_access_levels_created: int = 0
 
 
 def _permission_keys_from_catalog(catalog: dict) -> list:
@@ -89,28 +160,83 @@ def _permissions_for_role(slug: str, core_keys: list) -> list:
     return []
 
 
+def _resolve_existing_permissions(session, permission_keys: list) -> list:
+    """Return the Permission rows that already exist for ``permission_keys``.
+
+    Lenient by design (S-RBAC): a default access level references plugin
+    permission keys that do NOT exist on a core-only install. We attach the
+    ones that DO exist and silently skip the rest — never creating a row and
+    never raising (``.first()``, not ``.one()``), so a core-only install can
+    seed cleanly.
+    """
+    resolved = []
+    for key in permission_keys:
+        permission = session.query(Permission).filter_by(name=key).first()
+        if permission is not None:
+            resolved.append(permission)
+    return resolved
+
+
+def _seed_user_access_levels(session) -> int:
+    """Create the default user access levels. Returns the count created.
+
+    Create-only / prod-safe: an existing level (matched by slug) is left
+    completely untouched — its permission grants are never cleared or
+    reassigned. New levels are ``is_system=True`` and get only the subset of
+    permissions that already exist (see :func:`_resolve_existing_permissions`).
+    """
+    levels_created = 0
+    for level_data in resolve_user_access_levels():
+        slug = level_data["slug"]
+        existing = session.query(AccessLevel).filter_by(slug=slug).first()
+        if existing is not None:
+            continue
+
+        level = AccessLevel(
+            id=uuid4(),
+            name=level_data.get("name") or slug,
+            slug=slug,
+            description=level_data.get("description"),
+            is_system=True,
+            linked_plan_slug=level_data.get("linked_plan_slug"),
+        )
+        session.add(level)
+        # Attach only the permissions that already exist (lenient), mutating the
+        # relationship collection in place rather than reassigning it.
+        level.permissions.extend(
+            _resolve_existing_permissions(session, level_data.get("permissions") or [])
+        )
+        session.flush()
+        levels_created += 1
+    return levels_created
+
+
 def seed_default_rbac(
     session, *, plugin_manager: Optional[object] = None
 ) -> RbacSeedResult:
-    """Idempotently sync the permission catalog and upsert the 3 default roles.
+    """Idempotently sync the permission catalog, roles, and user access levels.
 
     Steps:
         1. Collect the catalog (core + enabled plugins, via the shared
            collector) and upsert each permission by name.
-        2. Upsert the 3 default system roles by slug — never overwriting a
+        2. Upsert the 2 default system roles by slug — never overwriting a
            pre-existing non-system role of the same slug.
+        3. Create the default user access levels (create-only: an existing
+           slug is left untouched), attaching only the permissions that exist.
 
     Safe to re-run; a second run creates nothing new.
     """
     catalog = collect_permission_catalog(plugin_manager=plugin_manager)
     core_keys = [entry["key"] for entry in catalog["core"]]
 
-    # Core user-facing permissions (e.g. ``manage_api``) need Permission rows so
-    # an admin can assign them to user access levels — they are NOT admin
-    # permissions, so they stay out of ``core_keys`` (the ``admin`` role's set).
-    from vbwd.routes.admin.access import CORE_USER_PERMISSIONS
-
-    user_permission_keys = [entry["key"] for entry in CORE_USER_PERMISSIONS]
+    # User-facing permissions (core ``CORE_USER_PERMISSIONS`` — e.g.
+    # ``manage_api`` — PLUS every enabled plugin's ``user_permissions``, e.g.
+    # subscription's ``user.profile.view``) need Permission rows so the default
+    # access levels' grants resolve (and an admin can assign them). They are NOT
+    # admin permissions, so they stay out of ``core_keys`` (the ``admin`` role's
+    # set). Read via the shared collector (DRY) — core stays agnostic.
+    user_catalog = collect_user_permission_catalog(plugin_manager=plugin_manager)
+    user_permission_keys = _permission_keys_from_catalog(user_catalog)
 
     permissions_created = 0
     catalog_keys = _permission_keys_from_catalog(catalog)
@@ -150,10 +276,13 @@ def seed_default_rbac(
             )
             roles_created += 1
 
+    user_access_levels_created = _seed_user_access_levels(session)
+
     session.commit()
 
     return RbacSeedResult(
         roles_created=roles_created,
         roles_updated=roles_updated,
         permissions_created=permissions_created,
+        user_access_levels_created=user_access_levels_created,
     )

@@ -33,6 +33,7 @@ from vbwd.models.tag import Tag
 from vbwd.models.tax import Tax
 from vbwd.models.token_bundle import TokenBundle
 from vbwd.models.user import User
+from vbwd.models.user_access_level import AccessLevel
 from vbwd.models.user_details import UserDetails
 from vbwd.models.user_group import UserGroup
 from vbwd.services.asset_storage import asset_dir
@@ -761,6 +762,117 @@ class AccessLevelsExchanger(EntityExchanger):
         grants.extend(resolved)
 
 
+# ── user_access_levels (AccessLevel + permission grants by natural key) ──────
+
+
+class UserAccessLevelsExchanger(EntityExchanger):
+    """fe-user access levels (``AccessLevel``), keyed by ``slug``.
+
+    Mirrors :class:`AccessLevelsExchanger` (admin ``Role``) but for the
+    user-facing access tiers. Permission grants serialise as a list of
+    permission *names* (natural keys) so the envelope is instance-independent;
+    import re-links by looking each permission up by name. Unknown permissions
+    are reported and skipped (never created).
+    """
+
+    entity_key = "user_access_levels"
+    label = "User Access Levels"
+    cluster = CLUSTER_SETTINGS
+    natural_key = "slug"
+    supports_export = True
+    supports_import = True
+    supported_formats = frozenset({"json"})
+    secret_fields = frozenset()
+    pii_fields = frozenset()
+
+    def __init__(self, session: Any):
+        self._session = session
+
+    def export(self, selector: ExportSelector, *, include_pii: bool) -> Envelope:
+        levels = self._session.query(AccessLevel).all()
+        if selector.ids:
+            wanted = {str(value) for value in selector.ids}
+            levels = [
+                level
+                for level in levels
+                if str(level.id) in wanted or (level.slug and level.slug in wanted)
+            ]
+        rows = [self._serialise(level) for level in levels]
+        return Envelope(entity_key=self.entity_key, rows=rows)
+
+    def _serialise(self, level: AccessLevel) -> dict:
+        return {
+            "name": level.name,
+            "slug": level.slug,
+            "description": level.description,
+            "is_system": bool(level.is_system),
+            "linked_plan_slug": level.linked_plan_slug,
+            "permissions": sorted(perm.name for perm in list(level.permissions)),
+        }
+
+    def import_(self, payload: dict, *, mode: str, dry_run: bool) -> ImportResult:
+        rows = validate_envelope(payload, self.entity_key)
+        result = ImportResult(entity=self.entity_key, mode=mode, dry_run=dry_run)
+        try:
+            for index, row in enumerate(rows):
+                self._import_row(row, index, result)
+        except Exception:
+            self._session.rollback()
+            raise
+        if dry_run:
+            self._session.rollback()
+        else:
+            self._session.commit()
+        return result
+
+    def _import_row(self, row: dict, index: int, result: ImportResult) -> None:
+        slug = row.get("slug")
+        if not slug:
+            result.errors.append({"row": index, "reason": "missing natural key 'slug'"})
+            return
+        level = (
+            self._session.query(AccessLevel).filter(AccessLevel.slug == slug).first()
+        )
+        if level is None:
+            level = AccessLevel(slug=slug, name=row.get("name") or slug)
+            self._session.add(level)
+            result.created += 1
+        else:
+            result.updated += 1
+        if "name" in row and row["name"]:
+            level.name = row["name"]
+        level.description = row.get("description")
+        if "is_system" in row:
+            level.is_system = bool(row["is_system"])
+        level.linked_plan_slug = row.get("linked_plan_slug")
+        self._relink_permissions(level, row.get("permissions") or [], index, result)
+
+    def _relink_permissions(
+        self,
+        level: AccessLevel,
+        permission_keys: list,
+        index: int,
+        result: ImportResult,
+    ) -> None:
+        resolved: List[Permission] = []
+        for key in permission_keys:
+            permission = (
+                self._session.query(Permission).filter(Permission.name == key).first()
+            )
+            if permission is None:
+                result.errors.append(
+                    {"row": index, "reason": f"unknown permission '{key}'"}
+                )
+                continue
+            resolved.append(permission)
+        # Mutate the relationship collection in place (clear + extend) rather
+        # than reassigning, so the natural-key-resolved grants replace the old
+        # set cleanly.
+        grants = level.permissions
+        grants.clear()
+        grants.extend(resolved)
+
+
 # ── email_templates (file-backed) ────────────────────────────────────────────
 
 
@@ -948,6 +1060,7 @@ def build_core_exchangers(
         InvoicesExchanger(session),
         _build_payment_methods_exchanger(session),
         AccessLevelsExchanger(session),
+        UserAccessLevelsExchanger(session),
         EmailTemplatesExchanger(template_dir),
         _build_currencies_exchanger(session),
         _build_llm_connections_exchanger(session),

@@ -269,17 +269,15 @@ def revoke_user_role(user_id, role_id):
 
 
 def _get_all_user_permissions():
-    """Collect user permissions from core + all enabled plugins."""
-    from flask import current_app
+    """Collect user permissions from core + all enabled plugins.
 
-    result = {"core": CORE_USER_PERMISSIONS}
-    manager = getattr(current_app, "plugin_manager", None)
-    if manager:
-        for plugin in manager.get_enabled_plugins():
-            user_perms = getattr(plugin, "user_permissions", None)
-            if user_perms:
-                result[plugin.metadata.name] = user_perms
-    return result
+    Thin wrapper over the shared catalog collector (DRY) — the RBAC seeder
+    uses the same source, so seeded access-level grants and the admin UI's
+    permission picker never drift.
+    """
+    from vbwd.services.permission_catalog import collect_user_permission_catalog
+
+    return collect_user_permission_catalog()
 
 
 @access_bp.route("/levels", methods=["GET"])

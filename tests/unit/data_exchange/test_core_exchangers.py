@@ -22,6 +22,7 @@ from vbwd.models.role import Permission, Role
 from vbwd.models.tax import Tax
 from vbwd.models.token_bundle import TokenBundle
 from vbwd.models.user import User
+from vbwd.models.user_access_level import AccessLevel
 from vbwd.models.user_details import UserDetails
 from vbwd.services.data_exchange.core_exchangers import (
     build_core_exchangers,
@@ -550,6 +551,104 @@ class TestAccessLevelsExchanger:
         rebuilt = session.query(Role).filter_by(name="RT Role").first()
         assert rebuilt is not None
         assert "users.view" in [p.name for p in rebuilt.permissions]
+
+
+class TestUserAccessLevelsExchanger:
+    @pytest.fixture
+    def seeded(self, session):
+        perm = session.query(Permission).filter_by(name="users.view").first()
+        if perm is None:
+            perm = Permission(
+                id=uuid4(),
+                name="users.view",
+                description="View users",
+                resource="users",
+                action="view",
+            )
+            session.add(perm)
+            session.commit()
+        existing = session.query(AccessLevel).filter_by(slug="rt-level").first()
+        if existing is None:
+            level = AccessLevel(
+                id=uuid4(),
+                name="RT Level",
+                slug="rt-level",
+                description="round trip",
+                is_system=True,
+                linked_plan_slug="pro",
+            )
+            level.permissions.append(perm)
+            session.add(level)
+            session.commit()
+        yield
+        level = session.query(AccessLevel).filter_by(slug="rt-level").first()
+        if level is not None:
+            session.delete(level)
+            session.commit()
+
+    def test_export_includes_permission_grants_as_keys(self, session, seeded):
+        rows = _export_rows(_exchangers(session)["user_access_levels"])
+        row = next(r for r in rows if r["slug"] == "rt-level")
+        assert "users.view" in row["permissions"]
+        assert row["linked_plan_slug"] == "pro"
+        assert "id" not in row
+
+    def test_round_trip_preserves_grants_and_plan(self, session, seeded):
+        exchanger = _exchangers(session)["user_access_levels"]
+        before = _export_rows(exchanger)
+        before_row = next(r for r in before if r["slug"] == "rt-level")
+        # Drop the level, then re-import from the envelope (clean DB path).
+        level = session.query(AccessLevel).filter_by(slug="rt-level").first()
+        session.delete(level)
+        session.commit()
+        payload = build_envelope("user_access_levels", [before_row], instance="test")
+        exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        rebuilt = session.query(AccessLevel).filter_by(slug="rt-level").first()
+        assert rebuilt is not None
+        assert rebuilt.linked_plan_slug == "pro"
+        assert "users.view" in [p.name for p in rebuilt.permissions]
+
+    def test_import_unknown_permission_records_error_but_imports_row(
+        self, session, seeded
+    ):
+        exchanger = _exchangers(session)["user_access_levels"]
+        row = {
+            "name": "Unknown Perm Level",
+            "slug": "unknown-perm-level",
+            "description": "has a bad grant",
+            "is_system": True,
+            "linked_plan_slug": None,
+            "permissions": ["users.view", "does.not.exist"],
+        }
+        payload = build_envelope("user_access_levels", [row], instance="test")
+        try:
+            result = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+            assert any("does.not.exist" in e["reason"] for e in result.errors)
+            imported = (
+                session.query(AccessLevel).filter_by(slug="unknown-perm-level").first()
+            )
+            assert imported is not None
+            assert [p.name for p in imported.permissions] == ["users.view"]
+        finally:
+            imported = (
+                session.query(AccessLevel).filter_by(slug="unknown-perm-level").first()
+            )
+            if imported is not None:
+                session.delete(imported)
+                session.commit()
+
+    def test_import_rejects_wrong_envelope_kind(self, session):
+        exchanger = _exchangers(session)["user_access_levels"]
+        payload = build_envelope("access_levels", [], instance="test")
+        with pytest.raises(Exception):
+            exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+
+    def test_import_missing_slug_records_error(self, session):
+        exchanger = _exchangers(session)["user_access_levels"]
+        row = {"name": "No Slug", "permissions": []}
+        payload = build_envelope("user_access_levels", [row], instance="test")
+        result = exchanger.import_(payload, mode=MODE_UPSERT, dry_run=False)
+        assert any("missing natural key 'slug'" in e["reason"] for e in result.errors)
 
 
 # ── countries (migrated country_io) ──────────────────────────────────────────
