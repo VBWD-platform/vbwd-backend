@@ -1,4 +1,5 @@
 """Authentication service implementation."""
+import logging
 import re
 import bcrypt
 import jwt
@@ -10,20 +11,38 @@ from vbwd.interfaces.auth import IAuthService, AuthResult, UserData
 from vbwd.repositories.user_repository import UserRepository
 from vbwd.models.user import User
 from vbwd.models.enums import UserStatus, UserRole, AccountType
+from vbwd.services.user_access_level_service import UserAccessLevelService
 from vbwd.config import get_config
+
+logger = logging.getLogger(__name__)
+
+# Core-owned default access level (see vbwd/data/default_user_access_levels.json)
+# granted to every newly registered user so the fe-user router's permission
+# guards resolve. Naming a CORE data-file slug here is not a plugin leak.
+DEFAULT_USER_ACCESS_LEVEL_SLUG = "logged-in"
 
 
 class AuthService(IAuthService):
     """Service for user authentication and authorization."""
 
-    def __init__(self, user_repository: UserRepository):
+    def __init__(
+        self,
+        user_repository: UserRepository,
+        *,
+        access_level_service: Optional[UserAccessLevelService] = None,
+    ):
         """Initialize AuthService.
 
         Args:
             user_repository: Repository for user data access
+            access_level_service: Optional collaborator that assigns the default
+                user access level on registration (DI seam). Lazily created as a
+                ``UserAccessLevelService`` bound to the request session when not
+                injected.
         """
         self._user_repo = user_repository
         self._config = get_config()
+        self._access_level_service = access_level_service
 
     def register(self, email: str, password: str) -> AuthResult:
         """Register new user.
@@ -63,10 +82,51 @@ class AuthService(IAuthService):
 
         created_user = self._user_repo.save(new_user)
 
+        # Grant the default access level so fe-user permission guards resolve.
+        # Best-effort: registration must succeed even if RBAC is unseeded.
+        self._assign_default_access_level(created_user)
+
         # Generate token
         token = self._generate_token(created_user.id, created_user.email)  # type: ignore[arg-type]
 
         return AuthResult(success=True, user_id=created_user.id, token=token)  # type: ignore[arg-type]
+
+    def _assign_default_access_level(self, user: User) -> None:
+        """Assign the core ``logged-in`` access level to a freshly created user.
+
+        Non-fatal by contract: a missing level (RBAC not seeded) or any failure
+        during assignment is logged and swallowed so the caller still returns a
+        successful registration with a token.
+        """
+        try:
+            service = self._resolve_access_level_service()
+            level = service.find_by_slug(DEFAULT_USER_ACCESS_LEVEL_SLUG)
+            if level is None:
+                logger.warning(
+                    "Default access level '%s' not found; user %s registered "
+                    "without a user access level (is RBAC seeded?)",
+                    DEFAULT_USER_ACCESS_LEVEL_SLUG,
+                    user.id,
+                )
+                return
+            if service.assign(UUID(str(user.id)), UUID(str(level.id))):
+                # assign() only flushes; commit so the association survives the
+                # request (there is no request-teardown commit). Persisting the
+                # user whose relationship changed is the natural single commit.
+                self._user_repo.update(user)
+        except Exception:
+            logger.warning(
+                "Failed to assign default access level '%s' to user %s",
+                DEFAULT_USER_ACCESS_LEVEL_SLUG,
+                getattr(user, "id", None),
+                exc_info=True,
+            )
+
+    def _resolve_access_level_service(self) -> UserAccessLevelService:
+        """Return the injected access-level service or lazily build the default."""
+        if self._access_level_service is None:
+            self._access_level_service = UserAccessLevelService()
+        return self._access_level_service
 
     def login(self, email: str, password: str) -> AuthResult:
         """Login user and return JWT token.

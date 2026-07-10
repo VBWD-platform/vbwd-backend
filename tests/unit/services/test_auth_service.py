@@ -124,6 +124,92 @@ class TestAuthServiceRegister:
         mock_user_repo.save.assert_not_called()
 
 
+class TestAuthServiceRegisterAssignsDefaultAccessLevel:
+    """register() must grant the core-owned ``logged-in`` access level to every
+    newly created user, otherwise ``effective_user_permissions`` is empty and
+    the fe-user router bounces every permission-gated route to /dashboard.
+
+    Assignment is a best-effort, NON-FATAL side effect: a missing level or a
+    failing assign must never turn a successful registration into a failure.
+    """
+
+    @pytest.fixture
+    def mock_user_repo(self):
+        repo = Mock()
+        repo.find_by_email = Mock(return_value=None)
+
+        def _save(user):
+            user.id = user.id or uuid4()
+            return user
+
+        repo.save = Mock(side_effect=_save)
+        repo.update = Mock(side_effect=lambda user: user)
+        return repo
+
+    @pytest.fixture
+    def mock_access_level_service(self):
+        service = Mock()
+        level = Mock()
+        level.id = uuid4()
+        level.slug = "logged-in"
+        service.find_by_slug = Mock(return_value=level)
+        service.assign = Mock(return_value=True)
+        service._level = level
+        return service
+
+    @pytest.fixture
+    def auth_service(self, mock_user_repo, mock_access_level_service):
+        from vbwd.services.auth_service import AuthService
+
+        return AuthService(
+            user_repository=mock_user_repo,
+            access_level_service=mock_access_level_service,
+        )
+
+    def test_register_assigns_logged_in_level_to_new_user(
+        self, auth_service, mock_user_repo, mock_access_level_service
+    ):
+        from vbwd.services.auth_service import DEFAULT_USER_ACCESS_LEVEL_SLUG
+
+        result = auth_service.register("newuser@example.com", "SecurePassword123!")
+
+        assert result.success is True
+        assert result.token is not None
+
+        assert DEFAULT_USER_ACCESS_LEVEL_SLUG == "logged-in"
+        mock_access_level_service.find_by_slug.assert_called_once_with("logged-in")
+
+        created_user = mock_user_repo.save.call_args[0][0]
+        mock_access_level_service.assign.assert_called_once_with(
+            created_user.id, mock_access_level_service._level.id
+        )
+
+    def test_register_succeeds_when_level_absent(
+        self, auth_service, mock_user_repo, mock_access_level_service
+    ):
+        """RBAC unseeded: find_by_slug returns None -> still a successful signup."""
+        mock_access_level_service.find_by_slug.return_value = None
+
+        result = auth_service.register("nolevel@example.com", "SecurePassword123!")
+
+        assert result.success is True
+        assert result.token is not None
+        assert result.error is None
+        mock_access_level_service.assign.assert_not_called()
+
+    def test_register_succeeds_when_assign_raises(
+        self, auth_service, mock_user_repo, mock_access_level_service
+    ):
+        """A failing assignment is swallowed; registration still returns a token."""
+        mock_access_level_service.assign.side_effect = RuntimeError("db exploded")
+
+        result = auth_service.register("boom@example.com", "SecurePassword123!")
+
+        assert result.success is True
+        assert result.token is not None
+        assert result.error is None
+
+
 class TestAuthServiceLogin:
     """Test AuthService.login()"""
 
