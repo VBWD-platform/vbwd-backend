@@ -2,14 +2,40 @@
 
 One home for the ``limit = min(int(request.args.get("limit", 20)), 100)``
 dance, plus consistent error responses for non-integer params.
+
+Also home to :func:`paginate`, the vocabulary-free helper that wraps an
+already-fetched page slice + filtered total in the catalogue list wire
+envelope (``docs/architecture/catalogue-list-contract.md``). It carries no
+domain vocabulary so every vertical's "browse many" route shapes its response
+identically through one core helper.
 """
-from typing import Tuple
+from typing import Any, Dict, List, Tuple
 
 from werkzeug.exceptions import BadRequest
 
 
 DEFAULT_PAGE_SIZE: int = 20
 MAX_PAGE_SIZE: int = 100
+
+
+def paginate(items: List[Any], total: int, page: int, per_page: int) -> Dict[str, Any]:
+    """Wrap a page slice + filtered total in the catalogue list envelope.
+
+    ``items`` is the already-fetched, already-sliced page (the caller owns the
+    query and the sort). ``total`` is the count of rows matching the *effective
+    filter* across all pages — NOT the whole collection. ``pages`` is
+    ``ceil(total / per_page)`` and is never ``0``: an empty result set is
+    ``pages == 1`` with ``items == []``.
+
+    Returns ``{"items", "total", "page", "per_page", "pages"}`` exactly.
+    """
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": max(1, (total + per_page - 1) // per_page),
+    }
 
 
 def parse_pagination_params(

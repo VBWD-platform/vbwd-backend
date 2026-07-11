@@ -7,6 +7,7 @@ from werkzeug.exceptions import BadRequest
 from vbwd.utils.pagination import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
+    paginate,
     parse_pagination_params,
 )
 
@@ -59,3 +60,37 @@ def test_custom_default_and_max_honoured():
     request = _fake_request({"limit": "5000"})
     limit, _ = parse_pagination_params(request, default_limit=10, max_limit=500)
     assert limit == 500
+
+
+# --- paginate() — catalogue list wire-contract envelope --------------------
+
+
+def test_paginate_returns_full_envelope():
+    items = ["a", "b", "c"]
+    envelope = paginate(items, total=25, page=2, per_page=10)
+    assert envelope == {
+        "items": items,
+        "total": 25,
+        "page": 2,
+        "per_page": 10,
+        "pages": 3,
+    }
+
+
+def test_paginate_pages_is_ceil():
+    assert paginate([], total=21, page=1, per_page=10)["pages"] == 3
+    assert paginate([], total=20, page=1, per_page=10)["pages"] == 2
+    assert paginate([], total=1, page=1, per_page=10)["pages"] == 1
+
+
+def test_paginate_empty_result_is_one_page_never_zero():
+    envelope = paginate([], total=0, page=1, per_page=20)
+    assert envelope["pages"] == 1
+    assert envelope["items"] == []
+    assert envelope["total"] == 0
+
+
+def test_paginate_echoes_page_and_per_page():
+    envelope = paginate(["x"], total=1, page=7, per_page=5)
+    assert envelope["page"] == 7
+    assert envelope["per_page"] == 5
