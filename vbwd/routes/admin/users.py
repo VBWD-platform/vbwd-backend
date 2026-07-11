@@ -1,5 +1,6 @@
 """Admin user management routes."""
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy.exc import IntegrityError
 
 from vbwd.extensions import db
 from vbwd.middleware.auth import require_admin, require_auth, require_permission
@@ -417,7 +418,24 @@ def delete_user(user_id):
             409,
         )
 
-    # Delete user (cascade delete is handled by database FK constraints with ondelete="CASCADE")
-    user_repo.delete(user_id)
+    # Delete user (cascade delete is handled by database FK constraints with
+    # ondelete="CASCADE"). Any table that still references the user without a
+    # cascade (e.g. a plugin-owned FK) makes the single-statement DELETE raise
+    # IntegrityError — catch it and return a clean 409 instead of a raw 500,
+    # and roll back so the session is not left poisoned.
+    try:
+        user_repo.delete(user_id)
+    except IntegrityError as exc:
+        db.session.rollback()
+        return (
+            jsonify(
+                {
+                    "error": "Cannot delete user: it is still referenced by "
+                    "other records.",
+                    "detail": str(exc),
+                }
+            ),
+            409,
+        )
 
     return jsonify({"message": "User deleted successfully"}), 200

@@ -560,3 +560,47 @@ class TestAdminDeleteUser:
 
         assert response.status_code == 200
         mock_user_repo.delete.assert_called_once_with(str(user_id))
+
+    @patch("vbwd.routes.admin.users.db")
+    @patch("vbwd.repositories.invoice_repository.InvoiceRepository")
+    @patch("vbwd.routes.admin.users.UserRepository")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_delete_user_integrity_error_returns_409_not_500(
+        self,
+        mock_auth_user_repo_class,
+        mock_auth_class,
+        mock_user_repo_class,
+        mock_invoice_repo_class,
+        mock_db,
+        client,
+    ):
+        """A residual non-cascade FK makes the delete raise IntegrityError.
+
+        The route must translate it into a clean 409 (and roll the session
+        back) instead of letting a raw 500 escape.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        self._admin(mock_auth_user_repo_class, mock_auth_class)
+        user_id = uuid4()
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.find_by_id.return_value = MagicMock(id=user_id)
+        mock_user_repo.delete.side_effect = IntegrityError(
+            "DELETE FROM vbwd_user", {}, Exception("FK violation")
+        )
+        mock_user_repo_class.return_value = mock_user_repo
+
+        mock_invoice_repo_class.return_value.find_by_user.return_value = []
+
+        response = client.delete(
+            f"/api/v1/admin/users/{user_id}",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 409
+        body = response.get_json()
+        assert "still referenced" in body["error"]
+        assert "detail" in body
+        mock_db.session.rollback.assert_called_once()

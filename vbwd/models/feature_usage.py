@@ -15,7 +15,10 @@ class FeatureUsage(BaseModel):
     __tablename__ = "vbwd_feature_usage"
 
     user_id = db.Column(
-        UUID(as_uuid=True), db.ForeignKey("vbwd_user.id"), nullable=False, index=True
+        UUID(as_uuid=True),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     feature_name = db.Column(db.String(100), nullable=False, index=True)
     usage_count = db.Column(db.Integer, default=0, nullable=False)

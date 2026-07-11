@@ -30,7 +30,7 @@ user_roles = db.Table(
     db.Column(
         "user_id",
         db.UUID(as_uuid=True),
-        db.ForeignKey("vbwd_user.id"),
+        db.ForeignKey("vbwd_user.id", ondelete="CASCADE"),
         primary_key=True,
     ),
     db.Column(
