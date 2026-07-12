@@ -43,13 +43,19 @@ class DemoSeeder:
     def run(self) -> dict:
         """Execute full reset and return stats.
 
-        Order matters: clear → seed core/plugin catalogs (incl. CMS
-        pages/widgets/layouts) → seed countries → run post-seed hooks (the CMS
-        backfill that folds the just-seeded pages into the unified cms_post
-        model). Catalog + post-seed work is contributed by plugins through the
-        demo-data registry, so core never imports a plugin model.
+        Order matters: plugin clearers → clear core → seed core/plugin catalogs
+        (incl. CMS pages/widgets/layouts) → seed countries → run post-seed hooks
+        (the CMS backfill that folds the just-seeded pages into the unified
+        cms_post model). Catalog + post-seed work is contributed by plugins
+        through the demo-data registry, so core never imports a plugin model.
         """
         stats = {}
+        # Plugin-registered clearers run FIRST, before core clears its own
+        # tables. A plugin whose table references a core table (e.g. a booking
+        # reservation → vbwd_user_invoice, a dataset↔tax link → vbwd_tax) purges
+        # its rows here so the subsequent core DELETEs are FK-safe. Core names no
+        # plugin table — the ownership stays in the plugin.
+        stats.update(self._run_catalog_clearers())
         stats.update(self._clear_transactional_data())
         stats.update(self._clear_catalog())
         stats.update(self._seed_catalog())
@@ -138,6 +144,18 @@ class DemoSeeder:
             counts[f"deleted_{table}"] = result.rowcount  # type: ignore[attr-defined]
 
         return counts
+
+    def _run_catalog_clearers(self) -> dict:
+        """Run registry catalog CLEARERS before core clears its own tables.
+
+        Each plugin that owns a table referencing a core table registers a
+        clearer to purge those rows first, keeping the subsequent core DELETEs
+        FK-safe. No-op when nothing is registered (plugins disabled)."""
+        from vbwd.services.demo_data_registry import run_catalog_clearers
+
+        run_catalog_clearers(self.session)
+        self.session.flush()
+        return {}
 
     def _run_post_seed_hooks(self) -> dict:
         """Run registry post-seed hooks (e.g. the CMS backfill) after all
