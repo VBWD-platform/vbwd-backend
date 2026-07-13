@@ -5,6 +5,12 @@
       "version": "1.0.0",
       "installedAt": "",
       "source": "local"
+    },
+    "license_authority": {
+      "enabled": true,
+      "version": "26.7.1",
+      "installedAt": "",
+      "source": "local"
     }
   }
 }
