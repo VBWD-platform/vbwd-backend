@@ -29,6 +29,7 @@ jobs:
           - discount
           - email
           - ghrm
+          - license_authority
           - mailchimp
           - meinchat
           - paypal
@@ -54,12 +55,25 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11', cache: 'pip', cache-dependency-path: requirements.txt }
       - run: pip install -r requirements.txt
+      - name: Configure private plugin auth
+        # Private plugin repos (e.g. license_authority) clone via a fine-grained
+        # PAT secret; public repos keep working when the secret is absent.
+        env:
+          PLUGIN_PAT: ${{ secrets.PLUGIN_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PLUGIN_PAT:-}" ]; then
+            git config --global \
+              url."https://x-access-token:${PLUGIN_PAT}@github.com/".insteadOf \
+              "https://github.com/"
+          fi
       - name: Install plugin
         # Local dir name is snake; ``token_payment`` is the one kebab-cased repo.
         run: |
           set -euo pipefail
           declare -A REPO_OVERRIDES=(
             [token_payment]=token-payment
+            [license_authority]=license-authority
           )
           dir_name="${{ matrix.plugin }}"
           suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
@@ -85,6 +99,7 @@ jobs:
             [paypal]="subscription"
             [meinchat]="subscription cms"
             [subscription]="bot_base bot_telegram"
+            [license_authority]="subscription"
           )
           deps_for_this="${DEPS[${{ matrix.plugin }}]:-}"
           for dep in $deps_for_this; do
@@ -104,14 +119,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [booking, cms, email, ghrm, tarot]
+        plugin: [booking, cms, email, ghrm, license_authority, tarot]
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11', cache: 'pip', cache-dependency-path: requirements.txt }
       - run: pip install -r requirements.txt
-      - name: Install ALL plugins (active set — 17 plugins)
+      - name: Configure private plugin auth
+        env:
+          PLUGIN_PAT: ${{ secrets.PLUGIN_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PLUGIN_PAT:-}" ]; then
+            git config --global \
+              url."https://x-access-token:${PLUGIN_PAT}@github.com/".insteadOf \
+              "https://github.com/"
+          fi
+      - name: Install ALL plugins (active set — 18 plugins)
         # Same scope as the unit matrix above; see the freeze note there.
         run: |
           set -euo pipefail
@@ -119,8 +144,9 @@ jobs:
             [token_payment]=token-payment
             [bot_base]=bot-base
             [bot_telegram]=bot-telegram
+            [license_authority]=license-authority
           )
-          BACKEND_PLUGINS="analytics booking bot_base bot_telegram chat checkout cms discount email ghrm mailchimp meinchat paypal shipping_flat_rate shop stripe subscription tarot token_payment"
+          BACKEND_PLUGINS="analytics booking bot_base bot_telegram chat checkout cms discount email ghrm license_authority mailchimp meinchat paypal shipping_flat_rate shop stripe subscription tarot token_payment"
           for dir_name in $BACKEND_PLUGINS; do
             suffix="${REPO_OVERRIDES[$dir_name]:-$dir_name}"
             git clone --depth=1 -q \
