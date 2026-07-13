@@ -80,7 +80,7 @@ jobs:
           declare -A DEPS=(
             [chat]="bot_base bot_telegram"
             [tarot]="bot_base bot_telegram subscription"
-            [ghrm]="subscription"
+            [ghrm]="subscription cms"
             [stripe]="subscription"
             [paypal]="subscription"
             [meinchat]="subscription cms"
