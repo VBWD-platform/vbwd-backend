@@ -146,6 +146,17 @@ class BasePlugin(ABC):
         """
         return []
 
+    @property
+    def licensed_features(self) -> tuple:
+        """Declare the licensable feature ids this plugin gates on.
+
+        Returns a tuple of opaque feature/scope ids (e.g. the plugin's own id or
+        a bundle id) that a license key's ``scope`` may cover. Collected by the
+        ``licensed_feature_registry`` so core stays agnostic — core never names a
+        feature. Default: this plugin gates on nothing (open).
+        """
+        return ()
+
     def register_event_handlers(self, bus: Any) -> None:
         """Subscribe to EventBus events.
 

@@ -34,6 +34,10 @@ REQUIRES_AUTH_MARKER = "requires_auth"
 REQUIRED_PERMISSION_MARKER = "required_permission"
 REQUIRES_DEBUG_MARKER = "requires_debug_enabled"
 REQUIRES_ADMIN_MARKER = "requires_admin"
+# S135 — the license gate is its own cross-cutting protection class, stamped by
+# ``@requires_license`` (mirrors the auth/permission markers above).
+REQUIRES_LICENSE_MARKER = "requires_license"
+LICENSED_FEATURE_MARKER = "licensed_feature"
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,8 @@ class RouteAudit:
     required_permission: Optional[str]
     requires_admin: bool
     requires_debug_enabled: bool
+    requires_license: bool = False
+    licensed_feature: Optional[str] = None
 
     @property
     def is_mutating(self) -> bool:
@@ -113,6 +119,23 @@ def inspect_view(view_func: Any) -> tuple[bool, Optional[str], bool, bool]:
     return requires_auth, required_permission, requires_admin, requires_debug_enabled
 
 
+def inspect_license(view_func: Any) -> tuple[bool, Optional[str]]:
+    """Return ``(requires_license, licensed_feature)`` for ``view_func``.
+
+    Scans the decorator chain for the ``@requires_license`` markers so the audit
+    reports the license gate as a distinct protection class alongside auth/RBAC.
+    """
+    requires_license = False
+    licensed_feature: Optional[str] = None
+    for link in _iter_decorator_chain(view_func):
+        if getattr(link, REQUIRES_LICENSE_MARKER, False):
+            requires_license = True
+        feature = getattr(link, LICENSED_FEATURE_MARKER, None)
+        if feature is not None:
+            licensed_feature = feature
+    return requires_license, licensed_feature
+
+
 def audit_routes(app: Flask) -> List[RouteAudit]:
     """Return one :class:`RouteAudit` per registered rule on ``app``.
 
@@ -128,6 +151,7 @@ def audit_routes(app: Flask) -> List[RouteAudit]:
             requires_admin,
             requires_debug,
         ) = inspect_view(view_func)
+        requires_license, licensed_feature = inspect_license(view_func)
         methods = sorted((rule.methods or set()) - IMPLICIT_METHODS)
         audits.append(
             RouteAudit(
@@ -138,6 +162,8 @@ def audit_routes(app: Flask) -> List[RouteAudit]:
                 required_permission=required_permission,
                 requires_admin=requires_admin,
                 requires_debug_enabled=requires_debug,
+                requires_license=requires_license,
+                licensed_feature=licensed_feature,
             )
         )
     return audits
