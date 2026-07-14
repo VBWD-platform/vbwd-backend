@@ -22,5 +22,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
+# Plugin PyPI runtime deps (pure-PyPI only, e.g. PyYAML for vbwd_datavibes). The
+# api image installs these at container START via its entrypoint; the test image
+# has no such entrypoint, so bake the plugin deps in at BUILD time. Without them a
+# plugin's top-level import (e.g. `import yaml`) fails during conftest plugin
+# loading and cascades into mass collection errors across the whole suite.
+RUN for r in plugins/*/requirements.txt; do \
+      echo "[test-image] installing plugin deps from $r"; \
+      pip install --no-cache-dir -r "$r"; \
+    done
+
 # Run tests
 CMD ["pytest", "-q"]
