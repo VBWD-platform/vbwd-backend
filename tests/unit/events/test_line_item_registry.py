@@ -7,7 +7,22 @@ from vbwd.events.line_item_registry import (
     LineItemContext,
     LineItemHandlerRegistry,
     LineItemResult,
+    RecurringBillingSpec,
 )
+
+
+class TestRecurringBillingSpec:
+    def test_trial_days_defaults_to_zero(self):
+        """Existing callers omit trial_days → provider bills cycle 1 immediately."""
+        spec = RecurringBillingSpec(name="Plan", billing_period="MONTHLY")
+        assert spec.trial_days == 0
+
+    def test_trial_days_is_carried(self):
+        """A free-trial length defers the first recurring charge."""
+        spec = RecurringBillingSpec(
+            name="Plan", billing_period="MONTHLY", trial_days=14
+        )
+        assert spec.trial_days == 14
 
 
 def _make_context(**overrides):

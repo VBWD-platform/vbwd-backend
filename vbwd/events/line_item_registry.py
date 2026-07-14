@@ -18,11 +18,14 @@ class RecurringBillingSpec:
     """How a payment provider should set up a recurring charge for a line item.
 
     Provider-agnostic: ``billing_period`` is a domain term (e.g. "MONTHLY")
-    each provider maps to its own interval vocabulary.
+    each provider maps to its own interval vocabulary. ``trial_days`` is the
+    free-trial length in days before the first recurring charge; 0 (the default)
+    means the first charge happens immediately.
     """
 
     name: str
     billing_period: str
+    trial_days: int = 0
 
 
 @dataclass
