@@ -51,6 +51,12 @@ services:
       - VBWD_APNS_TEAM_ID=${VBWD_APNS_TEAM_ID:-}
       - VBWD_APNS_BUNDLE_ID=${VBWD_APNS_BUNDLE_ID:-}
       - VBWD_APNS_USE_SANDBOX=${VBWD_APNS_USE_SANDBOX:-true}
+      # License authority (S135) — throwaway DEV keypair. The hub signs with the
+      # base64url Ed25519 SEED (private); the client verifier pins the base64url
+      # PUBLIC key. Values live in .env (gitignored). Absent => the plugin fails
+      # closed and licensing is not enforced (CE default).
+      - LICENSE_SIGNING_KEY=${LICENSE_SIGNING_KEY:-}
+      - VBWD_LICENSE_PUBLIC_KEY=${VBWD_LICENSE_PUBLIC_KEY:-}
     volumes:
       - .:/app
       # Shared plugin state directory (default: ../var relative to
