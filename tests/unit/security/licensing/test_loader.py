@@ -6,12 +6,51 @@ from vbwd.security.licensing.license_context import (
     NullLicenseContext,
 )
 from vbwd.security.licensing.loader import build_license_environment
+from vbwd.security.licensing.ports import (
+    AuthorityStatus,
+    ILicenseStatusProvider,
+    LicenseAuthorityStatus,
+)
 from vbwd.security.licensing.status_provider import (
     HttpLicenseStatusProvider,
     NullLicenseStatusProvider,
 )
 
 from .conftest import FIXTURE_INSTANCE_ID, make_license_key, mint_envelope
+
+
+class _FixedStatusProvider(ILicenseStatusProvider):
+    """A fake authority verdict — no socket. ``reachable`` drives fail-soft."""
+
+    def __init__(self, status: AuthorityStatus, reachable: bool = True) -> None:
+        self._status = status
+        self._reachable = reachable
+
+    def status(self, license_number: str) -> LicenseAuthorityStatus:
+        return LicenseAuthorityStatus(
+            self._status, checked_at=None, reachable=self._reachable
+        )
+
+
+_AUTHORITY_URL = "https://authority.example"
+_LICENSE_NUMBER = "A1B2C3D4"
+
+
+def _covered_env(tmp_path, signer, fixed_clock, key, url_config, provider):
+    keys_dir = str(tmp_path / "keys")
+    _write_key(keys_dir, key, signer)
+    config = {
+        "LICENSE_REQUIRED": True,
+        "LICENSE_KEYS_DIR": keys_dir,
+        "LICENSE_INSTANCE_ID": FIXTURE_INSTANCE_ID,
+    }
+    config.update(url_config)
+    return build_license_environment(
+        config,
+        signature_verifier=signer,
+        status_provider=provider,
+        clock=fixed_clock,
+    )
 
 
 def _write_key(keys_dir, key, signer):
@@ -93,3 +132,80 @@ def test_authority_url_builds_http_status_provider(tmp_path, fixed_clock):
         clock=fixed_clock,
     )
     assert isinstance(env.status_provider, HttpLicenseStatusProvider)
+
+
+# --- S144.1a: the online gate is wired only with URL + license_number --------
+
+
+def test_online_gate_inactive_authority_removes_coverage(tmp_path, signer, fixed_clock):
+    # URL set + key carries license_number + authority says inactive ⇒ NOT covered
+    # even though the offline signature is VALID (online status wins).
+    env = _covered_env(
+        tmp_path,
+        signer,
+        fixed_clock,
+        make_license_key(scope=("*",), license_number=_LICENSE_NUMBER),
+        {"VBWD_LICENSE_AUTHORITY_URL": _AUTHORITY_URL},
+        _FixedStatusProvider(AuthorityStatus.INACTIVE),
+    )
+    assert env.context.is_active() is False
+    assert env.context.has_feature("marketplace") is False
+
+
+def test_online_gate_active_authority_keeps_coverage(tmp_path, signer, fixed_clock):
+    env = _covered_env(
+        tmp_path,
+        signer,
+        fixed_clock,
+        make_license_key(scope=("*",), license_number=_LICENSE_NUMBER),
+        {"VBWD_LICENSE_AUTHORITY_URL": _AUTHORITY_URL},
+        _FixedStatusProvider(AuthorityStatus.ACTIVE),
+    )
+    assert env.context.is_active() is True
+    assert env.context.has_feature("marketplace") is True
+
+
+def test_online_gate_defers_for_v1_key_without_license_number(
+    tmp_path, signer, fixed_clock
+):
+    # URL set but the key has NO license_number (v1) ⇒ gate defers to offline;
+    # covered because the offline status is VALID, authority verdict ignored.
+    env = _covered_env(
+        tmp_path,
+        signer,
+        fixed_clock,
+        make_license_key(scope=("*",)),
+        {"VBWD_LICENSE_AUTHORITY_URL": _AUTHORITY_URL},
+        _FixedStatusProvider(AuthorityStatus.INACTIVE),
+    )
+    assert env.context.is_active() is True
+
+
+def test_online_gate_failsoft_unreachable_holds_offline_coverage(
+    tmp_path, signer, fixed_clock
+):
+    # URL set + license_number + authority unreachable + offline VALID ⇒ covered
+    # (fail-soft: an authority outage never bricks a paying customer).
+    env = _covered_env(
+        tmp_path,
+        signer,
+        fixed_clock,
+        make_license_key(scope=("*",), license_number=_LICENSE_NUMBER),
+        {"VBWD_LICENSE_AUTHORITY_URL": _AUTHORITY_URL},
+        _FixedStatusProvider(AuthorityStatus.UNKNOWN, reachable=False),
+    )
+    assert env.context.is_active() is True
+
+
+def test_no_authority_url_is_offline_only(tmp_path, signer, fixed_clock):
+    # No URL ⇒ no online gate ⇒ covered on the offline signature alone, exactly
+    # as S135 today (even with a license_number present on the key).
+    env = _covered_env(
+        tmp_path,
+        signer,
+        fixed_clock,
+        make_license_key(scope=("*",), license_number=_LICENSE_NUMBER),
+        {},
+        None,
+    )
+    assert env.context.is_active() is True

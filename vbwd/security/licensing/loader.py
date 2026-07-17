@@ -16,7 +16,9 @@ from vbwd.security.licensing.license_context import (
     LicenseContext,
     NullLicenseContext,
 )
+from vbwd.security.licensing.license_key import LicenseKey, LicenseStatus
 from vbwd.security.licensing.license_store import LicenseStore
+from vbwd.security.licensing.online_coverage import OnlineCoverageResolver
 from vbwd.security.licensing.ports import (
     ILicenseActivationClient,
     ILicenseStatusProvider,
@@ -141,6 +143,33 @@ def _resolve_status_provider(
     return NullLicenseStatusProvider()
 
 
+def _build_online_gate(
+    config,
+    provider: ILicenseStatusProvider,
+    clock: Callable[[], datetime],
+) -> Optional[Callable[[LicenseKey, LicenseStatus], bool]]:
+    """The online authority gate for ``LicenseContext`` — ``None`` unless a URL.
+
+    No authority URL ⇒ ``None`` ⇒ the context stays offline-only, byte-for-byte
+    as S135 today (the critical no-regression case). When a URL is configured a
+    covering key is additionally gated on the authority's live verdict — but
+    ONLY when the key carries a ``license_number`` (a v1 key has none, so the
+    gate defers to the offline result: no online enforcement without both a URL
+    and a license_number). The one offline-AND-online combination rule lives in
+    ``OnlineCoverageResolver`` (DRY); this closure only routes to it.
+    """
+    if not config.get(CONFIG_AUTHORITY_URL):
+        return None
+    resolver = OnlineCoverageResolver(provider, clock)
+
+    def online_gate(key: LicenseKey, offline_status: LicenseStatus) -> bool:
+        if key.license_number is None:
+            return True
+        return resolver.is_covered(offline_status, key.license_number)
+
+    return online_gate
+
+
 def build_license_environment(
     config,
     *,
@@ -164,6 +193,7 @@ def build_license_environment(
     instance_id = _resolve_instance_id(config, keys_dir)
     client = _resolve_activation_client(config, activation_client)
     provider = _resolve_status_provider(config, status_provider)
+    online_gate = _build_online_gate(config, provider, resolved_clock)
 
     context: AnyLicenseContext
     store: Optional[LicenseStore]
@@ -173,7 +203,7 @@ def build_license_environment(
             keys_dir,
             LicenseVerifier(verifier_impl, instance_id, resolved_clock, grace_fallback),
         )
-        context = LicenseContext(store, feature_registry)
+        context = LicenseContext(store, feature_registry, online_gate)
     elif required or _keys_present(keys_dir):
         # Enforcing (or holding keys) but no trustable verifier → degraded,
         # never silently open.
@@ -186,7 +216,7 @@ def build_license_environment(
                 grace_fallback,
             ),
         )
-        context = LicenseContext(store, feature_registry)
+        context = LicenseContext(store, feature_registry, online_gate)
     else:
         # Fully open CE: nothing to verify and nothing required.
         store = None
