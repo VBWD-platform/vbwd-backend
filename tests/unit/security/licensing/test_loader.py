@@ -6,6 +6,10 @@ from vbwd.security.licensing.license_context import (
     NullLicenseContext,
 )
 from vbwd.security.licensing.loader import build_license_environment
+from vbwd.security.licensing.status_provider import (
+    HttpLicenseStatusProvider,
+    NullLicenseStatusProvider,
+)
 
 from .conftest import FIXTURE_INSTANCE_ID, make_license_key, mint_envelope
 
@@ -67,3 +71,25 @@ def test_required_without_verifier_degrades_not_open(tmp_path, fixed_clock):
     # Misconfigured enforcement must degrade, never fall open.
     assert env.degraded is True
     assert env.context.has_feature("marketplace") is False
+
+
+def test_no_authority_url_uses_null_status_provider(tmp_path, fixed_clock):
+    # CE default (no authority URL) → offline-only, exactly as S135 today.
+    env = build_license_environment(
+        {"LICENSE_REQUIRED": False, "LICENSE_KEYS_DIR": str(tmp_path)},
+        clock=fixed_clock,
+    )
+    assert isinstance(env.context, NullLicenseContext)
+    assert isinstance(env.status_provider, NullLicenseStatusProvider)
+
+
+def test_authority_url_builds_http_status_provider(tmp_path, fixed_clock):
+    env = build_license_environment(
+        {
+            "LICENSE_REQUIRED": False,
+            "LICENSE_KEYS_DIR": str(tmp_path),
+            "VBWD_LICENSE_AUTHORITY_URL": "https://authority.example",
+        },
+        clock=fixed_clock,
+    )
+    assert isinstance(env.status_provider, HttpLicenseStatusProvider)

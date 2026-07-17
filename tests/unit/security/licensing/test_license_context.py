@@ -98,3 +98,29 @@ def test_null_context_is_permissive():
     assert context.is_active() is True
     assert context.within_seat_limit(10_000) is True
     assert context.resource_usage() == []
+
+
+# --- S144.3: optional online gate combines offline AND online coverage ------
+
+
+def test_no_online_gate_is_identical_to_today(store, signer):
+    # The no-URL / offline-only path: default gate is None, behaviour unchanged.
+    store.add(mint_envelope(make_license_key(scope=("*",)), signer))
+    context = LicenseContext(store)
+    assert context.is_active() is True
+    assert context.has_feature("marketplace") is True
+
+
+def test_online_gate_veto_removes_coverage(store, signer):
+    # Offline VALID but the online layer vetoes → not covered (online wins).
+    store.add(mint_envelope(make_license_key(scope=("*",)), signer))
+    context = LicenseContext(store, online_gate=lambda key, status: False)
+    assert context.is_active() is False
+    assert context.has_feature("marketplace") is False
+
+
+def test_online_gate_approve_keeps_offline_coverage(store, signer):
+    store.add(mint_envelope(make_license_key(scope=("*",)), signer))
+    context = LicenseContext(store, online_gate=lambda key, status: True)
+    assert context.is_active() is True
+    assert context.has_feature("marketplace") is True

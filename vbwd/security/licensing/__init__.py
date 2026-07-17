@@ -29,10 +29,18 @@ from vbwd.security.licensing.loader import (
     LicenseEnvironment,
     build_license_environment,
 )
+from vbwd.security.licensing.online_coverage import OnlineCoverageResolver
 from vbwd.security.licensing.ports import (
+    AuthorityStatus,
     ILicenseActivationClient,
+    ILicenseStatusProvider,
     ISignatureVerifier,
     LicenseActivationError,
+    LicenseAuthorityStatus,
+)
+from vbwd.security.licensing.status_provider import (
+    HttpLicenseStatusProvider,
+    NullLicenseStatusProvider,
 )
 from vbwd.security.licensing.verifier import LicenseVerifier
 
@@ -53,4 +61,10 @@ __all__ = [
     "ISignatureVerifier",
     "ILicenseActivationClient",
     "LicenseActivationError",
+    "ILicenseStatusProvider",
+    "LicenseAuthorityStatus",
+    "AuthorityStatus",
+    "HttpLicenseStatusProvider",
+    "NullLicenseStatusProvider",
+    "OnlineCoverageResolver",
 ]
