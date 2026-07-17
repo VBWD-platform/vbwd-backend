@@ -5,7 +5,9 @@ upserts the 2 default admin system roles (``super_admin``, ``admin``).
 A regular account is identified by the ``UserRole.USER`` enum on the user
 record, not a redundant ``user`` RBAC role (removed: it held no permissions
 and only created ambiguity in the admin Access-Levels UI). Safe to
-re-run on every deploy (ungated). Reads the plugin permission catalog via
+re-run on every deploy (ungated): role permission seeding is ADDITIVE and
+level seeding is create-only, so an operator's runtime configuration always
+survives a deploy. Reads the plugin permission catalog via
 the injected ``plugin_manager`` (DI) — core never imports a plugin module.
 """
 import json
@@ -65,15 +67,39 @@ _CORE_NAMESPACE = "core"
 _USER_ACCESS_LEVELS_FILE = "user_access_levels.json"
 
 
+# The permission keys the ``admin`` role gets IN ADDITION to the core catalog,
+# so a fresh install can administer the plugin surfaces an admin is expected to
+# own without a manual grant. They reference plugin permissions that do NOT
+# exist on a core-only install; seeding resolves them leniently (attach what
+# exists, skip the rest) and NEVER creates them.
+#
+# Like the access-level definitions above they live in a shipped JSON data file,
+# not as Python literals — those keys are plugin domain vocabulary that core
+# CODE must not name (S50 core-agnosticism oracle).
+_DEFAULT_ADMIN_ROLE_PERMISSIONS_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "data",
+    "default_admin_role_permissions.json",
+)
+
+
 def _load_default_user_access_levels() -> Tuple[Dict[str, Any], ...]:
     """Load the shipped default access levels from the bundled JSON data file."""
     with open(_DEFAULT_LEVELS_FILE, encoding="utf-8") as handle:
         return tuple(json.load(handle))
 
 
+def _load_default_admin_role_permissions() -> Tuple[str, ...]:
+    """Load the admin role's extra permission keys from the bundled data file."""
+    with open(_DEFAULT_ADMIN_ROLE_PERMISSIONS_FILE, encoding="utf-8") as handle:
+        return tuple(json.load(handle))
+
+
 DEFAULT_USER_ACCESS_LEVELS: Tuple[
     Dict[str, Any], ...
 ] = _load_default_user_access_levels()
+
+DEFAULT_ADMIN_ROLE_PERMISSIONS: Tuple[str, ...] = _load_default_admin_role_permissions()
 
 
 def resolve_user_access_levels() -> Tuple[Dict[str, Any], ...]:
@@ -152,11 +178,16 @@ def _upsert_permission(session, name: str) -> bool:
 
 
 def _permissions_for_role(slug: str, core_keys: list) -> list:
-    """Resolve the permission name list for a default role slug."""
+    """Resolve the permission name list for a default role slug.
+
+    The ``admin`` role gets the core catalog PLUS the shipped extra keys
+    (plugin surfaces an admin owns); the latter are resolved leniently, so a
+    core-only install simply grants none of them.
+    """
     if slug == "super_admin":
         return [WILDCARD_PERMISSION]
     if slug == "admin":
-        return list(core_keys)
+        return [*core_keys, *DEFAULT_ADMIN_ROLE_PERMISSIONS]
     return []
 
 
@@ -175,6 +206,32 @@ def _resolve_existing_permissions(session, permission_keys: list) -> list:
         if permission is not None:
             resolved.append(permission)
     return resolved
+
+
+def _update_system_role(role, name: str, description: str, permissions: list) -> bool:
+    """Sync a default system role in place. Returns True if anything changed.
+
+    ADDITIVE / prod-safe: the seeder runs ungated on EVERY deploy, so it only
+    ever ADDS the default permissions that are missing — a grant an operator
+    made at runtime (e.g. through the admin Access UI) is never removed.
+    Reassigning the collection instead deleted those grants on the next deploy.
+    Returning the changed flag keeps ``roles_updated`` honest: a genuinely
+    idempotent re-run reports 0.
+    """
+    changed = False
+    if role.name != name or role.description != description:
+        role.name = name
+        role.description = description
+        changed = True
+
+    attached_ids = {permission.id for permission in role.permissions}
+    missing = [
+        permission for permission in permissions if permission.id not in attached_ids
+    ]
+    if missing:
+        role.permissions.extend(missing)
+        changed = True
+    return changed
 
 
 def _seed_user_access_levels(session) -> int:
@@ -219,12 +276,14 @@ def seed_default_rbac(
     Steps:
         1. Collect the catalog (core + enabled plugins, via the shared
            collector) and upsert each permission by name.
-        2. Upsert the 2 default system roles by slug — never overwriting a
-           pre-existing non-system role of the same slug.
+        2. Upsert the 2 default system roles by slug — additively (a missing
+           default permission is added, an existing grant is NEVER removed) and
+           never overwriting a pre-existing non-system role of the same slug.
         3. Create the default user access levels (create-only: an existing
            slug is left untouched), attaching only the permissions that exist.
 
-    Safe to re-run; a second run creates nothing new.
+    Safe to re-run on every deploy; a second run creates nothing new and
+    changes nothing an operator configured at runtime.
     """
     catalog = collect_permission_catalog(plugin_manager=plugin_manager)
     core_keys = [entry["key"] for entry in catalog["core"]]
@@ -252,17 +311,16 @@ def seed_default_rbac(
             # Never clobber an operator's hand-made role of the same slug.
             continue
 
-        permission_names = _permissions_for_role(slug, core_keys)
-        permissions = [
-            session.query(Permission).filter_by(name=permission_name).one()
-            for permission_name in permission_names
-        ]
+        # Lenient: the core keys + wildcard were just upserted so they resolve;
+        # the shipped extra admin keys only resolve where the declaring plugin
+        # is installed (see :func:`_resolve_existing_permissions`).
+        permissions = _resolve_existing_permissions(
+            session, _permissions_for_role(slug, core_keys)
+        )
 
         if existing:
-            existing.name = name
-            existing.description = description
-            existing.permissions = permissions
-            roles_updated += 1
+            if _update_system_role(existing, name, description, permissions):
+                roles_updated += 1
         else:
             session.add(
                 Role(

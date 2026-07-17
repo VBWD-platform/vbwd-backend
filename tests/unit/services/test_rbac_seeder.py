@@ -21,6 +21,7 @@ from vbwd.services.permission_catalog import (
     collect_user_permission_catalog,
 )
 from vbwd.services.rbac_seeder import (
+    DEFAULT_ADMIN_ROLE_PERMISSIONS,
     DEFAULT_USER_ACCESS_LEVELS,
     seed_default_rbac,
     RbacSeedResult,
@@ -113,7 +114,10 @@ class TestSeedDefaultRbacRoles:
         assert [p.name for p in super_admin.permissions] == ["*"]
 
     def test_admin_has_all_core_permissions(self, session):
-        seed_default_rbac(session)
+        # Empty plugin manager → no plugin permission rows exist, so the
+        # admin role's extra (plugin) defaults resolve to nothing and the
+        # assertion stays deterministic regardless of the local plugin set.
+        seed_default_rbac(session, plugin_manager=FakePluginManager([]))
 
         admin = session.query(Role).filter_by(slug="admin").one()
         assert {p.name for p in admin.permissions} == CORE_PERMISSION_KEYS
@@ -209,6 +213,105 @@ class TestSeedDefaultRbacGuards:
 
         with pytest.raises(ValueError):
             seed_default_rbac(session, plugin_manager=manager)
+
+
+class TestSeedDefaultRbacRolesAreAdditive:
+    """Role permission seeding is ADDITIVE — a deploy never drops a grant.
+
+    ``flask seed-rbac`` runs ungated on every deploy. Re-assigning the whole
+    permission collection silently deleted every grant an operator made at
+    runtime (broke CMS publishing on prod three times). Seeding must add the
+    missing defaults and remove nothing.
+    """
+
+    def _grant_extra_permission(self, session, permission_name):
+        """Grant a runtime permission to the admin role, as the admin API does."""
+        permission = session.query(Permission).filter_by(name=permission_name).one()
+        admin = session.query(Role).filter_by(slug="admin").one()
+        admin.permissions.append(permission)
+        session.commit()
+        return permission
+
+    def test_runtime_grant_on_admin_role_survives_a_re_seed(self, session):
+        # An operator grants a plugin permission that is NOT one of the shipped
+        # defaults through the admin UI/API...
+        plugin = FakePlugin(
+            "shop",
+            [{"key": "shop.products.manage", "label": "Manage", "group": "Shop"}],
+        )
+        manager = FakePluginManager([plugin])
+        seed_default_rbac(session, plugin_manager=manager)
+        self._grant_extra_permission(session, "shop.products.manage")
+
+        # ...and the next deploy re-runs the (ungated) seeder.
+        seed_default_rbac(session, plugin_manager=manager)
+
+        admin = session.query(Role).filter_by(slug="admin").one()
+        assert "shop.products.manage" in {p.name for p in admin.permissions}
+
+    def test_re_seed_never_removes_any_pre_existing_grant(self, session):
+        seed_default_rbac(session, plugin_manager=FakePluginManager([]))
+        admin = session.query(Role).filter_by(slug="admin").one()
+        before = {p.name for p in admin.permissions}
+
+        seed_default_rbac(session, plugin_manager=FakePluginManager([]))
+
+        admin = session.query(Role).filter_by(slug="admin").one()
+        assert before.issubset({p.name for p in admin.permissions})
+
+    def test_missing_default_permission_is_added_to_an_existing_role(self, session):
+        seed_default_rbac(session, plugin_manager=FakePluginManager([]))
+        admin = session.query(Role).filter_by(slug="admin").one()
+        dropped = admin.permissions[0]
+        admin.permissions.remove(dropped)
+        session.commit()
+
+        result = seed_default_rbac(session, plugin_manager=FakePluginManager([]))
+
+        admin = session.query(Role).filter_by(slug="admin").one()
+        assert dropped.name in {p.name for p in admin.permissions}
+        assert result.roles_updated == 1
+
+    def test_second_identical_run_reports_zero_roles_updated(self, session):
+        seed_default_rbac(session, plugin_manager=FakePluginManager([]))
+
+        result = seed_default_rbac(session, plugin_manager=FakePluginManager([]))
+
+        assert result.roles_updated == 0
+        assert result.roles_created == 0
+
+
+class TestSeedDefaultAdminRolePluginPermissions:
+    """The admin role's shipped extra (plugin) permission defaults."""
+
+    def test_default_admin_role_permissions_are_granted_when_the_rows_exist(
+        self, session
+    ):
+        """Fresh install with the declaring plugin present → admin gets them."""
+        plugin = FakePlugin(
+            "cms",
+            [
+                {"key": key, "label": key, "group": "CMS"}
+                for key in DEFAULT_ADMIN_ROLE_PERMISSIONS
+            ],
+        )
+
+        seed_default_rbac(session, plugin_manager=FakePluginManager([plugin]))
+
+        admin = session.query(Role).filter_by(slug="admin").one()
+        names = {p.name for p in admin.permissions}
+        assert set(DEFAULT_ADMIN_ROLE_PERMISSIONS).issubset(names)
+
+    def test_absent_default_admin_permissions_are_skipped_and_never_created(
+        self, session
+    ):
+        """Core-only install: the plugin rows don't exist → lenient no-op."""
+        seed_default_rbac(session, plugin_manager=FakePluginManager([]))
+
+        admin = session.query(Role).filter_by(slug="admin").one()
+        assert {p.name for p in admin.permissions} == CORE_PERMISSION_KEYS
+        for key in DEFAULT_ADMIN_ROLE_PERMISSIONS:
+            assert session.query(Permission).filter_by(name=key).first() is None
 
 
 class TestSeedDefaultUserAccessLevels:
