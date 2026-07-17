@@ -346,6 +346,43 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     register_outbound_webhook_relay(app, _outbound_event_bus)
 
     # Initialize plugin system
+    # S135-CLIENT — build the license environment from config at boot and stash
+    # it: the request-scoped context (exposed on ``g.license``), the key store,
+    # the activation client, the instance fingerprint, and the degraded flag.
+    # CE default (LICENSE_REQUIRED=false, no keys) → NullLicenseContext, fully
+    # open. The feature registry is plugin-fed, so core names no feature.
+    #
+    # ORDER MATTERS (S137.1): this MUST run BEFORE plugins are enabled below.
+    # ``PluginManager`` refuses to activate a licence-requiring plugin without a
+    # covering key, so the context has to exist by enable-time — otherwise the
+    # gate would read nothing and silently pass. ``feature_registry`` is a lazy
+    # callable, so it can safely resolve ``plugin_manager`` after this point.
+    from dependency_injector import providers as _license_providers
+    from vbwd.registries.licensed_feature_registry import collect_licensed_features
+    from vbwd.security.licensing import build_license_environment
+
+    license_environment = build_license_environment(
+        app.config,
+        feature_registry=lambda: collect_licensed_features(
+            plugin_manager=getattr(app, "plugin_manager", None)
+        ),
+    )
+    app.license_context = license_environment.context  # type: ignore[attr-defined]
+    app.license_store = license_environment.store  # type: ignore[attr-defined]
+    app.license_activation_client = (  # type: ignore[attr-defined]
+        license_environment.activation_client
+    )
+    app.license_instance_id = (  # type: ignore[attr-defined]
+        license_environment.instance_id
+    )
+    app.config["LICENSE_DEGRADED"] = license_environment.degraded
+    container.license_store.override(
+        _license_providers.Object(license_environment.store)
+    )
+    container.license_context.override(
+        _license_providers.Object(license_environment.context)
+    )
+
     from vbwd.plugins.manager import PluginManager
     from vbwd.plugins.json_config_store import JsonFilePluginConfigStore
     from vbwd.plugins.config_schema import PluginConfigSchemaReader
@@ -353,7 +390,10 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     plugins_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins")
     config_store = JsonFilePluginConfigStore(plugins_dir)
     schema_reader = PluginConfigSchemaReader([plugins_dir])
-    plugin_manager = PluginManager(config_repo=config_store)
+    plugin_manager = PluginManager(
+        config_repo=config_store,
+        license_context=license_environment.context,
+    )
     app.plugin_manager = plugin_manager  # type: ignore[attr-defined]
     app.config_store = config_store  # type: ignore[attr-defined]
     app.schema_reader = schema_reader  # type: ignore[attr-defined]
@@ -429,37 +469,6 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(config_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(webhooks_bp)
-
-    # S135-CLIENT — build the license environment from config at boot and stash
-    # it: the request-scoped context (exposed on ``g.license``), the key store,
-    # the activation client, the instance fingerprint, and the degraded flag.
-    # CE default (LICENSE_REQUIRED=false, no keys) → NullLicenseContext, fully
-    # open. The feature registry is plugin-fed, so core names no feature.
-    from dependency_injector import providers as _license_providers
-    from vbwd.registries.licensed_feature_registry import collect_licensed_features
-    from vbwd.security.licensing import build_license_environment
-
-    license_environment = build_license_environment(
-        app.config,
-        feature_registry=lambda: collect_licensed_features(
-            plugin_manager=getattr(app, "plugin_manager", None)
-        ),
-    )
-    app.license_context = license_environment.context  # type: ignore[attr-defined]
-    app.license_store = license_environment.store  # type: ignore[attr-defined]
-    app.license_activation_client = (  # type: ignore[attr-defined]
-        license_environment.activation_client
-    )
-    app.license_instance_id = (  # type: ignore[attr-defined]
-        license_environment.instance_id
-    )
-    app.config["LICENSE_DEGRADED"] = license_environment.degraded
-    container.license_store.override(
-        _license_providers.Object(license_environment.store)
-    )
-    container.license_context.override(
-        _license_providers.Object(license_environment.context)
-    )
 
     # Register the core data-exchange entity exchangers (S46.1). These are CORE
     # entities (users+details, invoices, payment methods, access levels, email

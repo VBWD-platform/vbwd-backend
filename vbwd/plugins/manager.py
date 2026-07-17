@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from vbwd.plugins.base import BasePlugin, PluginStatus
 from vbwd.plugins.config_store import PluginConfigStore
 from vbwd.plugins.dependency_resolver import DependencyResolver
-from vbwd.plugins.errors import PluginDependencyError
+from vbwd.plugins.errors import PluginDependencyError, PluginLicenseError
 from vbwd.events.dispatcher import EventDispatcher, Event
 
 logger = logging.getLogger(__name__)
@@ -26,12 +26,19 @@ class PluginManager:
         config_repo: Optional[PluginConfigStore] = None,
         category_service=None,
         dependency_resolver: Optional[DependencyResolver] = None,
+        license_context=None,
     ):
         self._plugins: Dict[str, BasePlugin] = {}
         self._event_dispatcher = event_dispatcher or EventDispatcher()
         self._config_repo = config_repo
         self._category_service = category_service
         self._dependency_resolver = dependency_resolver or DependencyResolver()
+        # Injected licence context (duck-typed: needs ``has_feature``). None =>
+        # nothing is covered, so licence-requiring plugins fail closed. Free
+        # plugins never consult it. Injected (not read off ``current_app``) so
+        # the gate is testable and so boot order is explicit — the context MUST
+        # exist before plugins are enabled or this gate would silently pass.
+        self._license_context = license_context
 
     @property
     def dependency_resolver(self) -> DependencyResolver:
@@ -105,6 +112,36 @@ class PluginManager:
         event = Event(name="plugin.initialized", data={"plugin_name": name})
         self._event_dispatcher.dispatch(event)
 
+    def _check_license(self, plugin: BasePlugin) -> None:
+        """Refuse to enable a licence-requiring plugin with no covering licence.
+
+        Fail-closed: no context, no declared features, or no covering key all
+        mean "not licensed". Free plugins (``requires_license`` False, the
+        default) return immediately and are never affected.
+
+        Raises:
+            PluginLicenseError: (a ValueError) when the plugin is uncovered.
+        """
+        if not getattr(plugin, "requires_license", False):
+            return
+
+        features = tuple(getattr(plugin, "licensed_features", ()) or ())
+        name = plugin.metadata.name
+        context = self._license_context
+        covered = (
+            bool(features)
+            and context is not None
+            and any(context.has_feature(feature) for feature in features)
+        )
+        if not covered:
+            logger.warning(
+                "[plugins] '%s' requires a licence covering one of %s — not "
+                "activated (no covering key).",
+                name,
+                list(features),
+            )
+            raise PluginLicenseError(name, features)
+
     def enable_plugin(self, name: str) -> None:
         """
         Enable plugin.
@@ -113,7 +150,8 @@ class PluginManager:
             name: Plugin name
 
         Raises:
-            ValueError: If plugin not found or dependencies not met
+            ValueError: If plugin not found, dependencies not met, or the
+                plugin requires a licence that is not covered.
         """
         plugin = self.get_plugin(name)
         if not plugin:
@@ -123,6 +161,11 @@ class PluginManager:
         # Raises PluginDependencyError (a ValueError subtype, so existing
         # ``except ValueError`` callers are unaffected).
         self._dependency_resolver.check(plugin, self.get_plugin)
+
+        # Licence gate (S137.1). Unconditional by design: a licence-requiring
+        # plugin never activates without a covering key, regardless of
+        # LICENSE_REQUIRED. Free plugins (the default) skip this entirely.
+        self._check_license(plugin)
 
         plugin.enable()
 
