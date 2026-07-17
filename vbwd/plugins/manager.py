@@ -446,6 +446,17 @@ class PluginManager:
                 )
                 continue
 
+            # Licence gate (S137.1) — the SAME rule as ``enable_plugin``. This
+            # path calls ``plugin.enable()`` directly rather than going through
+            # ``enable_plugin``, so the gate must be applied here too: this is
+            # the path that actually runs at boot, and without it a persisted
+            # "enabled" flag in plugins.json would activate a paid plugin with
+            # no licence at all — the gate would look correct and do nothing.
+            try:
+                self._check_license(plugin)
+            except PluginLicenseError:
+                continue  # already logged by _check_license; leave it disabled
+
             try:
                 plugin.enable()
                 self._wire_runtime_handlers(plugin)

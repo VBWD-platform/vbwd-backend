@@ -426,9 +426,17 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
                         # plugin listed in dist but not installed — skip silently
                         pass
 
-    # Register regular + admin blueprints for every plugin — agnostic loop;
-    # plugins with no admin BP inherit BasePlugin.get_admin_blueprint() = None.
-    for plugin in plugin_manager.get_all_plugins():
+    # Register regular + admin blueprints for every ENABLED plugin — agnostic
+    # loop; plugins with no admin BP inherit BasePlugin.get_admin_blueprint().
+    #
+    # Enabled-only (S137.1): this loop used to mount blueprints for every
+    # DISCOVERED plugin, so a disabled — or licence-blocked — plugin still had
+    # its routes mounted while ``on_enable`` had never run, leaving its DI
+    # providers unregistered. Those routes then raised 500 instead of simply not
+    # existing. Mounting only enabled plugins makes an inactive plugin 404,
+    # which is both the correct contract and what the licence gate needs: a
+    # blocked paid plugin must look absent, not broken.
+    for plugin in plugin_manager.get_enabled_plugins():
         bp = plugin.get_blueprint()
         if bp:
             csrf.exempt(bp)
