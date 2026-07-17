@@ -11,6 +11,12 @@
       "version": "26.7.1",
       "installedAt": "",
       "source": "local"
+    },
+    "license_client": {
+      "enabled": false,
+      "version": "26.7.1",
+      "installedAt": "",
+      "source": "local"
     }
   }
 }
