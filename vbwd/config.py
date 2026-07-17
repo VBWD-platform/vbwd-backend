@@ -153,6 +153,14 @@ class Config:
     LICENSE_PUBLIC_KEY = os.getenv("VBWD_LICENSE_PUBLIC_KEY")
     LICENSE_GRACE_DAYS = int(os.getenv("VBWD_LICENSE_GRACE_DAYS", "14"))
     VBWD_LICENSE_HUB_URL = os.getenv("VBWD_LICENSE_HUB_URL")
+    # S144.3 online verification: the licence-authority verify endpoint (public,
+    # no API key). Unset ⇒ NullLicenseStatusProvider ⇒ offline-only, exactly as
+    # S135 today (the CE default). CACHE_TTL bounds how long the last
+    # authoritative verdict is reused before re-checking the authority.
+    VBWD_LICENSE_AUTHORITY_URL = os.getenv("VBWD_LICENSE_AUTHORITY_URL")
+    VBWD_LICENSE_AUTHORITY_CACHE_TTL = int(
+        os.getenv("VBWD_LICENSE_AUTHORITY_CACHE_TTL", "300")
+    )
 
 
 class DevelopmentConfig(Config):

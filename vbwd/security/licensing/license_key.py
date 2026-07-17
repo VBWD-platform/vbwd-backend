@@ -18,7 +18,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Tuple
+from typing import Optional, Tuple
 
 # A scope entry that covers every feature — the platform / edition grant.
 WILDCARD_SCOPE = "*"
@@ -53,6 +53,11 @@ class LicenseKey:
     expires_at: datetime
     grace_days: int
     nonce: str
+    # The authority's public licence identifier (8-byte hex). The authority's
+    # ``/verify`` endpoint is keyed on it, so an online status check needs it.
+    # OPTIONAL (S144.1a): a pre-existing v1 key has none — the online gate then
+    # defers to the offline result. Minting sets it starting in S144.1b.
+    license_number: Optional[str] = None
 
     def covers(self, feature: str) -> bool:
         """Whether this key's scope grants ``feature`` (wildcard covers all)."""
@@ -78,6 +83,11 @@ def encode_license_payload(key: LicenseKey) -> bytes:
         "grace_days": key.grace_days,
         "nonce": key.nonce,
     }
+    # Emit ``license_number`` ONLY when set, so a key without one produces the
+    # exact byte string a pre-existing v1 envelope carried (back-compat: old
+    # envelopes keep verifying, the round-trip contract stays green).
+    if key.license_number is not None:
+        claims["license_number"] = key.license_number
     return json.dumps(claims, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
@@ -102,6 +112,8 @@ def decode_license_payload(payload: bytes, grace_days_fallback: int = 0) -> Lice
         expires_at=datetime.fromisoformat(claims["expires_at"]),
         grace_days=int(grace_days if grace_days is not None else grace_days_fallback),
         nonce=claims["nonce"],
+        # Absent on a v1 envelope → ``None`` (no online enforcement for it).
+        license_number=claims.get("license_number"),
     )
 
 

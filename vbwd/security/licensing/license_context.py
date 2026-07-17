@@ -32,9 +32,14 @@ class LicenseContext:
         self,
         store: LicenseStore,
         feature_registry: Optional[Callable[[], List[str]]] = None,
+        online_gate: Optional[Callable[[LicenseKey, LicenseStatus], bool]] = None,
     ) -> None:
         self._store = store
         self._feature_registry = feature_registry
+        # S144.3: the online authority layer. ``None`` (no authority URL) leaves
+        # coverage offline-only, byte-for-byte as S135 today. When supplied, a
+        # key is covering only if the offline check AND this gate both pass.
+        self._online_gate = online_gate
 
     # --- entitlement questions -------------------------------------------
 
@@ -106,9 +111,14 @@ class LicenseContext:
     # --- internals -------------------------------------------------------
 
     def _covering_keys(self) -> List[LicenseKey]:
-        return [
-            key for key, status in self._store.all() if status in _COVERING_STATUSES
-        ]
+        covering: List[LicenseKey] = []
+        for key, status in self._store.all():
+            if status not in _COVERING_STATUSES:
+                continue
+            if self._online_gate is not None and not self._online_gate(key, status):
+                continue
+            covering.append(key)
+        return covering
 
     def _platform_key(self) -> Optional[LicenseKey]:
         for key in self._covering_keys():
