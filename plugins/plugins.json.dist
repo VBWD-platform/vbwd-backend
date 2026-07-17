@@ -7,7 +7,7 @@
       "source": "local"
     },
     "license_authority": {
-      "enabled": true,
+      "enabled": false,
       "version": "26.7.1",
       "installedAt": "",
       "source": "local"
