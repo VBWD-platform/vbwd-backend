@@ -42,15 +42,23 @@ class UserService(IUserService):
         self,
         user_repository: UserRepository,
         user_details_repository: UserDetailsRepository,
+        token_service,
     ):
         """Initialize UserService.
 
         Args:
             user_repository: Repository for user data access
             user_details_repository: Repository for user details data access
+            token_service: Core token service — the single home for every token
+                movement, so an admin balance change produces a
+                ``TokenTransaction`` and fires the movement hooks like any other
+                (S138.0). Required, not optional-with-fallback: an absent
+                collaborator would be a latent ``AttributeError`` on the one
+                path that must never silently skip.
         """
         self._user_repo = user_repository
         self._user_details_repo = user_details_repository
+        self._token_service = token_service
 
     def get_user(self, user_id: UUID) -> Optional[User]:
         """Get user by ID.
@@ -284,7 +292,7 @@ class UserService(IUserService):
         if details is not None:
             self._validate_account_type(details, payload)
         self._apply_legacy_name(user, payload)
-        self._apply_token_balance(user, payload, session)
+        self._apply_token_balance(user, payload)
         self._apply_group_slugs(user, payload)
 
         return self._user_repo.save(user)
@@ -364,9 +372,19 @@ class UserService(IUserService):
         details.first_name = first
         details.last_name = last
 
-    def _apply_token_balance(
-        self, user: User, payload: Mapping[str, Any], session
-    ) -> None:
+    def _apply_token_balance(self, user: User, payload: Mapping[str, Any]) -> None:
+        """Set the user's token balance to ``payload["token_balance"]``.
+
+        Absolute from the API's point of view, a DELTA underneath: it used to do
+        ``existing.balance = token_value``, which wrote no ``TokenTransaction``
+        and fired nothing — the balance could diverge from the sum of its own
+        transactions with no trace. Routing the difference through
+        ``TokenService`` makes ``balance == sum(TokenTransaction.amount)`` a real
+        invariant and lets a movement hook see the adjustment.
+
+        ``commit=False``: the movement composes with the rest of
+        ``admin_update``, which commits once via ``self._user_repo.save``.
+        """
         if "token_balance" not in payload:
             return
         try:
@@ -377,16 +395,28 @@ class UserService(IUserService):
             ) from bad_token_balance
         if token_value < 0:
             raise AdminUserUpdateError("Token balance cannot be negative")
-        # Local import — token balance model lives next to invoice; importing
-        # at module-top would pull the full invoice module on every UserService
-        # use.
-        from vbwd.models.user_token_balance import UserTokenBalance
 
-        existing = session.query(UserTokenBalance).filter_by(user_id=user.id).first()
-        if existing:
-            existing.balance = token_value
-        else:
-            session.add(UserTokenBalance(user_id=user.id, balance=token_value))
+        # Local import — the enum lives with the token models; importing at
+        # module-top would pull them on every UserService use.
+        from vbwd.models.enums import TokenTransactionType
+
+        delta = token_value - self._token_service.get_balance(user.id)
+        if delta > 0:
+            self._token_service.credit_tokens(
+                user_id=user.id,
+                amount=delta,
+                transaction_type=TokenTransactionType.ADJUSTMENT,
+                description=f"Admin set token balance to {token_value}",
+                commit=False,
+            )
+        elif delta < 0:
+            self._token_service.debit_tokens(
+                user_id=user.id,
+                amount=-delta,
+                transaction_type=TokenTransactionType.ADJUSTMENT,
+                description=f"Admin set token balance to {token_value}",
+                commit=False,
+            )
 
     def _apply_group_slugs(self, user: User, payload: Mapping[str, Any]) -> None:
         # S73 — the core user update payload may carry a replace-set of group

@@ -44,6 +44,7 @@ def _self_service(existing_details):
     service = UserService(
         user_repository=MagicMock(),
         user_details_repository=details_repo,
+        token_service=MagicMock(),
     )
     return service
 
@@ -96,6 +97,7 @@ def _admin_service(user_stub):
     return UserService(
         user_repository=user_repo,
         user_details_repository=MagicMock(),
+        token_service=MagicMock(),
     )
 
 
@@ -141,6 +143,7 @@ def test_admin_create_business_without_company_rejected(session):
     service = UserService(
         user_repository=user_repo,
         user_details_repository=MagicMock(),
+        token_service=MagicMock(),
     )
     with pytest.raises(AccountTypeValidationError, match="Company is required"):
         service.admin_create(
@@ -160,6 +163,7 @@ def test_admin_create_business_with_company_succeeds(session):
     service = UserService(
         user_repository=user_repo,
         user_details_repository=MagicMock(),
+        token_service=MagicMock(),
     )
     created = service.admin_create(
         {

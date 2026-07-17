@@ -33,6 +33,7 @@ def _service_with_repo():
         UserService(
             user_repository=user_repo,
             user_details_repository=MagicMock(),
+            token_service=MagicMock(),
         ),
         user_repo,
     )

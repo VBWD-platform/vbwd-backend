@@ -54,8 +54,20 @@ def session():
 
 
 @pytest.fixture
-def service(user_repo, details_repo):
-    return UserService(user_repository=user_repo, user_details_repository=details_repo)
+def token_service():
+    """S138.0: the admin token-balance set is a delta through TokenService."""
+    service = MagicMock()
+    service.get_balance.return_value = 0
+    return service
+
+
+@pytest.fixture
+def service(user_repo, details_repo, token_service):
+    return UserService(
+        user_repository=user_repo,
+        user_details_repository=details_repo,
+        token_service=token_service,
+    )
 
 
 def test_returns_none_when_user_missing(service, user_repo, session):

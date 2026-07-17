@@ -42,6 +42,7 @@ def create_user():
     service = UserService(
         user_repository=UserRepository(db.session),
         user_details_repository=UserDetailsRepository(db.session),
+        token_service=current_app.container.token_service(),
     )
 
     try:
@@ -181,12 +182,15 @@ def update_user(user_id):
         - role: str (optional)
         - name: str (optional, full name to split into first/last)
         - password: str (optional, min 8 chars if provided)
-        - balance: float (optional, user account balance)
+        - token_balance: int (optional, non-negative). The absolute balance the
+          user should end up with; applied as an ADJUSTMENT delta through
+          TokenService, so it writes a TokenTransaction (S138.0).
+        - group_slugs: list[str] (optional, replace-set of group slugs)
 
     Returns:
         200: Updated user
         404: User not found
-        400: Validation error (invalid password or balance)
+        400: Validation error (invalid password or token_balance)
     """
     # S23 — body shape unchanged; logic moved to UserService.admin_update.
     from vbwd.models.user_details import AccountTypeValidationError
@@ -196,6 +200,7 @@ def update_user(user_id):
     service = UserService(
         user_repository=UserRepository(db.session),
         user_details_repository=UserDetailsRepository(db.session),
+        token_service=current_app.container.token_service(),
     )
     try:
         saved_user = service.admin_update(user_id, payload, db.session)

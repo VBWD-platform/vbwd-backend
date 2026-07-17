@@ -81,20 +81,16 @@ class TestActivateTokenBundle:
             purchase
         )
 
-        token_balance = MagicMock()
-        token_balance.balance = 50
-        container.token_balance_repository.return_value.find_by_user_id.return_value = (
-            token_balance
-        )
-
         result = handler.activate_line_item(
             _make_line_item(LineItemType.TOKEN_BUNDLE), context
         )
 
         assert result.success is True
         assert purchase.status == PurchaseStatus.COMPLETED
-        assert token_balance.balance == 550
         assert result.data.get("tokens_credited") == 500
+        # S138.0 Inc 3: credited through TokenService, not a direct repo write.
+        credit_call = container.token_service.return_value.credit_tokens.call_args
+        assert credit_call.kwargs["amount"] == 500
 
 
 class TestReverseTokenBundle:
@@ -131,16 +127,12 @@ class TestRestoreTokenBundle:
             purchase
         )
 
-        token_balance = MagicMock()
-        token_balance.balance = 10
-        container.token_balance_repository.return_value.find_by_user_id.return_value = (
-            token_balance
-        )
-
         result = handler.restore_line_item(
             _make_line_item(LineItemType.TOKEN_BUNDLE), context
         )
 
         assert result.success is True
         assert purchase.status == PurchaseStatus.COMPLETED
-        assert token_balance.balance == 310
+        # S138.0 Inc 3: credited through TokenService, not a direct repo write.
+        credit_call = container.token_service.return_value.credit_tokens.call_args
+        assert credit_call.kwargs["amount"] == 300

@@ -57,6 +57,7 @@ Python/Flask REST API for the VBWD SaaS platform — subscription billing, user 
 ### Event-Driven Architecture
 - Domain events: `CheckoutRequestedEvent`, `PaymentCapturedEvent`, `PaymentFailedEvent`, `PaymentRefundedEvent`
 - Handlers: `CheckoutHandler` (creates pending items + invoice), `PaymentCapturedHandler` (activates all line items)
+- **Token-movement hooks** — an atomic, in-transaction seam over every token balance change, so an external bookkeeper (e.g. a ledger) can mirror the balance with zero drift. See [`docs/developer/token-movement-hooks.md`](docs/developer/token-movement-hooks.md).
 
 ---
 
