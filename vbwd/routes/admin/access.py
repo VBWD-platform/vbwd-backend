@@ -68,6 +68,16 @@ CORE_PERMISSIONS = [
         "label": "Read system logs",
         "group": "Observability",
     },
+    {
+        "key": "license.view",
+        "label": "View license status",
+        "group": "License",
+    },
+    {
+        "key": "license.manage",
+        "label": "Manage license keys",
+        "group": "License",
+    },
 ]
 
 # User-facing permission for self-service API-key management. Seeded into the

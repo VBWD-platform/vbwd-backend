@@ -218,6 +218,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         admin_logs_bp,
     )
     from vbwd.routes.admin.access import access_bp as admin_access_bp
+    from vbwd.routes.admin.license import admin_license_bp
     from vbwd.routes.admin.tags_custom_fields import (
         admin_tags_custom_fields_bp,
     )
@@ -250,6 +251,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     csrf.exempt(admin_webhooks_bp)
     csrf.exempt(admin_logs_bp)
     csrf.exempt(admin_access_bp)
+    csrf.exempt(admin_license_bp)
     csrf.exempt(admin_tags_custom_fields_bp)
     csrf.exempt(data_exchange_bp)
     csrf.exempt(frontend_plugins_bp)
@@ -284,8 +286,11 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
 
     @app.before_request
     def inject_db_session():
-        """Inject db session into container for each request."""
+        """Inject db session + the resolved license context for each request."""
+        from flask import g
+
         container.db_session.override(db.session)
+        g.license = getattr(app, "license_context", None)
 
     # S84: let the core-settings currency validators enforce catalog
     # membership without the settings module importing the DB layer (no import
@@ -341,6 +346,43 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     register_outbound_webhook_relay(app, _outbound_event_bus)
 
     # Initialize plugin system
+    # S135-CLIENT — build the license environment from config at boot and stash
+    # it: the request-scoped context (exposed on ``g.license``), the key store,
+    # the activation client, the instance fingerprint, and the degraded flag.
+    # CE default (LICENSE_REQUIRED=false, no keys) → NullLicenseContext, fully
+    # open. The feature registry is plugin-fed, so core names no feature.
+    #
+    # ORDER MATTERS (S137.1): this MUST run BEFORE plugins are enabled below.
+    # ``PluginManager`` refuses to activate a licence-requiring plugin without a
+    # covering key, so the context has to exist by enable-time — otherwise the
+    # gate would read nothing and silently pass. ``feature_registry`` is a lazy
+    # callable, so it can safely resolve ``plugin_manager`` after this point.
+    from dependency_injector import providers as _license_providers
+    from vbwd.registries.licensed_feature_registry import collect_licensed_features
+    from vbwd.security.licensing import build_license_environment
+
+    license_environment = build_license_environment(
+        app.config,
+        feature_registry=lambda: collect_licensed_features(
+            plugin_manager=getattr(app, "plugin_manager", None)
+        ),
+    )
+    app.license_context = license_environment.context  # type: ignore[attr-defined]
+    app.license_store = license_environment.store  # type: ignore[attr-defined]
+    app.license_activation_client = (  # type: ignore[attr-defined]
+        license_environment.activation_client
+    )
+    app.license_instance_id = (  # type: ignore[attr-defined]
+        license_environment.instance_id
+    )
+    app.config["LICENSE_DEGRADED"] = license_environment.degraded
+    container.license_store.override(
+        _license_providers.Object(license_environment.store)
+    )
+    container.license_context.override(
+        _license_providers.Object(license_environment.context)
+    )
+
     from vbwd.plugins.manager import PluginManager
     from vbwd.plugins.json_config_store import JsonFilePluginConfigStore
     from vbwd.plugins.config_schema import PluginConfigSchemaReader
@@ -348,7 +390,10 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     plugins_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins")
     config_store = JsonFilePluginConfigStore(plugins_dir)
     schema_reader = PluginConfigSchemaReader([plugins_dir])
-    plugin_manager = PluginManager(config_repo=config_store)
+    plugin_manager = PluginManager(
+        config_repo=config_store,
+        license_context=license_environment.context,
+    )
     app.plugin_manager = plugin_manager  # type: ignore[attr-defined]
     app.config_store = config_store  # type: ignore[attr-defined]
     app.schema_reader = schema_reader  # type: ignore[attr-defined]
@@ -381,9 +426,17 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
                         # plugin listed in dist but not installed — skip silently
                         pass
 
-    # Register regular + admin blueprints for every plugin — agnostic loop;
-    # plugins with no admin BP inherit BasePlugin.get_admin_blueprint() = None.
-    for plugin in plugin_manager.get_all_plugins():
+    # Register regular + admin blueprints for every ENABLED plugin — agnostic
+    # loop; plugins with no admin BP inherit BasePlugin.get_admin_blueprint().
+    #
+    # Enabled-only (S137.1): this loop used to mount blueprints for every
+    # DISCOVERED plugin, so a disabled — or licence-blocked — plugin still had
+    # its routes mounted while ``on_enable`` had never run, leaving its DI
+    # providers unregistered. Those routes then raised 500 instead of simply not
+    # existing. Mounting only enabled plugins makes an inactive plugin 404,
+    # which is both the correct contract and what the licence gate needs: a
+    # blocked paid plugin must look absent, not broken.
+    for plugin in plugin_manager.get_enabled_plugins():
         bp = plugin.get_blueprint()
         if bp:
             csrf.exempt(bp)
@@ -413,6 +466,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.register_blueprint(admin_webhooks_bp)
     app.register_blueprint(admin_logs_bp)
     app.register_blueprint(admin_access_bp)
+    app.register_blueprint(admin_license_bp)
     app.register_blueprint(admin_tags_custom_fields_bp)
     app.register_blueprint(api_keys_bp)
     app.register_blueprint(admin_api_keys_bp)

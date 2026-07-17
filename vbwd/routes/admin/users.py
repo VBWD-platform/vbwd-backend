@@ -33,6 +33,9 @@ def create_user():
     """
     # S23 — body shape unchanged; logic moved to UserService.admin_create.
     from vbwd.models.user_details import AccountTypeValidationError
+    from vbwd.registries.user_provisioning_guard_registry import (
+        UserProvisioningBlocked,
+    )
     from vbwd.services.user_service import AdminUserUpdateError, UserService
 
     payload = request.get_json() or {}
@@ -48,6 +51,17 @@ def create_user():
         # Email-collision is a 409 conflict; everything else is 400.
         status_code = 409 if "already exists" in message else 400
         return jsonify({"error": message}), status_code
+    except UserProvisioningBlocked as blocked:
+        # A plugin guard vetoed provisioning. Echo the structured veto so the
+        # frontend can render a call-to-action hyperlink; omit ``action`` when
+        # the guard set neither a label nor a url.
+        body: dict = {"error": blocked.message, "code": blocked.code}
+        if blocked.action_label or blocked.action_url:
+            body["action"] = {
+                "label": blocked.action_label,
+                "url": blocked.action_url,
+            }
+        return jsonify(body), blocked.status
 
     # Fire user:created event (optional path — logs and continues if absent).
     try:

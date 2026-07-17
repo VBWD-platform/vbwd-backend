@@ -205,6 +205,15 @@ class Container(containers.DeclarativeContainer):
     tags_and_custom_fields = providers.Singleton(resolve_tags_and_custom_fields)
 
     # ==================
+    # License gate (S135-CLIENT)
+    # ==================
+    # Built from config at boot in ``app.py`` and injected here as concrete
+    # objects (``providers.Object`` override). Declared as safe ``None`` defaults
+    # so resolving the container without a booted app never raises.
+    license_store: providers.Provider = providers.Object(None)
+    license_context: providers.Provider = providers.Object(None)
+
+    # ==================
     # Event System
     # ==================
 

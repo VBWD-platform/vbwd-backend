@@ -8,6 +8,10 @@ from vbwd.interfaces.auth import IUserService
 from vbwd.models.enums import UserRole, UserStatus
 from vbwd.models.user import User
 from vbwd.models.user_details import UserDetails, validate_account_type
+from vbwd.registries.user_provisioning_guard_registry import (
+    UserProvisioningRequest,
+    run_user_provisioning_guards,
+)
 from vbwd.repositories.user_details_repository import UserDetailsRepository
 from vbwd.repositories.user_repository import UserRepository
 
@@ -177,6 +181,21 @@ class UserService(IUserService):
                 f"Invalid role: {payload.get('role')}"
             ) from bad_role
 
+        # Plugin-contributed provisioning guards run BEFORE the user is
+        # persisted. A guard may veto (raise UserProvisioningBlocked, which the
+        # route turns into a structured 402/403) or perform a side effect. Core
+        # runs the guards and names no policy; with none registered this is a
+        # no-op and creation is unchanged.
+        run_user_provisioning_guards(
+            UserProvisioningRequest(
+                action="create",
+                email=email,
+                role=role,
+                acting_user_id=self._acting_user_id(),
+                session=session,
+            )
+        )
+
         password_bytes = password.encode("utf-8")
         password_hash = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode("utf-8")
 
@@ -192,6 +211,20 @@ class UserService(IUserService):
             self._attach_details_on_create(created_user, details_payload, session)
 
         return created_user
+
+    @staticmethod
+    def _acting_user_id() -> Optional[str]:
+        """The authenticated user performing the action (``g.user_id``).
+
+        Read lazily so the service stays usable outside a request context
+        (unit tests, CLI seeding), where it returns ``None``.
+        """
+        try:
+            from flask import g
+
+            return getattr(g, "user_id", None)
+        except RuntimeError:
+            return None
 
     def _attach_details_on_create(
         self, user: User, details_payload: Mapping[str, Any], session

@@ -146,6 +146,37 @@ class BasePlugin(ABC):
         """
         return []
 
+    @property
+    def licensed_features(self) -> tuple:
+        """Declare the licensable feature ids this plugin gates on.
+
+        Returns a tuple of opaque feature/scope ids (e.g. the plugin's own id or
+        a bundle id) that a license key's ``scope`` may cover. Collected by the
+        ``licensed_feature_registry`` so core stays agnostic — core never names a
+        feature. Default: this plugin gates on nothing (open).
+        """
+        return ()
+
+    @property
+    def requires_license(self) -> bool:
+        """Whether this plugin refuses to ACTIVATE without a covering license.
+
+        A plugin returning True must also declare :attr:`licensed_features`; the
+        ``PluginManager`` then enables it only when the instance holds a license
+        whose scope covers one of them (wildcard ``*`` covers everything).
+        Uncovered ⇒ the plugin never enables: no ``on_enable``, no DI providers,
+        no event handlers.
+
+        Unlike the route-level ``@requires_license`` decorator, this gate is
+        **unconditional**: it deliberately does NOT consult ``LICENSE_REQUIRED``,
+        because that flag defaults to false — honouring it here would mean a paid
+        plugin could be unlocked by simply not setting an env var.
+
+        The plugin self-declares; core never names which plugins are paid.
+        Default: free — activates without a license.
+        """
+        return False
+
     def register_event_handlers(self, bus: Any) -> None:
         """Subscribe to EventBus events.
 

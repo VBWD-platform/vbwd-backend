@@ -143,6 +143,17 @@ class Config:
     CELERY_BROKER_URL = get_redis_url()
     CELERY_RESULT_BACKEND = get_redis_url()
 
+    # License gate (S135-CLIENT) — ops-tunable, safe defaults. CE never enforces
+    # (LICENSE_REQUIRED defaults false), so a clean git clone boots fully open;
+    # the "gated"/ME builds turn it on. The public key is a build constant/config
+    # value (the client verifies, never mints); grace_days is the fallback when a
+    # key omits its own. VBWD_LICENSE_HUB_URL is the online-activation endpoint.
+    LICENSE_REQUIRED = os.getenv("VBWD_LICENSE_REQUIRED", "false").lower() == "true"
+    LICENSE_KEYS_DIR = os.getenv("VBWD_LICENSE_KEYS_DIR", "var/license/keys")
+    LICENSE_PUBLIC_KEY = os.getenv("VBWD_LICENSE_PUBLIC_KEY")
+    LICENSE_GRACE_DAYS = int(os.getenv("VBWD_LICENSE_GRACE_DAYS", "14"))
+    VBWD_LICENSE_HUB_URL = os.getenv("VBWD_LICENSE_HUB_URL")
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
