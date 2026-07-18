@@ -108,7 +108,7 @@ def get_invoice(invoice_id):
     if user:
         inv_dict["user_email"] = user.email
         inv_dict["user_name"] = (
-            user.details.first_name + " " + user.details.last_name
+            " ".join(filter(None, [user.details.first_name, user.details.last_name]))
             if user.details
             else ""
         )
