@@ -129,6 +129,39 @@ def test_malformed_body_is_unreachable():
     assert result.reachable is False
 
 
+def test_envelope_is_omitted_when_no_identity_supplied():
+    # Byte-for-byte back-compat: default (no identity envelope) POSTs the
+    # license_number ONLY — the authority/broker accept that unchanged.
+    client = _RecordingHttpClient(_FakeResponse(200, {"status": "active"}))
+    provider = HttpLicenseStatusProvider(
+        "https://authority.example", http_client=client
+    )
+
+    provider.status("A1B2C3D4")
+
+    assert client.calls[0]["json"] == {"license_number": "A1B2C3D4"}
+    assert provider.identity_envelope is None
+
+
+def test_envelope_is_included_when_identity_supplied():
+    # When the box's own signed envelope is supplied, the broker gets it too so
+    # it can verify the caller is a known instance before brokering the verify.
+    client = _RecordingHttpClient(_FakeResponse(200, {"status": "active"}))
+    provider = HttpLicenseStatusProvider(
+        "https://authority.example",
+        http_client=client,
+        identity_envelope="ENVELOPE.SIGNATURE",
+    )
+
+    provider.status("A1B2C3D4")
+
+    assert client.calls[0]["json"] == {
+        "license_number": "A1B2C3D4",
+        "envelope": "ENVELOPE.SIGNATURE",
+    }
+    assert provider.identity_envelope == "ENVELOPE.SIGNATURE"
+
+
 def test_null_provider_is_unreachable_unknown():
     result = NullLicenseStatusProvider().status("A1B2C3D4")
 

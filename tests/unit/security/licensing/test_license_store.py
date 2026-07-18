@@ -2,7 +2,11 @@
 import pytest
 
 from vbwd.security.licensing.license_key import LicenseStatus
-from vbwd.security.licensing.license_store import LicenseKeyRejected, LicenseStore
+from vbwd.security.licensing.license_store import (
+    LicenseKeyRejected,
+    LicenseStore,
+    read_held_envelope,
+)
 from vbwd.security.licensing.verifier import LicenseVerifier
 
 from .conftest import FIXTURE_INSTANCE_ID, make_license_key, mint_envelope
@@ -41,3 +45,15 @@ def test_remove_by_id(store, signer):
     assert store.remove("key-x") is True
     assert store.all() == []
     assert store.remove("key-x") is False
+
+
+def test_read_held_envelope_returns_none_when_no_keys(tmp_path):
+    assert read_held_envelope(str(tmp_path)) is None
+    assert read_held_envelope(str(tmp_path / "does-not-exist")) is None
+
+
+def test_read_held_envelope_returns_the_raw_envelope(store, signer, tmp_path):
+    envelope = mint_envelope(make_license_key(key_id="key-x"), signer)
+    store.add(envelope)
+
+    assert read_held_envelope(str(tmp_path)) == envelope

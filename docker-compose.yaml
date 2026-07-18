@@ -60,6 +60,12 @@ services:
       # Enforcement toggle. Default false (CE): the license gate is inert.
       # Set true (gated/demo) to make @requires_license routes 402 when uncovered.
       - VBWD_LICENSE_REQUIRED=${VBWD_LICENSE_REQUIRED:-false}
+      # Online verify + code-activation target. On a real MERCHANT this is the
+      # vbwd.cc BROKER (never the authority); set it in .env locally to point at
+      # a broker/authority. Set => builds the activation client (clears the
+      # "Online activation is not configured" banner). Empty default = CE
+      # offline-only (no behaviour change unless configured). S145.
+      - VBWD_LICENSE_AUTHORITY_URL=${VBWD_LICENSE_AUTHORITY_URL:-}
     volumes:
       - .:/app
       # Shared plugin state directory (default: ../var relative to

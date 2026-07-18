@@ -56,16 +56,32 @@ class HttpLicenseStatusProvider(ILicenseStatusProvider):
         authority_url: str,
         http_client=requests,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        identity_envelope: Optional[str] = None,
     ) -> None:
         self._authority_url = authority_url.rstrip("/")
         self._http_client = http_client
         self._timeout_seconds = timeout_seconds
+        self._identity_envelope = identity_envelope
+
+    @property
+    def identity_envelope(self) -> Optional[str]:
+        """The box's own raw signed envelope sent as proof-of-identity, or None.
+
+        A construction-time property only: when set, the verify body carries it
+        alongside ``license_number`` so a broker (vbwd.cc) can confirm the caller
+        is a known instance before forwarding to a private authority. ``None``
+        keeps the body byte-for-byte as before (the no-regression case).
+        """
+        return self._identity_envelope
 
     def status(self, license_number: str) -> LicenseAuthorityStatus:
+        request_body = {"license_number": license_number}
+        if self._identity_envelope is not None:
+            request_body["envelope"] = self._identity_envelope
         try:
             response = self._http_client.post(
                 f"{self._authority_url}{VERIFY_PATH}",
-                json={"license_number": license_number},
+                json=request_body,
                 timeout=self._timeout_seconds,
             )
         except requests.RequestException:

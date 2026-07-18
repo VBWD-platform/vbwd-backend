@@ -7,12 +7,32 @@ reports ``EXPIRED`` without a rewrite), adds a new one after verifying it, and
 removes one by id. One expired key never invalidates the others.
 """
 import os
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from vbwd.security.licensing.license_key import LicenseKey, LicenseStatus
 from vbwd.security.licensing.verifier import LicenseVerifier
 
 KEY_FILE_SUFFIX = ".vbwd"
+
+
+def read_held_envelope(keys_dir: str) -> Optional[str]:
+    """The box's own raw identity envelope — the first held key file, unverified.
+
+    A box presents this to the licence broker as proof it is a known instance;
+    the broker (not the box) re-verifies the Ed25519 signature. Reads the raw
+    envelope string of the first key file in ``keys_dir`` (a merchant holds a
+    single covering licence), or ``None`` when none is held. No verification and
+    no parse here — it is the raw wire envelope, read exactly as the store reads
+    it (shares ``KEY_FILE_SUFFIX``, DRY).
+    """
+    if not os.path.isdir(keys_dir):
+        return None
+    for filename in sorted(os.listdir(keys_dir)):
+        if filename.endswith(KEY_FILE_SUFFIX):
+            with open(os.path.join(keys_dir, filename), encoding="utf-8") as handle:
+                return handle.read().strip()
+    return None
+
 
 # Statuses that a key must NOT have to be accepted into the store on add.
 _REJECTED_ON_ADD = (

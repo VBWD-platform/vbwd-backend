@@ -134,6 +134,41 @@ def test_authority_url_builds_http_status_provider(tmp_path, fixed_clock):
     assert isinstance(env.status_provider, HttpLicenseStatusProvider)
 
 
+def test_http_status_provider_carries_the_held_envelope(tmp_path, signer, fixed_clock):
+    # The loader reads the box's own raw envelope from the keys dir and hands it
+    # to the provider as its identity, so the online verify can be brokered by a
+    # vbwd.cc-style front that proves the caller is a known instance.
+    keys_dir = str(tmp_path / "keys")
+    key = make_license_key(scope=("*",), license_number=_LICENSE_NUMBER)
+    _write_key(keys_dir, key, signer)
+    env = build_license_environment(
+        {
+            "LICENSE_REQUIRED": False,
+            "LICENSE_KEYS_DIR": keys_dir,
+            "LICENSE_INSTANCE_ID": FIXTURE_INSTANCE_ID,
+            "VBWD_LICENSE_AUTHORITY_URL": _AUTHORITY_URL,
+        },
+        signature_verifier=signer,
+        clock=fixed_clock,
+    )
+    assert isinstance(env.status_provider, HttpLicenseStatusProvider)
+    assert env.status_provider.identity_envelope == mint_envelope(key, signer)
+
+
+def test_http_status_provider_has_no_envelope_when_none_held(tmp_path, fixed_clock):
+    # No held key file ⇒ no identity envelope ⇒ body unchanged (back-compat).
+    env = build_license_environment(
+        {
+            "LICENSE_REQUIRED": False,
+            "LICENSE_KEYS_DIR": str(tmp_path / "empty"),
+            "VBWD_LICENSE_AUTHORITY_URL": _AUTHORITY_URL,
+        },
+        clock=fixed_clock,
+    )
+    assert isinstance(env.status_provider, HttpLicenseStatusProvider)
+    assert env.status_provider.identity_envelope is None
+
+
 # --- S144.1a: the online gate is wired only with URL + license_number --------
 
 

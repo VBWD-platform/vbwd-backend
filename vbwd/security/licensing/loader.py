@@ -17,7 +17,7 @@ from vbwd.security.licensing.license_context import (
     NullLicenseContext,
 )
 from vbwd.security.licensing.license_key import LicenseKey, LicenseStatus
-from vbwd.security.licensing.license_store import LicenseStore
+from vbwd.security.licensing.license_store import LicenseStore, read_held_envelope
 from vbwd.security.licensing.online_coverage import OnlineCoverageResolver
 from vbwd.security.licensing.ports import (
     ILicenseActivationClient,
@@ -128,18 +128,24 @@ def _resolve_activation_client(
 
 
 def _resolve_status_provider(
-    config, status_provider: Optional[ILicenseStatusProvider]
+    config, status_provider: Optional[ILicenseStatusProvider], keys_dir: str
 ) -> ILicenseStatusProvider:
     """The online verify channel — HTTP when a URL is set, else the null default.
 
     With no authority URL the null provider reports "not configured"
-    (unreachable), so effective coverage is offline-only — S135 unchanged.
+    (unreachable), so effective coverage is offline-only — S135 unchanged. When a
+    URL is set the box's own held envelope (read from the keys dir) is handed to
+    the provider as its identity, so a broker front can confirm the caller is a
+    known instance before forwarding to a private authority. No held envelope ⇒
+    ``None`` ⇒ the verify body is unchanged (byte-for-byte back-compat).
     """
     if status_provider is not None:
         return status_provider
     authority_url = config.get(CONFIG_AUTHORITY_URL)
     if authority_url:
-        return HttpLicenseStatusProvider(authority_url)
+        return HttpLicenseStatusProvider(
+            authority_url, identity_envelope=read_held_envelope(keys_dir)
+        )
     return NullLicenseStatusProvider()
 
 
@@ -192,7 +198,7 @@ def build_license_environment(
     verifier_impl = _resolve_signature_verifier(config, signature_verifier)
     instance_id = _resolve_instance_id(config, keys_dir)
     client = _resolve_activation_client(config, activation_client)
-    provider = _resolve_status_provider(config, status_provider)
+    provider = _resolve_status_provider(config, status_provider, keys_dir)
     online_gate = _build_online_gate(config, provider, resolved_clock)
 
     context: AnyLicenseContext
