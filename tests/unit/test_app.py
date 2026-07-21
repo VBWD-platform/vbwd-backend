@@ -172,3 +172,107 @@ class TestConfig:
         url = get_redis_url()
         assert url is not None
         assert "redis://" in url
+
+
+class TestForwardedProtoHandling:
+    """TLS terminates on an outer proxy, so Flask must trust X-Forwarded-Proto.
+
+    Without it every Werkzeug-generated redirect (``merge_slashes`` 308s,
+    ``url_for(..., _external=True)``) emits an ``http://`` absolute URL that the
+    browser blocks as mixed content on an https:// page.
+    """
+
+    REDIRECTING_PATH = "/api/v1//health"  # doubled slash -> merge_slashes 308
+
+    @staticmethod
+    def _create_app(extra_config=None):
+        from vbwd.app import create_app
+        from vbwd.config import get_database_url
+
+        app_config = {
+            "TESTING": True,
+            "SQLALCHEMY_DATABASE_URI": get_database_url(),
+            "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+            "RATELIMIT_ENABLED": False,
+        }
+        app_config.update(extra_config or {})
+        app = create_app(app_config)
+
+        from flask import request, url_for
+
+        @app.route("/_test/echo-scheme")
+        def echo_scheme():
+            return {
+                "scheme": request.scheme,
+                "external_url": url_for("echo_scheme", _external=True),
+            }
+
+        return app
+
+    def test_redirect_location_uses_forwarded_https_scheme(self):
+        """X-Forwarded-Proto: https must produce an https:// Location."""
+        client = self._create_app().test_client()
+
+        response = client.get(
+            self.REDIRECTING_PATH,
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "vbwd.cc"},
+        )
+
+        assert response.status_code in (301, 302, 307, 308)
+        assert response.headers["Location"].startswith("https://")
+
+    def test_redirect_location_stays_http_without_forwarded_header(self):
+        """Un-proxied requests keep the plain http:// behaviour."""
+        client = self._create_app().test_client()
+
+        response = client.get(self.REDIRECTING_PATH)
+
+        assert response.status_code in (301, 302, 307, 308)
+        assert response.headers["Location"].startswith("http://")
+
+    def test_request_scheme_and_external_url_follow_forwarded_proto(self):
+        """request.scheme and url_for(_external=True) must reflect the proxy."""
+        client = self._create_app().test_client()
+
+        response = client.get(
+            "/_test/echo-scheme",
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "vbwd.cc"},
+        )
+
+        assert response.json["scheme"] == "https"
+        assert response.json["external_url"].startswith("https://vbwd.cc/")
+
+    def test_proxy_fix_can_be_disabled(self):
+        """PROXY_FIX_ENABLED=False must ignore the forwarded headers entirely."""
+        client = self._create_app({"PROXY_FIX_ENABLED": False}).test_client()
+
+        response = client.get(
+            "/_test/echo-scheme",
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "vbwd.cc"},
+        )
+
+        assert response.json["scheme"] == "http"
+
+    def test_trusted_hop_counts_are_configurable(self):
+        """Hop counts come from config so the deployment topology can differ."""
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app = self._create_app(
+            {"PROXY_FIX_X_FOR": 3, "PROXY_FIX_X_PROTO": 2, "PROXY_FIX_X_HOST": 0}
+        )
+
+        assert isinstance(app.wsgi_app, ProxyFix)
+        assert app.wsgi_app.x_for == 3
+        assert app.wsgi_app.x_proto == 2
+        assert app.wsgi_app.x_host == 0
+
+    def test_default_hop_counts_match_production_topology(self):
+        """Defaults: two X-Forwarded-For hops, one proto/host hop."""
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app = self._create_app()
+
+        assert isinstance(app.wsgi_app, ProxyFix)
+        assert app.wsgi_app.x_for == 2
+        assert app.wsgi_app.x_proto == 1
+        assert app.wsgi_app.x_host == 1

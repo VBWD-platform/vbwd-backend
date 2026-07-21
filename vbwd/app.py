@@ -11,6 +11,62 @@ logger = logging.getLogger(__name__)
 # under DB connection pressure. Short, so honest capacity recovers quickly.
 DB_UNAVAILABLE_RETRY_AFTER_SECONDS = 5
 
+# --- Reverse-proxy trust (ProxyFix) -----------------------------------------
+#
+# TLS is terminated by an outer proxy, which forwards plain HTTP to the
+# per-app nginx and on to gunicorn. Flask therefore sees
+# ``wsgi.url_scheme == "http"`` and every absolute URL Werkzeug builds — the
+# merge_slashes 308 for ``/api/v1//cms/posts``, ``url_for(_external=True)``,
+# OAuth/payment return URLs — comes back as ``http://``, which browsers block
+# as mixed content on an https:// page.
+#
+# The defaults describe the deployed topology: TWO hops append to
+# X-Forwarded-For (outer nginx, then the app-container nginx), while
+# X-Forwarded-Proto / -Host are set once by the outer proxy and relayed
+# unchanged.
+#
+# SECURITY: ProxyFix trusts client-supplied headers, so it is only safe behind
+# a proxy that OVERWRITES X-Forwarded-Proto/-Host (ours does). It is ON by
+# default because this app is always deployed behind such a proxy; a directly
+# exposed deployment MUST set PROXY_FIX_ENABLED=false.
+DEFAULT_PROXY_FIX_ENABLED = True
+DEFAULT_PROXY_FIX_X_FOR = 2
+DEFAULT_PROXY_FIX_X_PROTO = 1
+DEFAULT_PROXY_FIX_X_HOST = 1
+
+
+def _install_proxy_fix(app: Flask) -> None:
+    """Wrap the WSGI app so forwarded scheme/host/client headers are honoured.
+
+    Trusted hop counts are ops-tunable via app config or the matching
+    ``PROXY_FIX_*`` environment variables (same idiom as the logging knobs
+    below); ``PROXY_FIX_ENABLED=false`` disables the middleware entirely for
+    non-proxied local runs.
+    """
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    enabled_env = os.getenv("PROXY_FIX_ENABLED")
+    enabled_default = (
+        DEFAULT_PROXY_FIX_ENABLED
+        if enabled_env is None
+        else enabled_env.lower() == "true"
+    )
+    if not app.config.get("PROXY_FIX_ENABLED", enabled_default):
+        return
+
+    def _hop_count(config_key: str, default: int) -> int:
+        return int(app.config.get(config_key, os.getenv(config_key) or default))
+
+    wrapped_wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=_hop_count("PROXY_FIX_X_FOR", DEFAULT_PROXY_FIX_X_FOR),
+        x_proto=_hop_count("PROXY_FIX_X_PROTO", DEFAULT_PROXY_FIX_X_PROTO),
+        x_host=_hop_count("PROXY_FIX_X_HOST", DEFAULT_PROXY_FIX_X_HOST),
+    )
+    # Flask's documented middleware hook is re-binding ``wsgi_app``; setattr
+    # performs exactly that without tripping mypy's method-assign check.
+    setattr(app, "wsgi_app", wrapped_wsgi_app)
+
 
 def _install_unified_logging(app: Flask, container) -> None:
     """Install the D9 unified logging layer (Sprint 58.5).
@@ -186,6 +242,10 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         from vbwd.config import get_config
 
         app.config.from_object(get_config())
+
+    # Honour the reverse proxy's X-Forwarded-* headers (see _install_proxy_fix)
+    # so redirects and external URLs keep the client's https:// scheme.
+    _install_proxy_fix(app)
 
     # Initialize extensions
     from vbwd.extensions import db, limiter, csrf, jwt
