@@ -17,6 +17,12 @@
       "version": "26.7.1",
       "installedAt": "",
       "source": "local"
+    },
+    "bdv": {
+      "enabled": true,
+      "version": "26.7.0",
+      "installedAt": "",
+      "source": "local"
     }
   }
 }
