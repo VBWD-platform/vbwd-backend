@@ -124,3 +124,9 @@ plugins/plugins.json
 # Install via: recipes/install-plugins.sh or CI
 plugins/**/
 uploads/**/
+
+# Local-dev only: vendored private datavibes source + the build-context plugin
+# requirements that installs it into the local image. Never commit — prod builds
+# generate their own plugins-requirements.txt in the deploy workflow.
+/vendor/
+/plugins-requirements.txt
