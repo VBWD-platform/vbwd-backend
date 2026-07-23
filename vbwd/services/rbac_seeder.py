@@ -237,16 +237,30 @@ def _update_system_role(role, name: str, description: str, permissions: list) ->
 def _seed_user_access_levels(session) -> int:
     """Create the default user access levels. Returns the count created.
 
-    Create-only / prod-safe: an existing level (matched by slug) is left
-    completely untouched — its permission grants are never cleared or
-    reassigned. New levels are ``is_system=True`` and get only the subset of
-    permissions that already exist (see :func:`_resolve_existing_permissions`).
+    Prod-safe and ADDITIVE (mirrors :func:`_update_system_role`): a new level is
+    created ``is_system=True`` with the subset of its default permissions that
+    already exist; an existing SYSTEM level of the same slug has any MISSING
+    default permissions backfilled (never removed) so a level created before its
+    permissions existed — e.g. a long-lived CI/prod DB, or a plugin enabled after
+    the first seed — heals on the next seed. Operator additions are never cleared,
+    and a non-system (operator-owned) level of the same slug is left untouched.
     """
     levels_created = 0
     for level_data in resolve_user_access_levels():
         slug = level_data["slug"]
+        # Resolve up front so it's available for both the create and backfill
+        # paths (only permissions that already exist are attached — lenient).
+        want = _resolve_existing_permissions(session, level_data.get("permissions") or [])
         existing = session.query(AccessLevel).filter_by(slug=slug).first()
         if existing is not None:
+            if existing.is_system:
+                have_ids = {permission.id for permission in existing.permissions}
+                missing = [
+                    permission for permission in want if permission.id not in have_ids
+                ]
+                if missing:
+                    existing.permissions.extend(missing)
+                    session.flush()
             continue
 
         level = AccessLevel(
@@ -258,11 +272,8 @@ def _seed_user_access_levels(session) -> int:
             linked_plan_slug=level_data.get("linked_plan_slug"),
         )
         session.add(level)
-        # Attach only the permissions that already exist (lenient), mutating the
-        # relationship collection in place rather than reassigning it.
-        level.permissions.extend(
-            _resolve_existing_permissions(session, level_data.get("permissions") or [])
-        )
+        # Mutate the relationship collection in place rather than reassigning it.
+        level.permissions.extend(want)
         session.flush()
         levels_created += 1
     return levels_created

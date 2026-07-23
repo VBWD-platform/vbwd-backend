@@ -564,3 +564,67 @@ class TestSharedCatalogCollector:
 
         catalog = collect_permission_catalog(plugin_manager=manager)
         assert catalog["shop"][0]["key"] == "shop.products.view"
+
+
+class TestSeedDefaultRbacUserAccessLevels:
+    """Default user access levels — additive permission backfill.
+
+    Regression guard: a 'logged-in' level created before its permissions existed
+    (e.g. a long-lived CI/prod DB whose level predates the permission catalog)
+    must HEAL on the next seed, or a freshly-registered user gets the level but
+    no effective permissions. The default-level permissions live in plugin
+    ``user_permissions``, so we inject a plugin that provides them.
+    """
+
+    @staticmethod
+    def _manager():
+        # A plugin that contributes the default 'logged-in' permission so the
+        # catalog resolves it deterministically, independent of which real
+        # plugins happen to be loaded in the test app.
+        plugin = FakePlugin(
+            "subscription",
+            user_permissions=[
+                {"key": "user.profile.view", "label": "View profile", "group": "User"},
+            ],
+        )
+        return FakePluginManager([plugin])
+
+    def test_backfills_missing_permissions_on_existing_system_level(self, session):
+        # First seed creates the system 'logged-in' level with its permissions.
+        seed_default_rbac(session, plugin_manager=self._manager())
+        level = session.query(AccessLevel).filter_by(slug="logged-in").one()
+        assert level.is_system is True
+        assert "user.profile.view" in {p.name for p in level.permissions}
+
+        # Simulate the stale state: the level exists but lost its grants (a level
+        # created before the permission existed keeps an empty permission set).
+        level.permissions.clear()
+        session.flush()
+        assert not session.query(AccessLevel).filter_by(slug="logged-in").one().permissions
+
+        # Re-seed → additive backfill re-attaches the missing default permission.
+        seed_default_rbac(session, plugin_manager=self._manager())
+        healed = session.query(AccessLevel).filter_by(slug="logged-in").one()
+        assert "user.profile.view" in {p.name for p in healed.permissions}
+
+    def test_reseed_never_removes_an_operator_added_permission(self, session):
+        seed_default_rbac(session, plugin_manager=self._manager())
+        level = session.query(AccessLevel).filter_by(slug="logged-in").one()
+        on_level_ids = {p.id for p in level.permissions}
+        # Operator grants a permission that is NOT one of the level's defaults.
+        extra = (
+            session.query(Permission)
+            .filter(Permission.id.notin_(on_level_ids), Permission.name != "*")
+            .first()
+        )
+        assert extra is not None
+        level.permissions.append(extra)
+        session.flush()
+
+        seed_default_rbac(session, plugin_manager=self._manager())
+        names = {
+            p.name
+            for p in session.query(AccessLevel).filter_by(slug="logged-in").one().permissions
+        }
+        assert extra.name in names  # additive: operator grant survives a re-seed
+        assert "user.profile.view" in names  # defaults still present
