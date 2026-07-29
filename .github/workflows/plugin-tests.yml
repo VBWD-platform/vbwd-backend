@@ -83,31 +83,53 @@ jobs:
       - name: Install plugin deps
         # Declared plugin→plugin deps (PluginMetadata.dependencies). Adds each
         # required peer plugin so the under-test plugin's on_enable doesn't
-        # fail dependency resolution.
+        # fail dependency resolution — without them PluginManager refuses to
+        # enable it, no blueprint mounts, and every route test sees 404.
+        #
+        # The set is read from the plugins themselves (ci/missing_plugin_deps.py)
+        # rather than a hand-kept table, which had drifted: subscription gained
+        # a dependency on `email` that the table never picked up, and that one
+        # gap failed 59 tests across the meinchat, tarot, subscription and ghrm
+        # jobs. Loops because dependencies are transitive.
         run: |
           set -euo pipefail
-          declare -A REPO_OVERRIDES=(
-            [token_payment]=token-payment
-            [bot_base]=bot-base
-            [bot_telegram]=bot-telegram
-          )
-          declare -A DEPS=(
-            [chat]="bot_base bot_telegram"
-            [tarot]="bot_base bot_telegram subscription"
-            [ghrm]="subscription cms"
-            [stripe]="subscription"
-            [paypal]="subscription"
-            [meinchat]="subscription cms"
-            [subscription]="bot_base bot_telegram"
-            [license_authority]="subscription"
-          )
-          deps_for_this="${DEPS[${{ matrix.plugin }}]:-}"
-          for dep in $deps_for_this; do
-            suffix="${REPO_OVERRIDES[$dep]:-$dep}"
-            [ -d "plugins/${dep}" ] || git clone --depth=1 -q \
-              "https://github.com/VBWD-platform/vbwd-plugin-${suffix}.git" \
-              "plugins/${dep}"
+          UNDER_TEST="${{ matrix.plugin }}"
+          attempted=""
+          for _attempt in 1 2 3 4 5; do
+            missing="$(python ci/missing_plugin_deps.py --for "$UNDER_TEST")"
+            if [ -z "$missing" ]; then
+              break
+            fi
+            progressed=""
+            for dep in $missing; do
+              dir_name="${dep//-/_}"
+              if [ -d "plugins/${dir_name}" ]; then
+                continue
+              fi
+              case " ${attempted} " in *" ${dir_name} "*) continue ;; esac
+              attempted="${attempted} ${dir_name}"
+              # Repo naming is not fully consistent (vbwd-plugin-bot-base but
+              # vbwd-plugin-shipping_flat_rate), so try both spellings.
+              for suffix in "${dep//_/-}" "${dep//-/_}"; do
+                if git clone --depth=1 -q \
+                    "https://github.com/VBWD-platform/vbwd-plugin-${suffix}.git" \
+                    "plugins/${dir_name}" 2>/dev/null; then
+                  echo "Cloned peer plugin '${dep}' from vbwd-plugin-${suffix}"
+                  progressed=1
+                  break
+                fi
+              done
+            done
+            [ -n "$progressed" ] || break
           done
+          # Not every peer is reachable — meinchat's tests reference the private
+          # meinchat-plus and skip when it is absent. Report what was dropped
+          # (never silently) and let the suite speak for whether it mattered.
+          unresolved="$(python ci/missing_plugin_deps.py --for "$UNDER_TEST" | tr '\n' ' ')"
+          if [ -n "${unresolved// /}" ]; then
+            echo "::warning::peer plugins not checked out (private or absent): ${unresolved}"
+          fi
+          echo "Plugin set: $(ls -d plugins/*/ | xargs -n1 basename | tr '\n' ' ')"
       - name: Run lint + unit
         env: { PYTHONPATH: "${{ github.workspace }}", REDIS_URL: "redis://localhost:6379/0", DATABASE_URL: "postgresql://vbwd:vbwd@localhost:5432/vbwd_test" }
         run: ./bin/pre-commit-check.sh --plugin ${{ matrix.plugin }} --quick
@@ -154,17 +176,10 @@ jobs:
               "plugins/${dir_name}" 2>/dev/null || true
           done
       - name: Create plugins.json (enable all plugins)
-        run: |
-          python3 -c "
-          import json, os
-          plugins = {}
-          for d in os.listdir('plugins'):
-              init = os.path.join('plugins', d, '__init__.py')
-              if os.path.isfile(init):
-                  plugins[d] = {'enabled': True, 'version': '1.0.0', 'source': 'local'}
-          json.dump({'plugins': plugins}, open('plugins/plugins.json', 'w'))
-          print(f'Created plugins.json with {len(plugins)} plugins: {sorted(plugins.keys())}')
-          "
+        # Keys must be PluginMetadata.name, not the directory — they differ for
+        # the bot plugins (bot_base -> "bot-base") and a mismatched key is
+        # ignored at load time, so the plugin never enables and its routes 404.
+        run: python ci/write_plugins_manifest.py
       - name: Start full stack
         run: docker compose up -d --build
       - name: Wait for API
