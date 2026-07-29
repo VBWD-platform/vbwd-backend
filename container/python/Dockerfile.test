@@ -27,7 +27,11 @@ COPY . .
 # has no such entrypoint, so bake the plugin deps in at BUILD time. Without them a
 # plugin's top-level import (e.g. `import yaml`) fails during conftest plugin
 # loading and cascades into mass collection errors across the whole suite.
+# The `[ -f "$r" ]` guard matters: when no plugin ships a requirements.txt the
+# glob stays literal and pip would fail on the unexpanded pattern. That is the
+# normal case in per-plugin CI, which checks out only one or two plugins.
 RUN for r in plugins/*/requirements.txt; do \
+      [ -f "$r" ] || continue; \
       echo "[test-image] installing plugin deps from $r"; \
       pip install --no-cache-dir -r "$r"; \
     done
