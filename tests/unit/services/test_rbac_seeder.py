@@ -600,7 +600,9 @@ class TestSeedDefaultRbacUserAccessLevels:
         # created before the permission existed keeps an empty permission set).
         level.permissions.clear()
         session.flush()
-        assert not session.query(AccessLevel).filter_by(slug="logged-in").one().permissions
+        assert (
+            not session.query(AccessLevel).filter_by(slug="logged-in").one().permissions
+        )
 
         # Re-seed → additive backfill re-attaches the missing default permission.
         seed_default_rbac(session, plugin_manager=self._manager())
@@ -624,7 +626,10 @@ class TestSeedDefaultRbacUserAccessLevels:
         seed_default_rbac(session, plugin_manager=self._manager())
         names = {
             p.name
-            for p in session.query(AccessLevel).filter_by(slug="logged-in").one().permissions
+            for p in session.query(AccessLevel)
+            .filter_by(slug="logged-in")
+            .one()
+            .permissions
         }
         assert extra.name in names  # additive: operator grant survives a re-seed
         assert "user.profile.view" in names  # defaults still present

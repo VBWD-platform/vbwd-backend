@@ -250,7 +250,9 @@ def _seed_user_access_levels(session) -> int:
         slug = level_data["slug"]
         # Resolve up front so it's available for both the create and backfill
         # paths (only permissions that already exist are attached — lenient).
-        want = _resolve_existing_permissions(session, level_data.get("permissions") or [])
+        want = _resolve_existing_permissions(
+            session, level_data.get("permissions") or []
+        )
         existing = session.query(AccessLevel).filter_by(slug=slug).first()
         if existing is not None:
             if existing.is_system:
