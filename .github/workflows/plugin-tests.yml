@@ -130,6 +130,13 @@ jobs:
             echo "::warning::peer plugins not checked out (private or absent): ${unresolved}"
           fi
           echo "Plugin set: $(ls -d plugins/*/ | xargs -n1 basename | tr '\n' ' ')"
+      - name: Create plugins.json (enable all plugins)
+        # plugins/plugins.json is gitignored, so a fresh checkout has none and
+        # the app falls back to plugins.json.dist — which lists four plugins and
+        # not the one under test. It then never enables, its blueprint never
+        # mounts, and route tests assert against 404. The integration job
+        # already did this; the unit job needs it just as much.
+        run: python ci/write_plugins_manifest.py
       - name: Run lint + unit
         env: { PYTHONPATH: "${{ github.workspace }}", REDIS_URL: "redis://localhost:6379/0", DATABASE_URL: "postgresql://vbwd:vbwd@localhost:5432/vbwd_test" }
         run: ./bin/pre-commit-check.sh --plugin ${{ matrix.plugin }} --quick
