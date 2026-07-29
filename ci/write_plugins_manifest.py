@@ -17,11 +17,31 @@ import sys
 from missing_plugin_deps import PLUGINS_ROOT, _parse, _string_keyword
 
 
+EXCLUDE_FILE = os.path.join("ci", "plugins-enable-exclude.txt")
+
+
+def excluded_directories() -> set[str]:
+    """Plugin directories CI must not auto-enable (region-specific payment
+    methods that need live gateway credentials). One directory per line."""
+    if not os.path.isfile(EXCLUDE_FILE):
+        return set()
+    with open(EXCLUDE_FILE, encoding="utf-8") as handle:
+        return {
+            line.strip()
+            for line in handle
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+
 def build_manifest() -> dict:
+    excluded = excluded_directories()
     plugins: dict[str, dict] = {}
     for directory in sorted(os.listdir(PLUGINS_ROOT)):
         init_path = os.path.join(PLUGINS_ROOT, directory, "__init__.py")
         if not os.path.isfile(init_path):
+            continue
+        if directory in excluded:
+            print(f"Skipping CI-excluded plugin: {directory}")
             continue
         tree = _parse(init_path)
         if tree is None:
