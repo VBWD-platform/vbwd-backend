@@ -633,3 +633,64 @@ class TestSeedDefaultRbacUserAccessLevels:
         }
         assert extra.name in names  # additive: operator grant survives a re-seed
         assert "user.profile.view" in names  # defaults still present
+
+
+class TestPluginDeclaredAccessGrants:
+    """A plugin registers which access levels its permission is granted to —
+    core reads the generic ``default_access_levels`` field and never names the
+    plugin's vocabulary (agnostic seam)."""
+
+    def test_grant_is_attached_to_the_declared_level(self, session):
+        pm = FakePluginManager(
+            [
+                FakePlugin(
+                    "demo",
+                    user_permissions=[
+                        {
+                            "key": "demo.track",
+                            "label": "Track",
+                            "group": "Demo",
+                            "default_access_levels": ["logged-in"],
+                        }
+                    ],
+                )
+            ]
+        )
+        seed_default_rbac(session, plugin_manager=pm)
+
+        level = session.query(AccessLevel).filter_by(slug="logged-in").first()
+        assert "demo.track" in {p.name for p in level.permissions}
+
+    def test_unknown_level_is_skipped_and_never_raises(self, session):
+        pm = FakePluginManager(
+            [
+                FakePlugin(
+                    "demo",
+                    user_permissions=[
+                        {
+                            "key": "demo.track",
+                            "label": "Track",
+                            "group": "Demo",
+                            "default_access_levels": ["no-such-tier"],
+                        }
+                    ],
+                )
+            ]
+        )
+        # A grant to a non-existent tier is silently skipped (no exception).
+        seed_default_rbac(session, plugin_manager=pm)
+
+    def test_no_default_access_levels_grants_nothing_extra(self, session):
+        pm = FakePluginManager(
+            [
+                FakePlugin(
+                    "demo",
+                    user_permissions=[
+                        {"key": "demo.track", "label": "Track", "group": "Demo"}
+                    ],
+                )
+            ]
+        )
+        seed_default_rbac(session, plugin_manager=pm)
+        level = session.query(AccessLevel).filter_by(slug="logged-in").first()
+        assert "demo.track" not in {p.name for p in level.permissions}

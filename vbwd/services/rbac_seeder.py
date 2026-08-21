@@ -281,6 +281,42 @@ def _seed_user_access_levels(session) -> int:
     return levels_created
 
 
+def _seed_plugin_declared_access_grants(session, plugin_manager) -> None:
+    """Attach plugin-declared permission→access-level grants (agnostic seam).
+
+    A plugin may register on any of its ``user_permissions`` a generic
+    ``default_access_levels`` list of access-level slugs — the plugin owns
+    which of its permissions belong to which tier, so core NEVER names a plugin
+    permission or hardcodes the mapping. Here we ADDITIVELY attach each such
+    permission to the named levels that already exist (mirroring the level
+    backfill: a grant is only ever added, never removed; a missing level or
+    permission is silently skipped, so a core-only install is unaffected).
+    """
+    catalog = collect_user_permission_catalog(plugin_manager=plugin_manager)
+    for entries in catalog.values():
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            slugs = entry.get("default_access_levels")
+            if not slugs:
+                continue
+            permission = (
+                session.query(Permission).filter_by(name=entry.get("key")).first()
+            )
+            if permission is None:
+                continue
+            for slug in slugs:
+                level = session.query(AccessLevel).filter_by(slug=slug).first()
+                # Only the default SYSTEM tiers are backfilled; an operator-owned
+                # level (is_system=False) is hand-managed and left untouched,
+                # exactly like _seed_user_access_levels.
+                if level is None or not level.is_system:
+                    continue
+                if permission.id not in {p.id for p in level.permissions}:
+                    level.permissions.append(permission)
+    session.flush()
+
+
 def seed_default_rbac(
     session, *, plugin_manager: Optional[object] = None
 ) -> RbacSeedResult:
@@ -348,6 +384,10 @@ def seed_default_rbac(
             roles_created += 1
 
     user_access_levels_created = _seed_user_access_levels(session)
+
+    # Apply plugin-declared permission→access-level grants (generic seam: the
+    # plugin owns the mapping, core names nothing).
+    _seed_plugin_declared_access_grants(session, plugin_manager)
 
     session.commit()
 
