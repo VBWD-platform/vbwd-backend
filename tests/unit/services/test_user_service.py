@@ -35,6 +35,7 @@ class TestUserService:
         return UserService(
             user_repository=mock_user_repo,
             user_details_repository=mock_user_details_repo,
+            token_service=Mock(),
         )
 
     def test_get_user_returns_user(self, user_service, mock_user_repo):

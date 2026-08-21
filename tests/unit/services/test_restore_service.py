@@ -49,6 +49,7 @@ def _make_container(**overrides):
         "token_transaction_repository",
         "token_bundle_purchase_repository",
         "addon_subscription_repository",
+        "token_service",
     ]:
         if name not in overrides:
             getattr(container, name).return_value = MagicMock()
@@ -138,25 +139,18 @@ class TestRestoreServiceProcessRestore:
         purchase.status = PurchaseStatus.REFUNDED
         purchase.token_amount = 500
 
-        balance = MagicMock()
-        balance.balance = 100
-
         invoice_repo = MagicMock()
         invoice_repo.find_by_id.return_value = invoice
 
         purchase_repo = MagicMock()
         purchase_repo.find_by_id.return_value = purchase
 
-        token_balance_repo = MagicMock()
-        token_balance_repo.find_by_user_id.return_value = balance
-
-        token_tx_repo = MagicMock()
+        token_service = MagicMock()
 
         container = _make_container(
             invoice_repository=invoice_repo,
             token_bundle_purchase_repository=purchase_repo,
-            token_balance_repository=token_balance_repo,
-            token_transaction_repository=token_tx_repo,
+            token_service=token_service,
         )
         service = _make_service(container)
 
@@ -168,14 +162,21 @@ class TestRestoreServiceProcessRestore:
         assert purchase.status == PurchaseStatus.COMPLETED
         assert purchase.tokens_credited is True
         purchase_repo.save.assert_called_with(purchase)
-        assert balance.balance == 600
-        token_balance_repo.save.assert_called()
-        token_tx_repo.save.assert_called_once()
+        # S138.0 Inc 3: the re-credit routes through core's TokenService (it
+        # used to write the balance row and the ledger entry itself, so no
+        # token-movement hook ever saw a refund restore).
+        token_service.credit_tokens.assert_called_once()
+        assert token_service.credit_tokens.call_args.kwargs["amount"] == 500
+        assert token_service.credit_tokens.call_args.kwargs["user_id"] == user_id
         assert str(purchase_id) in result.items_restored["token_bundles"]
         assert result.items_restored["tokens_credited"] == 500
 
-    def test_restore_creates_balance_if_none(self):
-        """If user has no token balance, one should be created on restore."""
+    def test_restore_credits_a_user_with_no_balance_row_yet(self):
+        """A user with no balance row is the service's problem, not ours.
+
+        ``TokenService.credit_tokens`` creates the row via ``get_or_create``;
+        restore just asks for the credit.
+        """
         purchase_id = uuid4()
         user_id = uuid4()
         line_item = _make_line_item(LineItemType.TOKEN_BUNDLE, purchase_id)
@@ -192,14 +193,12 @@ class TestRestoreServiceProcessRestore:
         purchase_repo = MagicMock()
         purchase_repo.find_by_id.return_value = purchase
 
-        token_balance_repo = MagicMock()
-        token_balance_repo.find_by_user_id.return_value = None
+        token_service = MagicMock()
 
         container = _make_container(
             invoice_repository=invoice_repo,
             token_bundle_purchase_repository=purchase_repo,
-            token_balance_repository=token_balance_repo,
-            token_transaction_repository=MagicMock(),
+            token_service=token_service,
         )
         service = _make_service(container)
 
@@ -208,8 +207,7 @@ class TestRestoreServiceProcessRestore:
         )
 
         assert result.success is True
-        saved_balance = token_balance_repo.save.call_args[0][0]
-        assert saved_balance.balance == 300
+        assert token_service.credit_tokens.call_args.kwargs["amount"] == 300
 
     def test_restore_reactivates_addon(self):
         """Restore re-activates a cancelled add-on subscription."""
@@ -299,13 +297,10 @@ class TestRestoreServiceProcessRestore:
         addon_sub = MagicMock(id=addon_id, status=SubscriptionStatus.CANCELLED)
         addon_sub.cancelled_at = datetime(2026, 2, 10)
 
-        balance = MagicMock()
-        balance.balance = 50
-
         sub_repo = MagicMock(find_by_id=MagicMock(return_value=subscription))
         purchase_repo = MagicMock(find_by_id=MagicMock(return_value=purchase))
         addon_repo = MagicMock(find_by_id=MagicMock(return_value=addon_sub))
-        token_balance_repo = MagicMock(find_by_user_id=MagicMock(return_value=balance))
+        token_service = MagicMock()
 
         invoice_repo = MagicMock(find_by_id=MagicMock(return_value=invoice))
 
@@ -314,8 +309,7 @@ class TestRestoreServiceProcessRestore:
             subscription_repository=sub_repo,
             token_bundle_purchase_repository=purchase_repo,
             addon_subscription_repository=addon_repo,
-            token_balance_repository=token_balance_repo,
-            token_transaction_repository=MagicMock(),
+            token_service=token_service,
         )
         service = _make_service(container)
 
@@ -332,4 +326,4 @@ class TestRestoreServiceProcessRestore:
         assert subscription.status == SubscriptionStatus.ACTIVE
         assert purchase.status == PurchaseStatus.COMPLETED
         assert addon_sub.status == SubscriptionStatus.ACTIVE
-        assert balance.balance == 250
+        assert token_service.credit_tokens.call_args.kwargs["amount"] == 200

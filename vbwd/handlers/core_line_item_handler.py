@@ -4,7 +4,6 @@ SUBSCRIPTION and ADD_ON are handled by the subscription plugin's
 SubscriptionLineItemHandler (Sprint 04b).
 """
 import logging
-from uuid import uuid4
 
 from vbwd.events.line_item_registry import (
     ILineItemHandler,
@@ -72,26 +71,14 @@ class CoreLineItemHandler(ILineItemHandler):
         purchase.tokens_credited = True
         purchase_repo.save(purchase)
 
-        from vbwd.models.user_token_balance import UserTokenBalance, TokenTransaction
-
-        token_repo = self._container.token_balance_repository()
-        token_transaction_repo = self._container.token_transaction_repository()
-
-        balance = token_repo.find_by_user_id(context.user_id)
-        if not balance:
-            balance = UserTokenBalance(id=uuid4(), user_id=context.user_id, balance=0)
-        balance.balance += purchase.token_amount
-        token_repo.save(balance)
-
-        transaction = TokenTransaction(
-            id=uuid4(),
+        token_service = self._container.token_service()
+        token_service.credit_tokens(
             user_id=context.user_id,
             amount=purchase.token_amount,
             transaction_type=TokenTransactionType.PURCHASE,
             reference_id=purchase.id,
             description=f"Token bundle purchase: {purchase.token_amount} tokens",
         )
-        token_transaction_repo.save(transaction)
 
         return LineItemResult(
             success=True,
@@ -144,26 +131,14 @@ class CoreLineItemHandler(ILineItemHandler):
         purchase.tokens_credited = True
         purchase_repo.save(purchase)
 
-        from vbwd.models.user_token_balance import UserTokenBalance, TokenTransaction
-
-        token_repo = self._container.token_balance_repository()
-        token_transaction_repo = self._container.token_transaction_repository()
-
-        balance = token_repo.find_by_user_id(context.user_id)
-        if not balance:
-            balance = UserTokenBalance(id=uuid4(), user_id=context.user_id, balance=0)
-        balance.balance += purchase.token_amount
-        token_repo.save(balance)
-
-        transaction = TokenTransaction(
-            id=uuid4(),
+        token_service = self._container.token_service()
+        token_service.credit_tokens(
             user_id=context.user_id,
             amount=purchase.token_amount,
             transaction_type=TokenTransactionType.PURCHASE,
             reference_id=purchase.id,
             description=f"Refund reversed: {purchase.token_amount} tokens restored",
         )
-        token_transaction_repo.save(transaction)
 
         return LineItemResult(
             success=True,

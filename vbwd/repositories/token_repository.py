@@ -20,11 +20,18 @@ class TokenBalanceRepository(BaseRepository[UserTokenBalance]):
         )
 
     def get_or_create(self, user_id: UUID) -> UserTokenBalance:
-        """Get existing balance or create new one with zero balance."""
+        """Get existing balance or create new one with zero balance.
+
+        Flush-only, never committed (S138.0): the zero row belongs to the
+        caller's unit of work, so a movement that later rolls back does not
+        leave an orphan balance behind. ``TokenService`` — the only caller —
+        owns the commit.
+        """
         balance = self.find_by_user_id(user_id)
         if not balance:
             balance = UserTokenBalance(user_id=user_id, balance=0)
-            self.save(balance)
+            self._session.add(balance)
+            self._session.flush()
         return balance
 
 

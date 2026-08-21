@@ -31,6 +31,7 @@ def _admin_service():
     return UserService(
         user_repository=user_repo,
         user_details_repository=MagicMock(),
+        token_service=MagicMock(),
     )
 
 

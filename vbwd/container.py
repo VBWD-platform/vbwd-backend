@@ -104,12 +104,6 @@ class Container(containers.DeclarativeContainer):
 
     auth_service = providers.Factory(AuthService, user_repository=user_repository)
 
-    user_service = providers.Factory(
-        UserService,
-        user_repository=user_repository,
-        user_details_repository=user_details_repository,
-    )
-
     currency_service = providers.Factory(
         CurrencyService,
         currency_repo=currency_repository,
@@ -151,6 +145,17 @@ class Container(containers.DeclarativeContainer):
         balance_repo=token_balance_repository,
         transaction_repo=token_transaction_repository,
         purchase_repo=token_bundle_purchase_repository,
+        session=db_session,
+    )
+
+    # Declared after ``token_service`` because it depends on it (S138.0: the
+    # admin token-balance set is a delta through the service, so it produces a
+    # TokenTransaction and fires the movement hooks like any other movement).
+    user_service = providers.Factory(
+        UserService,
+        user_repository=user_repository,
+        user_details_repository=user_details_repository,
+        token_service=token_service,
     )
 
     invoice_service = providers.Factory(
