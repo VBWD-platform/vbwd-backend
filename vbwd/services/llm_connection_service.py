@@ -174,6 +174,37 @@ class LlmConnectionService:
             api_key=connection.api_key,
         )
 
+    def test_connection(
+        self,
+        *,
+        model: str,
+        api_endpoint: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> str:
+        """Make a minimal live call to verify an endpoint/model/key triple.
+
+        Builds a throwaway client from the supplied values (never persisted) and
+        sends a one-token prompt; returns the sample reply on success. Any
+        provider/transport failure surfaces as the adapter's typed
+        :class:`~vbwd.llm.errors.LlmError`, whose message NEVER contains the key.
+        Used by the admin "Test Connection" action to validate a connection
+        before it is saved — including a self-hosted endpoint such as Ollama.
+        """
+        adapter = select_adapter(
+            model=model,
+            api_key=api_key,
+            endpoint=api_endpoint or "",
+            max_tokens=max_tokens or _DEFAULT_MAX_TOKENS,
+        )
+        client = LlmClient(
+            adapter=adapter,
+            model=model,
+            default_temperature=temperature if temperature is not None else 0.7,
+        )
+        return client.chat([{"role": "user", "content": "ping"}])
+
     def _require(self, connection_id: str) -> LlmConnection:
         connection = self._repository.find_by_id(connection_id)
         if connection is None:

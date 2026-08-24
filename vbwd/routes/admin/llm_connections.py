@@ -118,6 +118,55 @@ def create_connection():
     return jsonify({"connection": connection.to_dict()}), 201
 
 
+@admin_llm_connections_bp.route("/test", methods=["POST"])
+@require_auth
+@require_permission(PERM_MANAGE)
+def test_connection():
+    """Validate an endpoint/model/key triple with one live call — before saving.
+
+    Returns ``200 {ok:true, sample}`` when the provider answers, or
+    ``200 {ok:false, error}`` when it doesn't (a bad key/model/endpoint is a
+    *result*, not a server error). When the key is blank but a ``slug`` names an
+    existing connection, its stored key (and endpoint, if omitted) are reused —
+    matching the form's "leave blank to keep current". The key is never echoed.
+    """
+    from vbwd.llm.errors import LlmError
+
+    data = request.get_json(silent=True) or {}
+    model = (data.get("model") or "").strip()
+    api_endpoint = (data.get("api_endpoint") or "").strip()
+    api_key = (data.get("api_key") or "").strip()
+    slug = (data.get("slug") or "").strip()
+    if not model:
+        return jsonify({"ok": False, "error": "model is required"}), 400
+
+    service = _build_service()
+    if not api_key and slug:
+        existing = service.get_by_slug(slug)
+        if existing is not None:
+            api_key = existing.api_key
+            if not api_endpoint:
+                api_endpoint = existing.api_endpoint or ""
+    if not api_key:
+        return jsonify({"ok": False, "error": "api_key is required"}), 400
+
+    try:
+        sample = service.test_connection(
+            model=model, api_endpoint=api_endpoint, api_key=api_key
+        )
+        return jsonify(
+            {
+                "ok": True,
+                "message": "Connection succeeded",
+                "sample": (sample or "")[:200],
+            }
+        )
+    except LlmError as error:
+        return jsonify({"ok": False, "error": str(error)}), 200
+    except Exception as error:  # pragma: no cover - unexpected transport oddity
+        return jsonify({"ok": False, "error": f"{type(error).__name__}: {error}"}), 200
+
+
 @admin_llm_connections_bp.route("/<connection_id>", methods=["PUT"])
 @require_auth
 @require_permission(PERM_MANAGE)

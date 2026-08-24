@@ -15,6 +15,8 @@ from uuid import uuid4
 
 import pytest
 
+from vbwd.llm.errors import LlmError
+
 from tests.fixtures.access import (
     make_user_no_permissions,
     make_user_with_permissions,
@@ -216,3 +218,92 @@ class TestResolveBySlug:
         response = client.get(f"{BASE}/resolve", headers=_auth_headers())
         assert response.status_code == 200
         assert response.get_json()["connection"]["slug"] == "the-default"
+
+
+_TEST = f"{BASE}/test"
+_SVC_TEST = "vbwd.services.llm_connection_service.LlmConnectionService.test_connection"
+
+
+class TestTestConnection:
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_forbidden_without_manage(self, mock_repo_cls, mock_auth_cls, client):
+        _mock_auth(
+            mock_repo_cls,
+            mock_auth_cls,
+            make_user_with_permissions("llm.connections.view"),
+        )
+        resp = client.post(
+            _TEST, headers=_auth_headers(), json={"model": "m", "api_key": "k"}
+        )
+        assert resp.status_code == 403
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_requires_model(self, mock_repo_cls, mock_auth_cls, client):
+        _mock_auth(
+            mock_repo_cls,
+            mock_auth_cls,
+            make_user_with_permissions("llm.connections.manage"),
+        )
+        resp = client.post(_TEST, headers=_auth_headers(), json={"api_key": "k"})
+        assert resp.status_code == 400
+
+    @patch(_SVC_TEST, return_value="pong")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_ok_on_success(self, mock_repo_cls, mock_auth_cls, mock_test, client):
+        _mock_auth(
+            mock_repo_cls,
+            mock_auth_cls,
+            make_user_with_permissions("llm.connections.manage"),
+        )
+        resp = client.post(
+            _TEST,
+            headers=_auth_headers(),
+            json={"model": "m", "api_endpoint": "http://x/v1", "api_key": "k"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is True and body["sample"] == "pong"
+        assert mock_test.call_args.kwargs["api_endpoint"] == "http://x/v1"
+
+    @patch(_SVC_TEST, side_effect=LlmError("boom"))
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_reports_failure_as_ok_false(
+        self, mock_repo_cls, mock_auth_cls, mock_test, client
+    ):
+        _mock_auth(
+            mock_repo_cls,
+            mock_auth_cls,
+            make_user_with_permissions("llm.connections.manage"),
+        )
+        resp = client.post(
+            _TEST, headers=_auth_headers(), json={"model": "m", "api_key": "k"}
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is False and "boom" in body["error"]
+
+    @patch(_SVC_TEST, return_value="pong")
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_reuses_stored_key_when_blank(
+        self, mock_repo_cls, mock_auth_cls, mock_test, client, app
+    ):
+        _mock_auth(
+            mock_repo_cls,
+            mock_auth_cls,
+            make_user_with_permissions("llm.connections.manage"),
+        )
+        _seed(app, "ollama", model="llama3.2:3b")
+        resp = client.post(
+            _TEST,
+            headers=_auth_headers(),
+            json={"model": "llama3.2:3b", "slug": "ollama", "api_key": ""},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["ok"] is True
+        # the blank key fell back to the stored connection's key
+        assert mock_test.call_args.kwargs["api_key"] == LIVE_KEY
