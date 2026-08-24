@@ -131,6 +131,23 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
 
+  # Local, self-hosted LLM runtime (OpenAI-compatible on :11434). The API reaches
+  # it in-network at http://ollama:11434/v1 — the endpoint a "Local Ollama" core
+  # LLM Connection points at (see plugins/tuktuk/README.md). Pull a model once:
+  #   docker-compose exec ollama ollama pull llama3.2:3b
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"   # also reachable from the host at http://localhost:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   test:
     build:
       context: .
@@ -184,3 +201,4 @@ services:
 
 volumes:
   postgres_data:
+  ollama_data:
