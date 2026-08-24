@@ -38,17 +38,30 @@ def _mock_auth(mock_repo_cls, mock_auth_cls, user):
 
 @pytest.fixture(autouse=True)
 def clean_table(app):
+    """Isolate each test in a rolled-back transaction — never touch dev data.
+
+    This suite drives the routes (which ``commit()``) against the shared dev DB.
+    A committed ``DELETE FROM vbwd_llm_connection`` here would wipe connections an
+    operator created in dev. Instead we run inside :func:`rollback_isolation`:
+    the session is bound to one connection + outer transaction with
+    ``join_transaction_mode="create_savepoint"``, so the table-clear and every
+    route/_seed ``commit()`` become SAVEPOINTs the test sees but that are rolled
+    back on teardown. Nothing the test writes ever persists.
+    """
     from vbwd.extensions import db
     from vbwd.models.llm_connection import LlmConnection
+    from vbwd.testing.integration_db import rollback_isolation
 
     with app.app_context():
+        # The table must exist on the REAL engine before the session is rebound.
         LlmConnection.__table__.create(bind=db.engine, checkfirst=True)
-        db.session.query(LlmConnection).delete()
-        db.session.commit()
-    yield
-    with app.app_context():
-        db.session.query(LlmConnection).delete()
-        db.session.commit()
+        with rollback_isolation(db):
+            # Empty table for the test — UNCOMMITTED, inside the outer tx; the
+            # context manager rolls everything back (and restores the engine)
+            # on teardown, so nothing here reaches the shared dev DB.
+            db.session.query(LlmConnection).delete()
+            db.session.flush()
+            yield
 
 
 def _seed(app, slug, *, active=True, default=False, model="claude-3-5-sonnet-latest"):
