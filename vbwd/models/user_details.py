@@ -50,6 +50,7 @@ class UserDetails(BaseModel):
     address_line_1 = db.Column(db.String(255))
     address_line_2 = db.Column(db.String(255))
     city = db.Column(db.String(100))
+    state = db.Column(db.String(100))  # State / region / province
     postal_code = db.Column(db.String(20))
     country = db.Column(db.String(2))  # ISO 3166-1 alpha-2
     phone = db.Column(db.String(20))
@@ -80,6 +81,7 @@ class UserDetails(BaseModel):
             self.address_line_1,
             self.address_line_2,
             f"{self.postal_code} {self.city}".strip(),
+            self.state,
             self.country,
         ]
         return "\n".join(line for line in lines if line)
@@ -95,6 +97,7 @@ class UserDetails(BaseModel):
             "address_line_1": self.address_line_1,
             "address_line_2": self.address_line_2,
             "city": self.city,
+            "state": self.state,
             "postal_code": self.postal_code,
             "country": self.country,
             "phone": self.phone,

@@ -36,3 +36,27 @@ def test_missing_details_defaults_to_private_empty_name():
     assert party["name"] == ""
     assert party["email"] == "x@example.com"
     assert party["tax_number"] == ""
+    # No details → empty address, no crash.
+    assert party["address"] == ""
+
+
+def test_party_address_uses_real_full_address_with_state():
+    from vbwd.models.user import User
+    from vbwd.models.user_details import UserDetails
+
+    details = UserDetails()
+    details.first_name = "Ada"
+    details.last_name = "Lovelace"
+    details.address_line_1 = "1 Analytical Way"
+    details.city = "Munich"
+    details.state = "Bavaria"
+    details.postal_code = "80331"
+    details.country = "DE"
+    user = User()
+    user.email = "ada@example.com"
+    user.details = details
+
+    party = _build_customer_party(user)
+    assert party["address"] != ""
+    assert "Bavaria" in party["address"]
+    assert "80331" in party["address"]

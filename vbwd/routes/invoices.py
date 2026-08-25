@@ -74,7 +74,7 @@ def _build_customer_party(user) -> dict:
         company = getattr(details, "company", "") or ""
         tax_number = getattr(details, "tax_number", "") or ""
         phone = getattr(details, "phone", "") or ""
-        address = getattr(details, "address", "") or ""
+        address = getattr(details, "full_address", "") or ""
         account_type = getattr(details, "account_type", None) or account_type
 
     is_business = account_type == AccountType.BUSINESS.value

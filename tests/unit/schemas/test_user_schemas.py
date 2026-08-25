@@ -82,6 +82,31 @@ class TestUserDetailsSchema:
         schema = UserDetailsSchema()
         assert "company" in schema.fields
 
+    def test_dump_includes_state(self):
+        """UserDetailsSchema should serialize the state/region field."""
+        details = SimpleNamespace(
+            id=uuid4(),
+            user_id=uuid4(),
+            first_name="John",
+            last_name="Doe",
+            phone=None,
+            company=None,
+            tax_number=None,
+            address_line_1="123 Main St",
+            address_line_2=None,
+            city="Los Angeles",
+            state="California",
+            postal_code="90001",
+            country="US",
+            created_at=None,
+            updated_at=None,
+        )
+
+        schema = UserDetailsSchema()
+        result = schema.dump(details)
+
+        assert result["state"] == "California"
+
 
 class TestUserDetailsUpdateSchema:
     """Tests for UserDetailsUpdateSchema."""
@@ -151,6 +176,21 @@ class TestUserDetailsUpdateSchema:
         """UserDetailsUpdateSchema should include account_type field (S74)."""
         schema = UserDetailsUpdateSchema()
         assert "account_type" in schema.fields
+
+    def test_loads_state_field(self):
+        """UserDetailsUpdateSchema should accept a state/region value."""
+        schema = UserDetailsUpdateSchema()
+        result = schema.load({"state": "California"})
+        assert result["state"] == "California"
+
+    def test_rejects_state_over_max_length(self):
+        """UserDetailsUpdateSchema should reject a state longer than 100 chars."""
+        from marshmallow import ValidationError
+
+        schema = UserDetailsUpdateSchema()
+        with pytest.raises(ValidationError) as exc_info:
+            schema.load({"state": "x" * 101})
+        assert "state" in exc_info.value.messages
 
     def test_accepts_valid_account_type(self):
         schema = UserDetailsUpdateSchema()

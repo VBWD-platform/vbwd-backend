@@ -66,6 +66,7 @@ def update_profile():
         - address_line_1: str (optional)
         - address_line_2: str (optional)
         - city: str (optional)
+        - state: str (optional)
         - postal_code: str (optional)
         - country: str (optional)
         - config: dict (optional) - User preferences like language, theme
@@ -101,6 +102,7 @@ def update_profile():
         "address_line_1",
         "address_line_2",
         "city",
+        "state",
         "postal_code",
         "country",
     ]

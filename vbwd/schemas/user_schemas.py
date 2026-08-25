@@ -34,6 +34,7 @@ class UserDetailsSchema(Schema):
     address_line_1 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     address_line_2 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     city = fields.Str(allow_none=True, validate=validate.Length(max=100))
+    state = fields.Str(allow_none=True, validate=validate.Length(max=100))
     postal_code = fields.Str(allow_none=True, validate=validate.Length(max=20))
     country = fields.Str(allow_none=True, validate=validate.Length(max=2))
     created_at = fields.DateTime(dump_only=True)
@@ -57,6 +58,7 @@ class UserDetailsUpdateSchema(Schema):
     address_line_1 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     address_line_2 = fields.Str(allow_none=True, validate=validate.Length(max=255))
     city = fields.Str(allow_none=True, validate=validate.Length(max=100))
+    state = fields.Str(allow_none=True, validate=validate.Length(max=100))
     postal_code = fields.Str(allow_none=True, validate=validate.Length(max=20))
     country = fields.Str(allow_none=True, validate=validate.Length(max=2))
 
