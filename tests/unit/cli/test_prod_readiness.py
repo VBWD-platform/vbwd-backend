@@ -136,3 +136,38 @@ def test_summary_names_each_hard_failure(monkeypatch):
     assert "production" in lowered
     assert "secret" in lowered
     assert "debug" in lowered
+
+
+def test_reports_enabled_plugin_configuration_error(prod_env):
+    """An enabled plugin whose ``validate_environment()`` fails is reported
+    as a hard failure — every other check still runs (no crash)."""
+    from vbwd.plugins.base import BasePlugin, PluginMetadata
+    from vbwd.plugins.errors import PluginConfigurationError
+
+    class FakeMisconfiguredPlugin(BasePlugin):
+        @property
+        def metadata(self) -> PluginMetadata:
+            return PluginMetadata(
+                name="fake_misconfigured",
+                version="1.0.0",
+                author="Test",
+                description="Fake plugin",
+            )
+
+        def validate_environment(self) -> None:
+            raise PluginConfigurationError(
+                "fake_misconfigured: FAKE_MODE is 'bogus' — set FAKE_MODE to 'on'"
+            )
+
+    app = _build_app()
+    misconfigured = FakeMisconfiguredPlugin()
+    misconfigured.initialize()
+    misconfigured.enable()
+    app.plugin_manager._plugins["fake_misconfigured"] = misconfigured
+
+    result = _invoke(app)
+
+    assert isinstance(result.exception, SystemExit), result.output
+    assert result.exit_code != 0
+    assert "fake_misconfigured: FAKE_MODE is 'bogus'" in result.output
+    assert "cors" in result.output.lower()

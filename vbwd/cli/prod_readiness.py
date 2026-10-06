@@ -245,6 +245,30 @@ def _normalize_origins(origins) -> List[str]:
     return [str(item).strip() for item in origins]
 
 
+def _check_plugin_environments() -> CheckResult:
+    """#9 — every enabled plugin's ``validate_environment()`` passes.
+
+    Dry-run: each failure is collected and reported; none is raised.
+    """
+    from vbwd.plugins.errors import PluginConfigurationError
+
+    plugin_manager = getattr(current_app, "plugin_manager", None)
+    enabled_plugins = plugin_manager.get_enabled_plugins() if plugin_manager else []
+    failures = []
+    for plugin in enabled_plugins:
+        try:
+            plugin.validate_environment()
+        except PluginConfigurationError as configuration_error:
+            failures.append(str(configuration_error))
+    if failures:
+        return CheckResult("plugin environments", FAIL, "; ".join(failures))
+    return CheckResult(
+        "plugin environments",
+        PASS,
+        f"{len(enabled_plugins)} enabled plugin(s) validated their environment.",
+    )
+
+
 def _run_all_checks() -> List[CheckResult]:
     """Run every readiness check in checklist order."""
     return [
@@ -256,6 +280,7 @@ def _run_all_checks() -> List[CheckResult]:
         _check_no_demo_seed_markers(),
         _check_sanitized_error_handler(),
         _check_cors_not_wildcard(),
+        _check_plugin_environments(),
     ]
 
 

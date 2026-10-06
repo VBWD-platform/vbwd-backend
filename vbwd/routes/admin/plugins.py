@@ -3,7 +3,7 @@ import logging
 from flask import Blueprint, jsonify, request, current_app
 from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.plugins.base import PluginStatus
-from vbwd.plugins.errors import PluginDependencyError
+from vbwd.plugins.errors import PluginConfigurationError, PluginDependencyError
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +211,13 @@ def enable_plugin(plugin_name):
         plugin_manager.dependency_resolver.check(plugin, plugin_manager.get_plugin)
     except PluginDependencyError as dependency_error:
         return jsonify({"error": str(dependency_error)}), 422
+
+    # A fatally misconfigured environment is equally a validation failure: the
+    # plugin is never persisted as enabled and the running app is unaffected.
+    try:
+        plugin.validate_environment()
+    except PluginConfigurationError as configuration_error:
+        return jsonify({"error": str(configuration_error)}), 422
 
     # Persist to config_store (source of truth, shared across workers)
     config_store = getattr(current_app, "config_store", None)

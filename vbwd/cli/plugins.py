@@ -3,7 +3,7 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 
-from vbwd.plugins.errors import PluginDependencyError
+from vbwd.plugins.errors import PluginConfigurationError, PluginDependencyError
 
 
 @click.group("plugins")
@@ -77,10 +77,10 @@ def enable_plugin(name):
             plugin._status = PluginStatus.INITIALIZED
         manager.enable_plugin(name)
         click.echo(f"Plugin '{name}' enabled.")
-    except PluginDependencyError as dependency_error:
-        # Distinct from a generic failure: print the version-specific reason
-        # and exit non-zero (ClickException writes "Error: ..." to stderr).
-        raise click.ClickException(str(dependency_error))
+    except (PluginDependencyError, PluginConfigurationError) as enable_error:
+        # Distinct from a generic failure: print the specific reason and exit
+        # non-zero (ClickException writes "Error: ..." to stderr).
+        raise click.ClickException(str(enable_error))
     except ValueError as e:
         click.echo(f"Error: {e}")
 

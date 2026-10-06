@@ -1,2 +1,24 @@
 {
+  "theme": {
+    "debug_mode": false,
+    "active_theme": "basic"
+  },
+  "theme_cms": {
+    "debug_mode": false
+  },
+  "theme_checkout": {
+    "debug_mode": false
+  },
+  "theme_shop": {
+    "debug_mode": false
+  },
+  "theme_dataset": {
+    "debug_mode": false
+  },
+  "theme_subscription": {
+    "debug_mode": false
+  },
+  "theme_booking": {
+    "debug_mode": false
+  }
 }

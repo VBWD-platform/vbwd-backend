@@ -2,6 +2,7 @@
 from marshmallow import Schema, fields, validate
 
 from vbwd.models.enums import AccountType
+from vbwd.schemas.auth_schemas import RoleSchema
 
 
 class UserSchema(Schema):
@@ -68,10 +69,24 @@ class UserDetailsUpdateSchema(Schema):
         ordered = True
 
 
+class UserProfileUserSchema(UserSchema):
+    """The profile's user: ``UserSchema`` plus the login response's
+    ``user_access_levels`` / ``user_permissions`` (same serializer, same source)."""
+
+    user_access_levels = fields.List(
+        fields.Nested(RoleSchema),
+        attribute="assigned_user_access_levels",
+        dump_only=True,
+    )
+    user_permissions = fields.List(
+        fields.Str(), attribute="effective_user_permissions", dump_only=True
+    )
+
+
 class UserProfileSchema(Schema):
     """Schema for complete user profile (user + details)."""
 
-    user = fields.Nested(UserSchema)
+    user = fields.Nested(UserProfileUserSchema)
     details = fields.Nested(UserDetailsSchema, allow_none=True)
 
     class Meta:

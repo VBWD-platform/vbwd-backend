@@ -63,6 +63,31 @@ def test_enable_with_satisfied_dependency_succeeds(app, runner):
     assert "enabled" in result.output
 
 
+class FakeMisconfiguredPlugin(VersionedPlugin):
+    """Fake plugin whose environment validation fails fatally."""
+
+    def validate_environment(self) -> None:
+        from vbwd.plugins.errors import PluginConfigurationError
+
+        raise PluginConfigurationError(
+            "fake_misconfigured: FAKE_MODE is 'bogus' — set FAKE_MODE to 'on'"
+        )
+
+
+def test_enable_with_configuration_error_exits_nonzero(app, runner):
+    """enable prints the configuration reason and exits non-zero."""
+    manager = PluginManager()
+    manager.register_plugin(FakeMisconfiguredPlugin("fake_misconfigured"))
+    manager.initialize_plugin("fake_misconfigured")
+    app.plugin_manager = manager
+
+    result = runner.invoke(args=["plugins", "enable", "fake_misconfigured"])
+
+    assert result.exit_code != 0
+    assert "FAKE_MODE" in result.output
+    assert manager.get_enabled_plugins() == []
+
+
 def test_list_shows_unmet_constraint(app, runner):
     """list shows the unmet dependency constraint for a blocked plugin."""
     app.plugin_manager = _manager_with_too_old_email()

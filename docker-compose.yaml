@@ -44,6 +44,10 @@ services:
       - VBWD_FE_ADMIN_PLUGINS_CONFIG_JSON=/app/var/plugins/fe-admin-plugins-config.json
       - VBWD_FE_USER_PLUGINS_JSON=/app/var/plugins/fe-user-plugins.json
       - VBWD_FE_USER_PLUGINS_CONFIG_JSON=/app/var/plugins/fe-user-plugins-config.json
+      # Frontend mode for the public fe-user pages (S152).
+      # vue = Vue SPA (default); theme = server-rendered theme for public fe-user pages — see S152
+      # From S152-01 an invalid value fails app boot (theme plugin, D10).
+      - VBWD_FRONTEND_MODE=${VBWD_FRONTEND_MODE:-vue}
       # APNs push notifications (S66). Unset = pushes disabled (no-op send,
       # one boot warning) — dev/CI work without Apple credentials.
       - VBWD_APNS_KEY_PATH=${VBWD_APNS_KEY_PATH:-}

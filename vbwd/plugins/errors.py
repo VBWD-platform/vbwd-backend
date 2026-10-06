@@ -26,3 +26,16 @@ class PluginLicenseError(ValueError):
             f"{list(features)!r} — no covering key is held, so it will not be "
             f"activated."
         )
+
+
+class PluginConfigurationError(Exception):
+    """Raised by ``BasePlugin.validate_environment`` for a fatal misconfiguration.
+
+    Deliberately NOT a :class:`ValueError` subclass: existing
+    ``except ValueError`` callers around plugin enable must never swallow it.
+    At boot it propagates out of ``PluginManager.load_persisted_state`` so
+    ``create_app()`` fails and the process exits non-zero; on runtime enable
+    the admin API maps it to a 4xx and the plugin stays disabled.
+
+    Message convention: ``"<plugin>: <what is wrong> — <how to fix it>"``.
+    """

@@ -88,6 +88,18 @@ class BasePlugin(ABC):
             self._config = config
         self._status = PluginStatus.INITIALIZED
 
+    def validate_environment(self) -> None:
+        """Validate the plugin's runtime environment before it is enabled.
+
+        Called by ``PluginManager`` for every persisted-enabled plugin at boot
+        (before ``initialize``) and on runtime enable. Override to raise
+        :class:`vbwd.plugins.errors.PluginConfigurationError` with
+        ``"<plugin>: <what> — <how to fix>"`` for a FATAL misconfiguration
+        (e.g. an invalid environment variable): at boot it fails app start-up,
+        at runtime the plugin stays disabled. Default: nothing to validate.
+        """
+        return None
+
     def enable(self) -> None:
         """Enable the plugin."""
         if self._status != PluginStatus.INITIALIZED:

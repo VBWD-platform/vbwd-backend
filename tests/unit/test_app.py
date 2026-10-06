@@ -1,4 +1,11 @@
 """Tests for Flask application factory."""
+import pytest
+from flask import Blueprint
+
+from vbwd.plugins.base import BasePlugin, PluginMetadata
+from vbwd.plugins.manager import PluginManager
+
+BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
 
 class TestAppFactory:
@@ -40,6 +47,32 @@ class TestAppFactory:
         response = client.get("/")
         # May return 200 (API info) or 302 (redirect to landing/CMS)
         assert response.status_code in (200, 302)
+
+    @pytest.mark.parametrize(
+        "accept_header",
+        [None, "*/*", "application/json", "application/json, text/html;q=0.5"],
+    )
+    def test_root_banner_served_to_api_clients(self, client, accept_header):
+        """API clients (curl default, JSON consumers) keep the JSON banner."""
+        headers = {"Accept": accept_header} if accept_header else {}
+        response = client.get("/", headers=headers)
+
+        assert response.status_code == 200
+        assert response.json["message"] == "VBWD API"
+
+    @pytest.mark.parametrize("accept_header", [BROWSER_ACCEPT, "text/html"])
+    def test_root_is_404_for_html_navigation(self, client, accept_header):
+        """Core does not own the HTML home page — a browser navigation 404s
+        so the frontend router can fall back to the SPA."""
+        response = client.get("/", headers={"Accept": accept_header})
+
+        assert response.status_code == 404
+
+    def test_root_head_is_404_for_html_navigation(self, client):
+        """HEAD follows the same negotiation as GET."""
+        response = client.head("/", headers={"Accept": BROWSER_ACCEPT})
+
+        assert response.status_code == 404
 
     def test_unknown_api_route_returns_404(self, client):
         """Unknown API routes should return 404."""
@@ -276,3 +309,56 @@ class TestForwardedProtoHandling:
         assert app.wsgi_app.x_for == 2
         assert app.wsgi_app.x_proto == 1
         assert app.wsgi_app.x_host == 1
+
+
+class _RootPagePlugin(BasePlugin):
+    """Test fake: an enabled plugin whose blueprint owns ``/``."""
+
+    @property
+    def metadata(self) -> PluginMetadata:
+        return PluginMetadata(
+            name="root-page-fake",
+            version="1.0.0",
+            author="tests",
+            description="Registers a view for /",
+        )
+
+    def get_blueprint(self):
+        blueprint = Blueprint("root_page_fake", __name__)
+
+        @blueprint.route("/")
+        def plugin_home():
+            return "plugin home", 200
+
+        return blueprint
+
+    def get_url_prefix(self) -> str:
+        return ""
+
+
+class TestRootRoutePrecedence:
+    """A plugin blueprint mounted at ``/`` wins over the core banner."""
+
+    def test_plugin_root_view_handles_html_navigation(self, monkeypatch):
+        from vbwd.app import create_app
+        from vbwd.config import get_database_url
+
+        original_get_enabled = PluginManager.get_enabled_plugins
+        fake_plugin = _RootPagePlugin()
+
+        def get_enabled_with_fake(manager):
+            return original_get_enabled(manager) + [fake_plugin]
+
+        monkeypatch.setattr(PluginManager, "get_enabled_plugins", get_enabled_with_fake)
+        app = create_app(
+            {
+                "TESTING": True,
+                "SQLALCHEMY_DATABASE_URI": get_database_url(),
+                "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+            }
+        )
+
+        response = app.test_client().get("/", headers={"Accept": BROWSER_ACCEPT})
+
+        assert response.status_code == 200
+        assert response.get_data(as_text=True) == "plugin home"

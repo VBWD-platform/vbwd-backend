@@ -23,6 +23,48 @@
       "version": "26.7.0",
       "installedAt": "",
       "source": "local"
+    },
+    "theme": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
+    },
+    "theme_cms": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
+    },
+    "theme_checkout": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
+    },
+    "theme_shop": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
+    },
+    "theme_dataset": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
+    },
+    "theme_subscription": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
+    },
+    "theme_booking": {
+      "enabled": false,
+      "version": "1.0.0",
+      "installedAt": "",
+      "source": "local"
     }
   }
 }

@@ -6,6 +6,7 @@ from vbwd.schemas.user_schemas import (
     UserDetailsSchema,
     UserDetailsUpdateSchema,
     UserProfileSchema,
+    UserSchema,
 )
 
 
@@ -260,3 +261,54 @@ class TestUserProfileSchema:
 
         assert result["user"]["email"] == "test@example.com"
         assert result["details"] is None
+
+    def test_user_carries_access_levels_and_permissions_like_login(self):
+        """S152 C3 — the profile user carries the login's level/permission fields."""
+        level_id = uuid4()
+        level = SimpleNamespace(
+            id=level_id, slug="logged-in", name="Logged In", description="ignored"
+        )
+        user = SimpleNamespace(
+            id=uuid4(),
+            email="test@example.com",
+            status="active",
+            role="user",
+            created_at=None,
+            updated_at=None,
+            assigned_user_access_levels=[level],
+            effective_user_permissions=["user.profile.view"],
+        )
+
+        result = UserProfileSchema().dump({"user": user, "details": None})
+
+        assert result["user"]["user_access_levels"] == [
+            {"id": str(level_id), "slug": "logged-in", "name": "Logged In"}
+        ]
+        assert result["user"]["user_permissions"] == ["user.profile.view"]
+
+    def test_profile_user_keys_snapshot(self):
+        schema = UserProfileSchema()
+        assert list(schema.fields["user"].schema.fields.keys()) == [
+            "id",
+            "email",
+            "status",
+            "role",
+            "created_at",
+            "updated_at",
+            "user_access_levels",
+            "user_permissions",
+        ]
+
+
+class TestUserSchemaUnchanged:
+    """``UserSchema`` is a public export; the profile additions must not leak into it."""
+
+    def test_user_schema_keys_snapshot(self):
+        assert list(UserSchema().fields.keys()) == [
+            "id",
+            "email",
+            "status",
+            "role",
+            "created_at",
+            "updated_at",
+        ]

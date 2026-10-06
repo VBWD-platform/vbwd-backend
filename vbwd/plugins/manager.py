@@ -152,10 +152,14 @@ class PluginManager:
         Raises:
             ValueError: If plugin not found, dependencies not met, or the
                 plugin requires a licence that is not covered.
+            PluginConfigurationError: If the plugin's environment is fatally
+                misconfigured; the plugin stays disabled.
         """
         plugin = self.get_plugin(name)
         if not plugin:
             raise ValueError(f"Plugin '{name}' not found")
+
+        plugin.validate_environment()
 
         # Check dependencies (presence + ENABLED + version range).
         # Raises PluginDependencyError (a ValueError subtype, so existing
@@ -394,6 +398,11 @@ class PluginManager:
         same dependency gate as ``enable_plugin``. A plugin whose dependency is
         missing/disabled or whose version is too old is logged as a WARNING and
         left DISABLED — never half-wired.
+
+        Raises:
+            PluginConfigurationError: A persisted-enabled plugin's
+                ``validate_environment()`` failed. Deliberately NOT caught, so
+                ``create_app()`` fails and the process exits non-zero.
         """
         if not self._config_repo:
             return
@@ -423,6 +432,9 @@ class PluginManager:
             if not plugin:
                 continue
             entry = entries_by_name.get(plugin_name)
+
+            # Fatal misconfiguration propagates — outside every try below.
+            plugin.validate_environment()
 
             try:
                 stored_config = getattr(entry, "config", None)

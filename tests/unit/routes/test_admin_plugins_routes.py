@@ -372,6 +372,44 @@ class TestEnableDependencyGate:
         mock_store.save.assert_called_once()
 
 
+class FakeMisconfiguredPlugin(MockPlugin):
+    """A fake plugin whose environment validation fails fatally."""
+
+    def validate_environment(self) -> None:
+        from vbwd.plugins.errors import PluginConfigurationError
+
+        raise PluginConfigurationError(
+            "fake_misconfigured: FAKE_MODE is 'bogus' — set FAKE_MODE to 'on'"
+        )
+
+
+class TestEnableConfigurationGate:
+    """POST /enable maps PluginConfigurationError to 422; plugin stays off."""
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_runtime_enable_with_configuration_error_returns_4xx_and_stays_disabled(
+        self, mock_repo_class, mock_auth_class, app, client
+    ):
+        _mock_admin_auth(mock_repo_class, mock_auth_class)
+
+        misconfigured = FakeMisconfiguredPlugin("fake_misconfigured")
+        app.plugin_manager._plugins = {"fake_misconfigured": misconfigured}
+
+        mock_store = _make_config_store("fake_misconfigured", "disabled")
+        app.config_store = mock_store
+
+        response = client.post(
+            "/api/v1/admin/plugins/fake_misconfigured/enable",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 422
+        assert "FAKE_MODE" in response.get_json()["error"]
+        mock_store.save.assert_not_called()
+        assert misconfigured.status != PluginStatus.ENABLED
+
+
 class TestDisablePlugin:
     """Tests for POST /api/v1/admin/plugins/<name>/disable."""
 

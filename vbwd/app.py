@@ -1,6 +1,7 @@
 """Flask application factory."""
 import os
-from flask import Flask, jsonify, make_response, request
+from flask import Flask, abort, jsonify, make_response, request
+from werkzeug.datastructures import MIMEAccept
 from flask_limiter.util import get_remote_address
 from typing import Optional, Dict, Any
 import logging
@@ -220,6 +221,18 @@ def _register_event_handlers(app: Flask, container) -> None:
         logger.warning(f"Failed to register event handlers: {e}")
 
 
+def _prefers_html(accept_mimetypes: MIMEAccept) -> bool:
+    """True when the client ranks ``text/html`` strictly above JSON.
+
+    A browser navigation (``text/html,...,*/*;q=0.8``) qualifies; ``*/*``
+    (curl's default), a missing Accept header, or an explicit JSON preference
+    do not — ties go to the API client.
+    """
+    return accept_mimetypes.quality("text/html") > accept_mimetypes.quality(
+        "application/json"
+    )
+
+
 def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     """
     Create and configure Flask application.
@@ -254,6 +267,21 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     limiter.init_app(app)
     csrf.init_app(app)
     jwt.init_app(app)
+
+    # S152 C2 — in-process dispatch to this app's own /api/v1/* endpoints;
+    # consumers resolve it via resolve_internal_api_client().
+    from vbwd.services.internal_api import (
+        DEFAULT_FORWARDED_COOKIE_NAMES,
+        EXTENSION_NAME as INTERNAL_API_EXTENSION_NAME,
+        InternalApiClient,
+    )
+
+    app.extensions[INTERNAL_API_EXTENSION_NAME] = InternalApiClient(
+        app,
+        forwarded_cookie_names=app.config.get(
+            "INTERNAL_API_FORWARDED_COOKIES", DEFAULT_FORWARDED_COOKIE_NAMES
+        ),
+    )
 
     # Exempt API routes from CSRF (they use JWT authentication)
     # CSRF is only needed for browser form submissions, not API calls
@@ -585,10 +613,15 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
                 503,
             )
 
-    # Root endpoint
+    # Root endpoint — the JSON banner is for API clients only. A browser
+    # HTML navigation gets 404 because core does not own the HTML home page:
+    # an enabled plugin blueprint mounted at ``/`` (registered above, so it
+    # wins) or the frontend router's SPA fallback serves it instead.
     @app.route("/")
     def root():
         """Root endpoint."""
+        if _prefers_html(request.accept_mimetypes):
+            abort(404)
         return (
             jsonify(
                 {"message": "VBWD API", "version": "0.1.0", "health": "/api/v1/health"}
