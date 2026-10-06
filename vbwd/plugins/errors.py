@@ -23,8 +23,9 @@ class PluginLicenseError(ValueError):
         self.features = features
         super().__init__(
             f"Plugin '{plugin_name}' requires a licence covering one of "
-            f"{list(features)!r} — no covering key is held, so it will not be "
-            f"activated."
+            f"{list(features)!r} — no covering licence key is configured or "
+            f"held, so it will not be activated. Install a licence key that "
+            f"covers it (Admin > License)."
         )
 
 

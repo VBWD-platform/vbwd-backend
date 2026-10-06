@@ -112,12 +112,14 @@ class PluginManager:
         event = Event(name="plugin.initialized", data={"plugin_name": name})
         self._event_dispatcher.dispatch(event)
 
-    def _check_license(self, plugin: BasePlugin) -> None:
+    def check_license(self, plugin: BasePlugin) -> None:
         """Refuse to enable a licence-requiring plugin with no covering licence.
 
-        Fail-closed: no context, no declared features, or no covering key all
-        mean "not licensed". Free plugins (``requires_license`` False, the
-        default) return immediately and are never affected.
+        Fail-closed: no context, a keyless install (``NullLicenseContext``), no
+        declared features, or no covering key all mean "not licensed". Free
+        plugins (``requires_license`` False, the default) return immediately
+        and are never affected. Public so the admin enable route and the
+        prod-readiness report apply this exact rule (DRY).
 
         Raises:
             PluginLicenseError: (a ValueError) when the plugin is uncovered.
@@ -136,7 +138,7 @@ class PluginManager:
         if not covered:
             logger.warning(
                 "[plugins] '%s' requires a licence covering one of %s — not "
-                "activated (no covering key).",
+                "activated (no covering licence key is configured or held).",
                 name,
                 list(features),
             )
@@ -169,7 +171,7 @@ class PluginManager:
         # Licence gate (S137.1). Unconditional by design: a licence-requiring
         # plugin never activates without a covering key, regardless of
         # LICENSE_REQUIRED. Free plugins (the default) skip this entirely.
-        self._check_license(plugin)
+        self.check_license(plugin)
 
         plugin.enable()
 
@@ -465,9 +467,9 @@ class PluginManager:
             # "enabled" flag in plugins.json would activate a paid plugin with
             # no licence at all — the gate would look correct and do nothing.
             try:
-                self._check_license(plugin)
+                self.check_license(plugin)
             except PluginLicenseError:
-                continue  # already logged by _check_license; leave it disabled
+                continue  # already logged by check_license; leave it disabled
 
             try:
                 plugin.enable()

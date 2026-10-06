@@ -7,8 +7,10 @@ store's current key set (multi-key precedence in ONE place, DRY): a key is
 *covering* iff its status is VALID or GRACE and its scope includes the feature.
 
 ``NullLicenseContext`` is the Liskov-safe stand-in for the not-required / not-
-configured path: every question answers "allowed" so callers never branch on
-``None``.
+configured path (no public key, no keys) so callers never branch on ``None``.
+It enforces no limits (seats, activity), but it holds no key, so — exactly like
+a ``LicenseContext`` over an empty key set — it grants no licensed feature: a
+licence-requiring plugin never activates on a keyless install.
 """
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -128,10 +130,13 @@ class LicenseContext:
 
 
 class NullLicenseContext:
-    """Open-path context: nothing is enforced (Liskov-safe stand-in)."""
+    """Open-path context: no limits enforced, no licensed feature granted."""
 
     def has_feature(self, feature: str) -> bool:
-        return True
+        # No licence material ⇒ no covering key ⇒ not granted (keyless gap,
+        # 2026-10-06). Free plugins never ask; the route decorator is inert on
+        # this path (it only exists while LICENSE_REQUIRED is false).
+        return False
 
     def is_active(self) -> bool:
         return True

@@ -269,6 +269,37 @@ def _check_plugin_environments() -> CheckResult:
     )
 
 
+def _check_licensed_plugins() -> CheckResult:
+    """#10 (WARN) — every persisted-enabled licence-requiring plugin is covered.
+
+    An uncovered one (e.g. on a keyless install) is not a security gap — the
+    licence gate keeps it disabled — but it means a feature the operator turned
+    on is not running, so it is surfaced. Reuses ``check_license`` (DRY).
+    """
+    from vbwd.plugins.errors import PluginLicenseError
+
+    plugin_manager = getattr(current_app, "plugin_manager", None)
+    config_store = getattr(current_app, "config_store", None)
+    if plugin_manager is None or config_store is None:
+        return CheckResult("licensed plugins", PASS, "No plugin system configured.")
+    uncovered = []
+    for entry in config_store.get_enabled():
+        plugin = plugin_manager.get_plugin(entry.plugin_name)
+        if plugin is None:
+            continue
+        try:
+            plugin_manager.check_license(plugin)
+        except PluginLicenseError as license_error:
+            uncovered.append(str(license_error))
+    if uncovered:
+        return CheckResult("licensed plugins", WARN, "; ".join(uncovered))
+    return CheckResult(
+        "licensed plugins",
+        PASS,
+        "Every enabled licence-requiring plugin is covered by a licence.",
+    )
+
+
 def _run_all_checks() -> List[CheckResult]:
     """Run every readiness check in checklist order."""
     return [
@@ -281,6 +312,7 @@ def _run_all_checks() -> List[CheckResult]:
         _check_sanitized_error_handler(),
         _check_cors_not_wildcard(),
         _check_plugin_environments(),
+        _check_licensed_plugins(),
     ]
 
 

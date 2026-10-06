@@ -437,8 +437,10 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     # S135-CLIENT — build the license environment from config at boot and stash
     # it: the request-scoped context (exposed on ``g.license``), the key store,
     # the activation client, the instance fingerprint, and the degraded flag.
-    # CE default (LICENSE_REQUIRED=false, no keys) → NullLicenseContext, fully
-    # open. The feature registry is plugin-fed, so core names no feature.
+    # CE default (LICENSE_REQUIRED=false, no keys) → NullLicenseContext: open
+    # (no limits), but it grants no licensed feature, so a licence-requiring
+    # plugin stays disabled. The feature registry is plugin-fed, so core names
+    # no feature.
     #
     # ORDER MATTERS (S137.1): this MUST run BEFORE plugins are enabled below.
     # ``PluginManager`` refuses to activate a licence-requiring plugin without a

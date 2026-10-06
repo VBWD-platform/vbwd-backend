@@ -3,7 +3,11 @@ import logging
 from flask import Blueprint, jsonify, request, current_app
 from vbwd.middleware.auth import require_auth, require_admin, require_permission
 from vbwd.plugins.base import PluginStatus
-from vbwd.plugins.errors import PluginConfigurationError, PluginDependencyError
+from vbwd.plugins.errors import (
+    PluginConfigurationError,
+    PluginDependencyError,
+    PluginLicenseError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +222,14 @@ def enable_plugin(plugin_name):
         plugin.validate_environment()
     except PluginConfigurationError as configuration_error:
         return jsonify({"error": str(configuration_error)}), 422
+
+    # The licence gate (the manager's own rule, DRY): a licence-requiring
+    # plugin without a covering key — including on a keyless install — is
+    # refused and never persisted, so it cannot activate on the next boot.
+    try:
+        plugin_manager.check_license(plugin)
+    except PluginLicenseError as license_error:
+        return jsonify({"error": str(license_error)}), 422
 
     # Persist to config_store (source of truth, shared across workers)
     config_store = getattr(current_app, "config_store", None)

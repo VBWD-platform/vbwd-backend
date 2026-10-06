@@ -3,10 +3,10 @@
 Mirrors the auth/permission marker pattern in ``vbwd/middleware/auth.py``:
 stamps introspectable markers (so ``route_audit`` classifies the route as a
 distinct protection class) and gates the request. An uncovered feature returns
-**402 Payment Required**; a covered feature (or the open / not-required path,
-where ``g.license`` is a ``NullLicenseContext`` whose ``has_feature`` is always
-True) passes through. Degraded mode is honoured for free: the degraded context
-simply reports the feature as uncovered.
+**402 Payment Required**; a covered feature passes through, and with
+``LICENSE_REQUIRED`` false (the CE default — the only case that yields a
+``NullLicenseContext``) the gate is inert. Degraded mode is honoured for free:
+the degraded context simply reports the feature as uncovered.
 """
 from functools import wraps
 

@@ -75,14 +75,33 @@ def _build_app(config):
     return app
 
 
-def test_not_required_boots_open_with_null_context(tmp_path):
-    app = _build_app(
-        {"LICENSE_REQUIRED": False, "LICENSE_KEYS_DIR": str(tmp_path / "keys")}
+def _build_keyless_app(tmp_path):
+    """A keyless install: no public key, no keys (opts out of the test licence)."""
+    return _build_app(
+        {
+            "LICENSE_REQUIRED": False,
+            "LICENSE_PUBLIC_KEY": None,
+            "LICENSE_KEYS_DIR": str(tmp_path / "keys"),
+        }
     )
+
+
+def test_not_required_boots_open_with_null_context(tmp_path):
+    app = _build_keyless_app(tmp_path)
     assert isinstance(app.license_context, NullLicenseContext)
     assert app.config["LICENSE_DEGRADED"] is False
     # The gate is inert: the licensed route passes.
     assert app.test_client().get("/api/v1/_boot_test/licensed").status_code == 200
+
+
+def test_keyless_boot_activates_no_licence_requiring_plugin(tmp_path):
+    """Keyless gap (2026-10-06): the boot path skips every licence-requiring
+    plugin (no crash) while free plugins boot as before."""
+    app = _build_keyless_app(tmp_path)
+    enabled_plugins = app.plugin_manager.get_enabled_plugins()
+
+    assert not [plugin for plugin in enabled_plugins if plugin.requires_license]
+    assert [plugin for plugin in enabled_plugins if not plugin.requires_license]
 
 
 def test_required_with_covering_key_lets_licensed_route_pass(tmp_path):

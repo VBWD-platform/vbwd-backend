@@ -224,7 +224,8 @@ def build_license_environment(
         )
         context = LicenseContext(store, feature_registry, online_gate)
     else:
-        # Fully open CE: nothing to verify and nothing required.
+        # Open CE: nothing to verify and nothing required. No limits are
+        # enforced, but no licensed feature is granted either.
         store = None
         context = NullLicenseContext()
 

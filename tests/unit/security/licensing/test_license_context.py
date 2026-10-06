@@ -92,12 +92,26 @@ def test_declared_features_report_coverage(store, signer):
     assert coverage == {"marketplace": True, "analytics": False}
 
 
-def test_null_context_is_permissive():
+def test_null_context_enforces_no_limits():
     context = NullLicenseContext()
-    assert context.has_feature("anything") is True
     assert context.is_active() is True
     assert context.within_seat_limit(10_000) is True
     assert context.resource_usage() == []
+
+
+def test_null_context_grants_no_licensed_feature():
+    """Keyless gap (2026-10-06): no licence material ⇒ no feature is granted.
+
+    Liskov: answers exactly as a real ``LicenseContext`` over an empty key set,
+    so a licence-requiring plugin cannot activate on a keyless install.
+    """
+    assert NullLicenseContext().has_feature("anything") is False
+
+
+def test_null_context_matches_a_real_context_holding_no_keys(store):
+    assert NullLicenseContext().has_feature("anything") == LicenseContext(
+        store
+    ).has_feature("anything")
 
 
 # --- S144.3: optional online gate combines offline AND online coverage ------

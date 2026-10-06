@@ -171,3 +171,51 @@ def test_reports_enabled_plugin_configuration_error(prod_env):
     assert result.exit_code != 0
     assert "fake_misconfigured: FAKE_MODE is 'bogus'" in result.output
     assert "cors" in result.output.lower()
+
+
+def test_warns_when_an_enabled_licensed_plugin_has_no_covering_licence(prod_env):
+    """Keyless gap (2026-10-06): a persisted-enabled licence-requiring plugin
+    that the licence does not cover is reported (⚠️ — it simply stays off, so
+    it never flips the exit code)."""
+    from types import SimpleNamespace
+
+    from vbwd.plugins.base import BasePlugin, PluginMetadata
+
+    class FakeLicensedPlugin(BasePlugin):
+        @property
+        def metadata(self) -> PluginMetadata:
+            return PluginMetadata(
+                name="fake_licensed",
+                version="1.0.0",
+                author="Test",
+                description="Fake paid plugin",
+            )
+
+        @property
+        def requires_license(self) -> bool:
+            return True
+
+        @property
+        def licensed_features(self) -> tuple:
+            return ("fake-paid-feature",)
+
+    class _PersistedEnabledStore:
+        def get_enabled(self):
+            return [SimpleNamespace(plugin_name="fake_licensed", config={})]
+
+    class _NoFeatureContext:
+        def has_feature(self, feature):
+            return False
+
+    app = _build_app()
+    app.plugin_manager._plugins["fake_licensed"] = FakeLicensedPlugin()
+    app.plugin_manager._license_context = _NoFeatureContext()
+    app.config_store = _PersistedEnabledStore()
+
+    result = _invoke(app)
+
+    assert result.exit_code == 0, result.output
+    licence_lines = [line for line in result.output.splitlines() if "⚠️" in line]
+    assert any(
+        "fake_licensed" in line and "licence" in line for line in licence_lines
+    ), result.output

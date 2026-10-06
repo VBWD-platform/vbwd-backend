@@ -8,6 +8,7 @@ semantics — scoped, wildcard, grace window, expired — are asserted against t
 code the boot path actually runs, not a double.
 """
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -155,3 +156,69 @@ def test_boot_built_environment_with_a_covering_key_activates(
     manager.enable_plugin(plugin.metadata.name)
 
     assert plugin.status == PluginStatus.ENABLED
+
+
+class FreePlugin(BasePlugin):
+    """A plugin that declares no licence requirement (the CE default)."""
+
+    @property
+    def metadata(self) -> PluginMetadata:
+        return PluginMetadata(
+            name="free-plugin",
+            version="1.0.0",
+            author="Test",
+            description="Needs no licence",
+        )
+
+
+class _PersistedEnabledStore:
+    """Config-store double reporting the given plugins as persisted-enabled."""
+
+    def __init__(self, *plugin_names):
+        self._plugin_names = plugin_names
+
+    def get_enabled(self):
+        return [
+            SimpleNamespace(plugin_name=name, config={}, version=None)
+            for name in self._plugin_names
+        ]
+
+
+def _keyless_context(tmp_path):
+    """The context a keyless install boots with (no public key, no keys)."""
+    return build_license_environment(
+        {"LICENSE_REQUIRED": False, "LICENSE_KEYS_DIR": str(tmp_path / "keys")}
+    ).context
+
+
+class TestKeylessInstall:
+    """Closing the keyless gap (2026-10-06): no licence material ⇒ not granted."""
+
+    def test_admin_enable_of_a_licensed_plugin_is_refused(self, tmp_path):
+        manager, plugin = _manager_for(_keyless_context(tmp_path))
+
+        with pytest.raises(PluginLicenseError):
+            manager.enable_plugin(plugin.metadata.name)
+
+        assert plugin.status != PluginStatus.ENABLED
+        assert plugin.on_enable_calls == 0
+
+    def test_boot_leaves_licensed_plugin_disabled_and_free_plugin_enabled(
+        self, tmp_path
+    ):
+        licensed_plugin, free_plugin = LicensedPlugin(), FreePlugin()
+        manager = PluginManager(
+            license_context=_keyless_context(tmp_path),
+            config_repo=_PersistedEnabledStore(
+                licensed_plugin.metadata.name, free_plugin.metadata.name
+            ),
+        )
+        for plugin in (licensed_plugin, free_plugin):
+            manager.register_plugin(plugin)
+            manager.initialize_plugin(plugin.metadata.name)
+
+        manager.load_persisted_state()
+
+        assert licensed_plugin.status != PluginStatus.ENABLED
+        assert licensed_plugin.on_enable_calls == 0
+        assert free_plugin.status == PluginStatus.ENABLED

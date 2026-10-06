@@ -410,6 +410,76 @@ class TestEnableConfigurationGate:
         assert misconfigured.status != PluginStatus.ENABLED
 
 
+class FakeLicensedPlugin(MockPlugin):
+    """A fake plugin that requires a licence covering ``fake-paid-feature``."""
+
+    @property
+    def requires_license(self) -> bool:
+        return True
+
+    @property
+    def licensed_features(self) -> tuple:
+        return ("fake-paid-feature",)
+
+
+class _CoveringContext:
+    """Duck-typed licence context covering exactly the given features."""
+
+    def __init__(self, *covered_features):
+        self._covered_features = set(covered_features)
+
+    def has_feature(self, feature):
+        return feature in self._covered_features
+
+
+class TestEnableLicenseGate:
+    """POST /enable runs the licence gate: uncovered ⇒ 422, never persisted."""
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_runtime_enable_of_uncovered_licensed_plugin_returns_422(
+        self, mock_repo_class, mock_auth_class, app, client
+    ):
+        _mock_admin_auth(mock_repo_class, mock_auth_class)
+        licensed = FakeLicensedPlugin("fake_licensed")
+        app.plugin_manager._plugins = {"fake_licensed": licensed}
+        app.plugin_manager._license_context = _CoveringContext()
+        mock_store = _make_config_store("fake_licensed", "disabled")
+        app.config_store = mock_store
+
+        response = client.post(
+            "/api/v1/admin/plugins/fake_licensed/enable",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 422
+        error = response.get_json()["error"]
+        assert "fake_licensed" in error and "licence" in error
+        mock_store.save.assert_not_called()
+        assert licensed.status != PluginStatus.ENABLED
+
+    @patch("vbwd.middleware.auth.AuthService")
+    @patch("vbwd.middleware.auth.UserRepository")
+    def test_runtime_enable_of_covered_licensed_plugin_succeeds(
+        self, mock_repo_class, mock_auth_class, app, client
+    ):
+        _mock_admin_auth(mock_repo_class, mock_auth_class)
+        licensed = FakeLicensedPlugin("fake_licensed")
+        app.plugin_manager._plugins = {"fake_licensed": licensed}
+        app.plugin_manager._license_context = _CoveringContext("fake-paid-feature")
+        mock_store = _make_config_store("fake_licensed", "disabled")
+        app.config_store = mock_store
+
+        response = client.post(
+            "/api/v1/admin/plugins/fake_licensed/enable",
+            headers={"Authorization": "Bearer valid_token"},
+        )
+
+        assert response.status_code == 200
+        mock_store.save.assert_called_once()
+        assert licensed.status == PluginStatus.ENABLED
+
+
 class TestDisablePlugin:
     """Tests for POST /api/v1/admin/plugins/<name>/disable."""
 
