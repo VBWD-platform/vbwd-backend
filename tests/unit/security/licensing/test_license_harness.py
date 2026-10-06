@@ -77,7 +77,7 @@ def test_a_dict_configured_app_holds_the_test_licence():
     assert app.license_context.has_feature(ANY_LICENSED_FEATURE) is True
 
 
-def test_an_explicit_keyless_config_still_opts_out():
+def test_an_explicit_keyless_config_still_opts_out(tmp_path):
     from vbwd.app import create_app
 
     app = create_app(
@@ -87,7 +87,9 @@ def test_an_explicit_keyless_config_still_opts_out():
             "SQLALCHEMY_TRACK_MODIFICATIONS": False,
             "RATELIMIT_STORAGE_URL": "memory://",
             "LICENSE_PUBLIC_KEY": None,
-            "LICENSE_KEYS_DIR": "/nonexistent-license-keys-dir",
+            # A missing keys dir under tmp_path: the instance salt is written to its
+            # parent, which must be writable (CI runners are not root).
+            "LICENSE_KEYS_DIR": str(tmp_path / "license" / "keys"),
         }
     )
 
