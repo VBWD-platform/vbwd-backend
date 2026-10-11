@@ -84,15 +84,19 @@ class AuthService(IAuthService):
 
         # Grant the default access level so fe-user permission guards resolve.
         # Best-effort: registration must succeed even if RBAC is unseeded.
-        self._assign_default_access_level(created_user)
+        self.assign_default_access_level(created_user)
 
         # Generate token
         token = self._generate_token(created_user.id, created_user.email)  # type: ignore[arg-type]
 
         return AuthResult(success=True, user_id=created_user.id, token=token)  # type: ignore[arg-type]
 
-    def _assign_default_access_level(self, user: User) -> None:
+    def assign_default_access_level(self, user: User) -> None:
         """Assign the core ``logged-in`` access level to a freshly created user.
+
+        Single home for the default grant: registration and the test-data
+        seeder both route through here. Idempotent — an already-held level is
+        not assigned twice.
 
         Non-fatal by contract: a missing level (RBAC not seeded) or any failure
         during assignment is logged and swallowed so the caller still returns a

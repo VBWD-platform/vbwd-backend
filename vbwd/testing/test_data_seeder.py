@@ -19,7 +19,8 @@ Usage:
     flask seed-test-data
     flask cleanup-test-data
 
-Core seeds the test user + admin. Subscription test data (plan +
+Core seeds the test user + admin; the test user gets the same default access
+level a real registration grants (via ``AuthService``). Subscription test data (plan +
 subscription for the test user) is owned by the subscription plugin and
 contributed via the demo-data registry — no-op when the plugin is
 disabled. Core no longer imports subscription models.
@@ -31,6 +32,9 @@ import bcrypt
 
 from vbwd.models.user import User
 from vbwd.models.enums import UserStatus, UserRole
+from vbwd.repositories.user_repository import UserRepository
+from vbwd.services.auth_service import AuthService
+from vbwd.services.user_access_level_service import UserAccessLevelService
 from vbwd.services.demo_data_registry import (
     run_test_data_seeders,
     run_test_data_cleaners,
@@ -89,8 +93,10 @@ class TestDataSeeder:
         if not self.should_seed():
             return False
 
-        # Create test user
+        # Create test user with the default access level a registration gets
         test_user = self._create_test_user()
+        if test_user:
+            self._grant_default_access_level(test_user)
 
         # Create test admin
         self._create_test_admin()
@@ -161,6 +167,14 @@ class TestDataSeeder:
         self.session.add(user)
         self.session.flush()
         return user
+
+    def _grant_default_access_level(self, user: User) -> None:
+        """Grant the registration-default access level via ``AuthService``."""
+        auth_service = AuthService(
+            user_repository=UserRepository(self.session),
+            access_level_service=UserAccessLevelService(self.session),
+        )
+        auth_service.assign_default_access_level(user)
 
     def _create_test_admin(self) -> Optional[User]:
         """

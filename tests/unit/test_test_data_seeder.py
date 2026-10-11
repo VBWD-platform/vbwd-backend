@@ -8,6 +8,7 @@ import os
 
 import pytest
 
+from vbwd.models.enums import UserRole
 from vbwd.services.demo_data_registry import (
     register_test_data_seeder,
     clear_demo_data_hooks,
@@ -263,3 +264,35 @@ class TestTestDataSeederMarker:
             # At least one call should have an object with name containing marker
             # (This is a weak test - implementation will validate)
             assert len(add_calls) > 0
+
+
+class TestTestDataSeederDefaultAccessLevel:
+    """The seeded test user gets the same default access level a real
+    registration grants — routed through ``AuthService`` (single home)."""
+
+    def test_seed_grants_default_access_level_through_registration_path(self):
+        from vbwd.testing.test_data_seeder import TestDataSeeder
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        with patch.dict(os.environ, {"TEST_DATA_SEED": "true"}, clear=False), patch(
+            "vbwd.testing.test_data_seeder.AuthService"
+        ) as auth_service_class:
+            seeder = TestDataSeeder(db_session=mock_session)
+            seeder.seed()
+
+        auth_service = auth_service_class.return_value
+        auth_service.assign_default_access_level.assert_called_once()
+        granted_user = auth_service.assign_default_access_level.call_args[0][0]
+        assert granted_user.role == UserRole.USER
+
+    def test_seed_skipped_does_not_grant_access_level(self):
+        from vbwd.testing.test_data_seeder import TestDataSeeder
+
+        with patch.dict(os.environ, {"TEST_DATA_SEED": "false"}, clear=False), patch(
+            "vbwd.testing.test_data_seeder.AuthService"
+        ) as auth_service_class:
+            TestDataSeeder(db_session=MagicMock()).seed()
+
+        auth_service_class.return_value.assign_default_access_level.assert_not_called()

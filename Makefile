@@ -33,13 +33,13 @@ test-integration:
 test-integration-keep-data:
 	TEST_DATA_CLEANUP=false docker compose --profile test-integration run --rm test-integration pytest tests/integration/ -v
 
-# Seed test data manually (requires TEST_DATA_SEED=true)
+# Seed test data manually (TEST_DATA_SEED must be set INSIDE the container)
 seed-test-data:
-	TEST_DATA_SEED=true docker compose exec api flask seed-test-data
+	docker compose exec -T -e TEST_DATA_SEED=true api flask --app "vbwd:create_app()" seed-test-data
 
-# Cleanup test data manually (requires TEST_DATA_CLEANUP=true)
+# Cleanup test data manually (TEST_DATA_CLEANUP must be set INSIDE the container)
 cleanup-test-data:
-	TEST_DATA_CLEANUP=true docker compose exec api flask cleanup-test-data
+	docker compose exec -T -e TEST_DATA_CLEANUP=true api flask --app "vbwd:create_app()" cleanup-test-data
 
 # Reset database to clean demo state (3 plans, 2 addons, 3 token bundles)
 reset-demo:
